@@ -3,30 +3,45 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- Brand Colors -->
+    <!-- 品牌主色 -->
     <color name="teal_main">#179A9D</color>
-    <color name="teal_dark">#006B6E</color> <!-- Darker shade for dark mode elements -->
-    <color name="teal_light">#B2E0E1</color> <!-- Lighter shade for backgrounds/ripples -->
-    <color name="tile_add_bg">#CFD8DC</color>  <!-- Blue Grey 100 — darker than white, neutral -->
+    <color name="teal_dark">#006B6E</color>
+    <color name="teal_light">#B2E0E1</color>
+    <color name="tile_add_bg">#CFD8DC</color>
     <color name="tag_teal_bg">#00796B</color>
     <color name="selected_item_bg">#B2E0E1</color>
 
-    <!-- Text Colors -->
-    <color name="text_primary">#212121</color>
-    <color name="text_secondary">#757575</color>
+    <!-- 语义文本色（在 values-night 中覆盖为浅色，修复深色模式不可见） -->
+    <color name="text_primary">#1C1B1F</color>
+    <color name="text_secondary">#5F5F62</color>
+    <color name="text_tertiary">#8A8A8D</color>
+    <color name="text_hint">#9E9E9E</color>
 
-    <!-- AI Colors -->
+    <!-- 收支语义色（同时适配图表） -->
+    <color name="color_expense">#E5484D</color>
+    <color name="color_income">#1F9D6A</color>
+
+    <!-- 卡片/分隑/背景 -->
+    <color name="surface_card">#FFFFFF</color>
+    <color name="surface_dim">#F6F6F6</color>
+    <color name="tile_bg">#F5F5F5</color>
+    <color name="divider">#E6E6E6</color>
+
+    <!-- AI -->
     <color name="ai_blue">#4285F4</color>
     <color name="ai_purple">#9B72CB</color>
     <color name="ai_teal">#179A9D</color>
     <color name="ai_bg_gradient_start">#1A1C1E</color>
 
-    <!-- Tile Backgrounds -->
-    <color name="tile_bg">#F5F5F5</color>
-
-    <!-- Splash Background -->
+    <!-- 启动页 / 图标 -->
     <color name="splash_bg">#E0F2F1</color>
-
-    <!-- Launcher Background -->
     <color name="ic_launcher_bg">#F4F7F6</color>
+
+    <!-- 交易渠道色（仪表盘头像/标签） -->
+    <color name="channel_wechat">#1AAD19</color>
+    <color name="channel_alipay">#1677FF</color>
+    <color name="channel_jd">#E1251B</color>
+    <color name="channel_taobao">#FF5000</color>
+    <color name="channel_bank">#6A1B9A</color>
+    <color name="channel_cash">#616161</color>
 </resources>

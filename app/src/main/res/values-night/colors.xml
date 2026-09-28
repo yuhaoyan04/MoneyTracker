@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- 深色模式覆盖：把硬编码的深色文本/背景翻转为浅色，修复「深色模式看不见」 -->
 
-    <!-- Brand Colors (Adjusted for Dark Mode visibility) -->
-    <color name="teal_main">#179A9D</color>
-    <color name="teal_dark">#004D4F</color>
-    <color name="teal_light">#26A6A9</color>
-    <color name="tag_teal_bg">#1A3735</color>
-    <color name="tile_add_bg">#263238</color>  <!-- Blue Grey 900 — dark but not pure black -->
+    <color name="text_primary">#ECE6E6</color>
+    <color name="text_secondary">#B6B0B0</color>
+    <color name="text_tertiary">#8C8686</color>
+    <color name="text_hint">#7A7474</color>
 
-    <color name="selected_item_bg">#B2E0E1</color>
+    <color name="surface_card">#1E1E21</color>
+    <color name="surface_dim">#121214</color>
+    <color name="tile_bg">#232326</color>
+    <color name="divider">#2E2E32</color>
 
-    <!-- Text Colors -->
-    <color name="text_primary">#EEEEEE</color>
-    <color name="text_secondary">#BDBDBD</color>
+    <color name="tile_add_bg">#2C2D31</color>
+    <color name="selected_item_bg">#1F3F40</color>
+    <color name="tag_teal_bg">#2A9D9F</color>
 
-    <!-- Tile Backgrounds -->
-    <color name="tile_bg">#2C2C2C</color>
+    <color name="splash_bg">#0F1414</color>
+    <color name="ic_launcher_bg">#0F1414</color>
 
-    <!-- Splash Background -->
-    <color name="splash_bg">#121824</color>
+    <!-- 收支色在深色下稍提亮 -->
+    <color name="color_expense">#FF6B6E</color>
+    <color name="color_income">#4ADE80</color>
 
-    <!-- Launcher Background -->
-    <color name="ic_launcher_bg">#F4F7F6</color>
+    <color name="ai_bg_gradient_start">#0A0B0C</color>
 </resources>

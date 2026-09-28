@@ -2,8 +2,8 @@
     <style name="Base.Theme.SmartLedger" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/teal_main</item>
 
-        <item name="colorOutline">#757575</item>
-        <item name="colorOnSurfaceVariant">#757575</item>
+        <item name="colorOutline">@color/text_secondary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
 
         <item name="windowActionModeOverlay">true</item>
         <item name="actionModeStyle">@style/CustomActionMode</item>

@@ -17,6 +17,12 @@
 -keep class com.mudasir.smartledger.util.AiMessage { *; }
 -keep interface com.mudasir.smartledger.util.AiHelper$GroqApiService { *; }
 
+# DeepSeek / 多模型 OpenAI 兼容客户端（含 Gson 反射用的嵌套数据类）
+-keep class com.mudasir.smartledger.util.DeepSeekClient { *; }
+-keep class com.mudasir.smartledger.util.DeepSeekClient$* { *; }
+-keep class com.mudasir.smartledger.util.AiSettings { *; }
+-keep class com.mudasir.smartledger.util.AiSettings$* { *; }
+
 # ---------------------------------------------------------------------
 # App Data Models, Room Entities & DAOs
 # ---------------------------------------------------------------------

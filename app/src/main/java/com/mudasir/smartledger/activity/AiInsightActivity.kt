@@ -207,7 +207,7 @@ class AiInsightActivity : AppCompatActivity() {
         startLogoAnimation()
 
         lifecycleScope.launch {
-            val result = AiHelper.getInsight(dataType, dataSummary)
+            val result = AiHelper.getInsight(dataType, dataSummary, com.mudasir.smartledger.util.AiSettings.currentConfig(this@AiInsightActivity))
             progressIndicator.visibility = View.GONE
 
             if (AiHelper.isError(result)) {
@@ -241,7 +241,7 @@ class AiInsightActivity : AppCompatActivity() {
         startLogoAnimation()
 
         lifecycleScope.launch {
-            val pred = AiHelper.getPrediction(dataType, dataSummary)
+            val pred = AiHelper.getPrediction(dataType, dataSummary, com.mudasir.smartledger.util.AiSettings.currentConfig(this@AiInsightActivity))
             progressIndicator.visibility = View.GONE
             stopLogoAnimation()
 

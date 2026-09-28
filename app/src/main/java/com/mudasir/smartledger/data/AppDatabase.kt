@@ -9,8 +9,12 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [CalcHistory::class, Expense::class, Electricity::class, MilkRecord::class, CustomLedger::class, CustomEntry::class, CustomDailyRecord::class],
-    version = 7,
+    entities = [
+        CalcHistory::class, Expense::class, Electricity::class, MilkRecord::class,
+        CustomLedger::class, CustomEntry::class, CustomDailyRecord::class,
+        TransactionRecord::class, Category::class, PaymentChannel::class
+    ],
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -20,6 +24,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun electricityDao(): ElectricityDao
     abstract fun milkDao(): MilkDao
     abstract fun customLedgerDao(): CustomLedgerDao
+    abstract fun transactionDao(): TransactionDao
+    abstract fun categoryDao(): CategoryDao
+    abstract fun channelDao(): ChannelDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -58,6 +65,94 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v8: 统一交易记录体系 —— 自动抓取 + 自定义分类/渠道
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                categoryId INTEGER,
+                categoryName TEXT NOT NULL,
+                channelName TEXT NOT NULL,
+                paymentMethod TEXT,
+                merchant TEXT,
+                note TEXT,
+                timestamp INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                rawText TEXT,
+                packageName TEXT,
+                status TEXT NOT NULL,
+                isDeleted INTEGER NOT NULL,
+                deletedAt INTEGER,
+                createdAt INTEGER NOT NULL
+            )
+        """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_timestamp ON transactions (timestamp)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_status ON transactions (status)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_type ON transactions (type)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_categoryName ON transactions (categoryName)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_channelName ON transactions (channelName)")
+
+                database.execSQL("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                color TEXT NOT NULL,
+                iconName TEXT,
+                sortOrder INTEGER NOT NULL,
+                isDefault INTEGER NOT NULL,
+                createdAt INTEGER NOT NULL
+            )
+        """.trimIndent())
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_categories_name_type ON categories (name, type)")
+
+                database.execSQL("""
+            CREATE TABLE IF NOT EXISTS payment_channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                name TEXT NOT NULL,
+                iconName TEXT,
+                isDefault INTEGER NOT NULL,
+                sortOrder INTEGER NOT NULL,
+                createdAt INTEGER NOT NULL
+            )
+        """.trimIndent())
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_payment_channels_name ON payment_channels (name)")
+
+                seedDefaults(database)
+            }
+
+            private fun seedDefaults(database: SupportSQLiteDatabase) {
+                val expenseCats = listOf(
+                    "餐饮" to "#FF7043", "交通" to "#29B6F6", "购物" to "#AB47BC",
+                    "日用" to "#66BB6A", "娱乐" to "#FFCA28", "医疗" to "#EF5350",
+                    "居住" to "#78909C", "通讯" to "#26A69A", "教育" to "#5C6BC0", "其他" to "#BDBDBD"
+                )
+                expenseCats.forEachIndexed { i, (name, color) ->
+                    database.execSQL(
+                        "INSERT OR IGNORE INTO categories(name,type,color,iconName,sortOrder,isDefault,createdAt) " +
+                            "VALUES('$name','EXPENSE','$color',NULL,$i,1,${System.currentTimeMillis()})"
+                    )
+                }
+                val incomeCats = listOf("工资" to "#66BB6A", "理财" to "#26A69A", "红包" to "#EF5350", "退款" to "#29B6F6", "其他收入" to "#BDBDBD")
+                incomeCats.forEachIndexed { i, (name, color) ->
+                    database.execSQL(
+                        "INSERT OR IGNORE INTO categories(name,type,color,iconName,sortOrder,isDefault,createdAt) " +
+                            "VALUES('$name','INCOME','$color',NULL,$i,1,${System.currentTimeMillis()})"
+                    )
+                }
+                val channels = listOf("微信支付", "支付宝", "京东", "淘宝", "银行卡", "现金", "其他")
+                channels.forEachIndexed { i, name ->
+                    database.execSQL(
+                        "INSERT OR IGNORE INTO payment_channels(name,iconName,isDefault,sortOrder,createdAt) " +
+                            "VALUES('$name',NULL,1,$i,${System.currentTimeMillis()})"
+                    )
+                }
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -65,7 +160,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_ledger_db"
                 )
-                    .addMigrations(MIGRATION_6_7)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
