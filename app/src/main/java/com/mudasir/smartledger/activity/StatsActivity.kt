@@ -22,7 +22,6 @@ import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.PercentFormatter
 import com.github.mikephil.charting.formatter.ValueFormatter
-import com.github.mikephil.charting.utils.MPPointF
 import com.google.android.material.appbar.MaterialToolbar
 import com.mudasir.smartledger.R
 import com.mudasir.smartledger.data.AppDatabase
@@ -236,12 +235,21 @@ class StatsActivity : AppCompatActivity() {
             Toast.makeText(this, "请先在设置中配置 AI API Key", Toast.LENGTH_LONG).show()
             return
         }
+        val loading = AlertDialog.Builder(this)
+            .setTitle("AI 智能分析")
+            .setMessage("正在生成本月洞察，请稍候…")
+            .setCancelable(false)
+            .create()
+        loading.show()
         lifecycleScope.launch(Dispatchers.IO) {
             val (start, end) = FormatUtil.monthRange(year, month)
             val records = db.transactionDao().getInRange(start, end)
             val summary = AiHelper.summarizeTransactions(records)
             val result = AiHelper.getInsight("transactions", summary, config)
-            withContext(Dispatchers.Main) { showAiDialog(result) }
+            withContext(Dispatchers.Main) {
+                loading.dismiss()
+                showAiDialog(result)
+            }
         }
     }
 

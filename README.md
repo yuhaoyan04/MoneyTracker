@@ -8,6 +8,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](#)
 [![Version](https://img.shields.io/badge/version-2.0.0-179A9D)](../../releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-179A9D)](LICENSE)
+[![CI](https://github.com/yuhaoyan04/MoneyTracker/actions/workflows/android.yml/badge.svg)](../../actions/workflows/android.yml)
 
 **自动抓取 · 智能分析 · 数据可视化 · 深色模式**
 
@@ -19,9 +20,9 @@
 
 MoneyTracker 是一款专注个人收支的本地记账应用。它把你从繁琐的手动记账中解放出来：支付 App 的通知、银行的交易短信，都会被解析成结构化交易，等你确认后入账。配合月度可视化统计与 AI 洞察，让你的钱去哪儿了一目了然。
 
-## 为什么是 SmartLedger
+## 为什么是 MoneyTracker
 
-| 痛点 | SmartLedger 的解法 |
+| 痛点 | MoneyTracker 的解法 |
 |---|---|
 | 每笔都要手敲，懒得记账 | 自动抓取通知/短信，到收件箱一键确认 |
 | 固定分类不够用、渠道太少 | 分类与渠道完全自定义，随输随建 |
@@ -55,14 +56,14 @@ MoneyTracker 是一款专注个人收支的本地记账应用。它把你从繁�
 
 ## 截图
 
-> 截图将在首个 Release 中补充（账本/收件箱/统计/设置四屏）。
+> 截图随版本更新补充。当前请直接下载 [Release APK](../../releases/latest) 体验。
 
 ## 构建指南
 
 环境要求：JDK 17+、Android SDK（compileSdk 36）。
 
 ```bash
-git clone https://github.com/<your-fork>/MoneyTracker.git
+git clone https://github.com/yuhaoyan04/MoneyTracker.git
 cd MoneyTracker
 # 可选：如需 Release 签名，复制并填写 keystore.properties（见 keystore.properties.example）
 #   未配置时 Release 构建会自动回退 Debug 签名，仍可出包
@@ -98,6 +99,10 @@ cd MoneyTracker
 - [ ] **iOS 端适配**（多端同步）
 - [ ] **HarmonyOS 端适配**
 - [ ] 云端同步与多端协作
+
+## 贡献
+
+欢迎提 Issue 反馈漏抓的支付/短信文案（附上通知原文），我会补 `TransactionParser` 规则。PR 也欢迎——尤其是新增支付渠道的解析规则与多端适配。
 
 ## 致谢
 
