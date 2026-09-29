@@ -43,7 +43,7 @@ class CaptureInboxActivity : AppCompatActivity() {
                     // 用户直接确认 = 认可该分类，作为正样本训练打标器；并增量备份
                     if (r.categoryName.isNotBlank()) {
                         com.mudasir.smartledger.ml.PersonalTagger.learn(
-                            this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName
+                            this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName, r.merchant
                         )
                     }
                     runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
@@ -77,7 +77,7 @@ class CaptureInboxActivity : AppCompatActivity() {
                     db.transactionDao().updateStatus(it.id, TransactionRecord.STATUS_CONFIRMED)
                     if (it.categoryName.isNotBlank()) {
                         com.mudasir.smartledger.ml.PersonalTagger.learn(
-                            this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName
+                            this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName, it.merchant
                         )
                     }
                 }

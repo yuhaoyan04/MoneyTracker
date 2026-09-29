@@ -233,9 +233,9 @@ class AddEditTransactionActivity : AppCompatActivity() {
             if (category.isNotBlank()) {
                 val old = suggestedCategory
                 if (old != null && old != category) {
-                    PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, category)
+                    PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, category, merchant)
                 } else {
-                    PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, category)
+                    PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, category, merchant)
                 }
             }
 

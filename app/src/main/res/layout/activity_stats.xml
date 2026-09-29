@@ -164,7 +164,6 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 维度切换：分类 / 趋势 / 时间 -->
             <com.google.android.material.button.MaterialButtonToggleGroup
                 android:id="@+id/toggleDim"
                 android:layout_width="match_parent"
@@ -190,17 +189,9 @@
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:text="趋势" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnDimTime"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:text="时间" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
-            <!-- 分类维度：支出/收入切换 + 饼图 + 明细 -->
+            <!-- 分类维度 -->
             <LinearLayout
                 android:id="@+id/sectionCategory"
                 android:layout_width="match_parent"
@@ -235,7 +226,7 @@
                 <com.github.mikephil.charting.charts.PieChart
                     android:id="@+id/pieChart"
                     android:layout_width="match_parent"
-                    android:layout_height="240dp"
+                    android:layout_height="260dp"
                     android:layout_marginTop="8dp" />
 
                 <LinearLayout
@@ -246,7 +237,7 @@
                     android:orientation="vertical" />
             </LinearLayout>
 
-            <!-- 趋势维度：近 6 月 -->
+            <!-- 趋势维度 -->
             <LinearLayout
                 android:id="@+id/sectionTrend"
                 android:layout_width="match_parent"
@@ -254,46 +245,84 @@
                 android:orientation="vertical"
                 android:visibility="gone">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/toggleGranularity"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="20dp"
-                    android:layout_marginTop="20dp"
-                    android:text="近 6 月收支趋势"
+                    android:layout_marginHorizontal="16dp"
+                    android:layout_marginTop="16dp"
+                    app:singleSelection="true"
+                    app:selectionRequired="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnGranYear"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="年" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnGranQuarter"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="季" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnGranMonth"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="月" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnGranWeek"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="周" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnGranDay"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="天" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                <TextView
+                    android:id="@+id/tvTrendSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="20dp"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center"
+                    android:text="—"
                     android:textColor="?attr/colorOnSurface"
-                    android:textSize="16sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
 
-                <com.github.mikephil.charting.charts.BarChart
-                    android:id="@+id/barChart"
+                <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="220dp"
-                    android:layout_marginTop="8dp" />
-            </LinearLayout>
+                    android:layout_height="320dp"
+                    android:layout_marginTop="4dp">
 
-            <!-- 时间维度：本月每日 -->
-            <LinearLayout
-                android:id="@+id/sectionTime"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
+                    <com.github.mikephil.charting.charts.LineChart
+                        android:id="@+id/lineChartTrend"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="20dp"
-                    android:layout_marginTop="20dp"
-                    android:text="本月每日支出"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <com.github.mikephil.charting.charts.BarChart
-                    android:id="@+id/barChartDaily"
-                    android:layout_width="match_parent"
-                    android:layout_height="220dp"
-                    android:layout_marginTop="8dp" />
+                    <com.github.mikephil.charting.charts.BarChart
+                        android:id="@+id/barChartHourly"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:visibility="gone" />
+                </FrameLayout>
             </LinearLayout>
 
             <TextView
