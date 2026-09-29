@@ -6,7 +6,7 @@
 
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)](#)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](#)
-[![Version](https://img.shields.io/badge/version-2.0.0-179A9D)](../../releases/latest)
+[![Version](https://img.shields.io/badge/version-2.1.0-179A9D)](../../releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-179A9D)](LICENSE)
 [![CI](https://github.com/yuhaoyan04/MoneyTracker/actions/workflows/android.yml/badge.svg)](../../actions/workflows/android.yml)
 
