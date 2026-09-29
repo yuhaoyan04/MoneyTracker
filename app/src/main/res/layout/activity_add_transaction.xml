@@ -79,11 +79,11 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:hint="分类（可自定义）">
+                android:hint="分类（点下方按钮选择，或直接输入）">
 
                 <AutoCompleteTextView
                     android:id="@+id/actvCategory"

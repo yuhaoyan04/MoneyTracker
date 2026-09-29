@@ -59,17 +59,19 @@ class AddEditTransactionActivity : AppCompatActivity() {
         etNote = findViewById(R.id.etNote)
         tvDate = findViewById(R.id.tvDate)
 
+        // 分类字段：禁用下拉列表，统一用「选择分类（多级）」按钮
+        actvCategory.threshold = Int.MAX_VALUE
+
         val btnExpense: MaterialButton = findViewById(R.id.btnExpense)
         val btnIncome: MaterialButton = findViewById(R.id.btnIncome)
         btnExpense.setOnClickListener {
             expenseSelected = true
-            reloadCategoryAutocomplete()
-            // 若分类为空或仍是上一次的建议，尝试重新打标
+            actvCategory.setText("", false)
             maybePrefillSuggestion()
         }
         btnIncome.setOnClickListener {
             expenseSelected = false
-            reloadCategoryAutocomplete()
+            actvCategory.setText("", false)
             maybePrefillSuggestion()
         }
         btnExpense.isChecked = true
@@ -96,22 +98,11 @@ class AddEditTransactionActivity : AppCompatActivity() {
     }
 
     private fun loadAutocomplete() {
-        reloadCategoryAutocomplete()
         lifecycleScope.launch(Dispatchers.IO) {
             val channels = db.channelDao().getAll()
             withContext(Dispatchers.Main) {
                 actvChannel.setAdapter(ArrayAdapter(this@AddEditTransactionActivity, android.R.layout.simple_list_item_1, channels.map { it.name }))
                 actvPaymentMethod.setAdapter(ArrayAdapter(this@AddEditTransactionActivity, android.R.layout.simple_list_item_1, listOf("余额", "零钱", "储蓄卡", "信用卡", "花呗", "余额宝", "微信零钱", "支付宝余额")))
-            }
-        }
-    }
-
-    private fun reloadCategoryAutocomplete() {
-        val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
-        lifecycleScope.launch(Dispatchers.IO) {
-            val cats = db.categoryDao().getByType(type)
-            withContext(Dispatchers.Main) {
-                actvCategory.setAdapter(ArrayAdapter(this@AddEditTransactionActivity, android.R.layout.simple_list_item_1, cats.map { it.name }))
             }
         }
     }

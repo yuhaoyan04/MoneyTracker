@@ -11,10 +11,6 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import java.util.Locale
 
-/**
- * 支付地点抓取。使用系统 LocationManager（无需 Google Play Services，国内可用）。
- * 仅取最近一次已知位置（快、低耗），反查地名尽力而为；失败返回 null，不阻塞记账。
- */
 object LocationHelper {
 
     data class Place(val latitude: Double, val longitude: Double, val name: String?)
@@ -25,8 +21,9 @@ object LocationHelper {
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
         var best: Location? = null
         try {
+            // 优先用 FINE 获取更精准位置
             if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                best = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER) ?: best
+                best = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
             }
             if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 val n = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
@@ -40,21 +37,24 @@ object LocationHelper {
     private fun reverseGeocode(context: Context, lat: Double, lng: Double): String? {
         return try {
             val geo = Geocoder(context, Locale.getDefault())
-            val list = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // 异步回调变体复杂，这里用同步弃用 API（仍可用）
-                @Suppress("DEPRECATION")
-                geo.getFromLocation(lat, lng, 1)
-            } else {
-                @Suppress("DEPRECATION")
-                geo.getFromLocation(lat, lng, 1)
-            }
+            @Suppress("DEPRECATION")
+            val list = geo.getFromLocation(lat, lng, 5)
             list?.firstOrNull()?.let { addr ->
-                val parts = listOfNotNull(
-                    addr.locality,
-                    addr.subLocality,
+                // 尽量取最精准的地名：建筑/店铺名 > 门牌+街道 > 社区 > 区 > 市
+                val specific = listOfNotNull(
+                    addr.premises,
+                    addr.featureName,
                     addr.thoroughfare
-                ).filter { it.isNotBlank() }
-                if (parts.isNotEmpty()) parts.joinToString(" ") else addr.getAddressLine(0)
+                ).filter { it.isNotBlank() && it.length > 1 }
+                if (specific.isNotEmpty()) {
+                    specific.take(2).joinToString(" ")
+                } else {
+                    val area = listOfNotNull(
+                        addr.subLocality,
+                        addr.locality
+                    ).filter { it.isNotBlank() }
+                    if (area.isNotEmpty()) area.joinToString(" ") else addr.getAddressLine(0)?.substringAfter(" ")
+                }
             }
         } catch (_: Exception) { null }
     }

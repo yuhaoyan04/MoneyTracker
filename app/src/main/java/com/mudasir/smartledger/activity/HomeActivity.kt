@@ -64,6 +64,15 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun observeData() {
+        // 加载分类父级映射，用于列表显示「大类·小类」
+        lifecycleScope.launch(Dispatchers.IO) {
+            val cats = db.categoryDao().getAll()
+            val map = cats.filter { it.parentName != null }.associate { it.name to it.parentName!! }
+            withContext(Dispatchers.Main) {
+                adapter.parentMap = map
+            }
+        }
+
         lifecycleScope.launch {
             db.transactionDao().observeRecent(40).collectLatest { list ->
                 adapter.submitList(list)

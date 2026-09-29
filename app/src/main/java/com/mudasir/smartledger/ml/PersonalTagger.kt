@@ -9,24 +9,6 @@ import java.util.Calendar
 import kotlin.math.ln
 import kotlin.math.max
 
-/**
- * 个性化消费打标器。
- *
- * 设计思路（也是本产品的差异化卖点之一）：
- *
- * 1) 冷启动：规则引擎。用「时段 × 金额段 × 渠道/商户关键词」给出首次打标，
- *    覆盖食堂/外卖/外出用餐/通勤/网购等高频场景，让新用户一上来就有合理猜测。
- *
- * 2) 在线学习：朴素贝叶斯（多特征边际计数 + 拉普拉斯平滑）。每条「确认」或
- *    「人工修正」的记录都作为一条训练样本，按 [时段/金额段/工作日or周末/渠道] 四个
- *    独立特征更新计数。预测时对各候选类别做对数概率累加取 argmax。
- *    —— 相比「逐条精确签名」的查表法，边际计数可在未见过的组合上仍给出预测，
- *    且样本越多越准；修正记录会强化正确标签、弱化错误标签。
- *
- * 3) 模型文件 tagger_model.json 存于应用私有目录，随用户使用不断增长，纯本地、不上传。
- *
- * 预测优先级：训练样本 >= 阈值 → 贝叶斯 argmax；否则 → 规则；否则 → 兜底默认分类。
- */
 object PersonalTagger {
 
     private const val FILE = "tagger_model.json"
@@ -61,7 +43,6 @@ object PersonalTagger {
         }
     }
 
-    /** 预测一条交易应归入的分类名。 */
     fun recommend(
         context: Context,
         type: String,
@@ -80,7 +61,6 @@ object PersonalTagger {
             ?: defaultCategory(type)
     }
 
-    /** 用一条已确认/已修正记录训练模型。 */
     fun learn(
         context: Context,
         type: String,
@@ -102,10 +82,6 @@ object PersonalTagger {
         save(context, m)
     }
 
-    /**
-     * 人工修正：弱化旧标签、强化新标签。oldCategory 为打标器/规则当初给出的（被否决的）分类。
-     * 若 oldCategory 为空或与 new 相同，则退化为普通 learn。
-     */
     fun correct(
         context: Context,
         type: String,
@@ -192,38 +168,100 @@ object PersonalTagger {
 
     // ---- 规则冷启动 ----
     private fun rulePredict(type: String, ts: Long, amount: Double, channel: String, merchant: String?): String? {
-        if (type != TransactionRecord.TYPE_EXPENSE) return null
         val c = Calendar.getInstance().apply { timeInMillis = ts }
         val h = c.get(Calendar.HOUR_OF_DAY)
         val band = amountBand(amount)
-        val m = (merchant.orEmpty() + " " + channel).lowercase()
+        val combined = ((merchant.orEmpty()) + " " + channel).lowercase()
+        val ch = channel.lowercase()
 
-        fun has(vararg kw: String) = kw.any { m.contains(it) }
+        fun has(vararg kw: String) = kw.any { combined.contains(it) }
+        fun chHas(vararg kw: String) = kw.any { ch.contains(it) }
+
+        if (type != TransactionRecord.TYPE_EXPENSE) {
+            return when {
+                has("工资", "薪", "薪资") -> "基本工资"
+                has("奖金", "提成", "绩效") -> "奖金提成"
+                has("利息", "分红", "收益") -> "利息分红"
+                has("基金", "股票", "理财", "余额宝") -> "基金股票"
+                has("红包") -> "收发红包"
+                has("退款", "退回", "退") -> "转账退款"
+                else -> null
+            }
+        }
 
         return when {
-            has("美团", "饿了吗", "饿了么", "外卖") -> "外卖"
+            // --- 外卖 ---
+            has("美团", "饿了吗", "饿了么", "外卖", "keeta", "kfc", "麦当劳", "汉堡", "肯德基") -> "外卖"
+
+            // --- 交通 ---
             has("地铁") -> "地铁"
-            has("公交", "巴士") -> "公交"
-            has("滴滴", "打车", "出租", "网约") -> "打车"
-            has("加油", "中石化", "中石油", "壳牌") -> "加油停车"
+            has("公交", "巴士", "乘车") -> "公交"
+            has("滴滴", "打车", "出租", "网约", "出行", "t3", "曹操", "首汽") -> "打车"
+            has("加油", "中石化", "中石油", "壳牌", "加油站") -> "加油停车"
             has("停车") -> "加油停车"
-            has("话费", "流量", "移动", "联通", "电信") -> "话费流量"
-            has("淘宝", "京东", "拼多多", "天猫", "苏宁") ->
-                when (amountBand(amount)) { "big" -> "数码"; "large" -> "服饰"; "medium" -> "服饰"; else -> "日用品" }
-            has("电影", "演出", "票") -> "电影演出"
-            has("游戏", "充值") -> "游戏充值"
-            has("药", "药店", "医院", "挂号") -> "药品"
-            has("电费", "水费", "燃气", "物业") -> "水电燃气"
-            h in 11..13 && band in setOf("tiny", "small") && has("食堂", "公司", "学校", "园区") -> "食堂"
-            h in 11..13 && band in setOf("small", "medium") -> "外卖"
-            h in 11..13 && band in setOf("medium", "large") -> "外出用餐"
-            h in 17..20 && band in setOf("small") -> "外卖"
-            h in 17..20 && band in setOf("medium", "large") -> "外出用餐"
-            h in 6..9 && band in setOf("tiny", "small") -> "公交"
+            has("火车", "高铁", "机票", "航班", "航空", "12306", "携程", "去哪儿") -> "火车机票"
+
+            // --- 通讯 ---
+            has("话费", "移动", "联通", "电信", "运营商") -> "话费"
+            has("流量", "数据包") -> "流量"
+
+            // --- 网购（按渠道判定）---
+            chHas("淘宝", "天猫") || has("淘宝", "天猫") -> {
+                when {
+                    has("服饰", "衣服", "鞋", "包", "服装", "裙") -> "服饰"
+                    has("数码", "电子", "手机", "电脑", "耳机", "充电", "配件", "键盘") -> "数码"
+                    has("美妆", "护肤", "化妆", "面膜", "口红") -> "美妆护肤"
+                    band == "big" -> "数码"
+                    band == "large" -> "服饰"
+                    else -> "日用品"
+                }
+            }
+            chHas("京东", "jd") || has("京东") -> {
+                when {
+                    has("数码", "电子", "手机", "电脑", "家电", "电器", "耳机") -> "数码"
+                    has("服饰", "衣服", "鞋", "包") -> "服饰"
+                    band == "big" || band == "large" -> "数码"
+                    else -> "日用品"
+                }
+            }
+            chHas("拼多多", "拼多多") || has("拼多多") -> "日用品"
+            chHas("苏宁", "当当") || has("苏宁", "当当") -> "数码"
+
+            // --- 娱乐 ---
+            has("电影", "演出", "票务", "影院", "猫眼", "大麦") -> "电影演出"
+            has("游戏", "steam", "psn", "nintendo", "switch", "xbox", "腾讯游戏", "网易游戏", "原神", "王者") -> "游戏充值"
+            has("旅行", "旅游", "酒店", "民宿", "机票", "飞猪", "同程") -> "旅行出游"
+
+            // --- 医疗 ---
+            has("药", "药店", "医院", "挂号", "门诊", "诊所", "健康") -> "挂号门诊"
+            has("药品", "处方", "胶囊", "片") -> "药品"
+
+            // --- 居住 ---
+            has("房租", "租金", "押金") -> "房租"
+            has("电费", "水费", "燃气", "物业", "宽带", "网费") -> "水电燃气"
+
+            // --- 教育 ---
+            has("课程", "培训", "学费", "网课", "得到", "极客", "知识付费") -> "课程培训"
+            has("书", "文具", "教材", "kindle") -> "书籍文具"
+
+            // --- 日用/超市 ---
+            has("超市", "便利店", "永辉", "沃尔玛", "家乐福", "711", "全家", "罗森", "盒马", "大润发") -> "超市日用"
+
+            // --- 餐饮（仅在以上均不命中时才走时段+金额兜底）---
+            has("食堂", "公司餐") -> "食堂"
+            has("星巴克", "瑞幸", "咖啡", "奶茶", "喜茶", "蜜雪", "茶颜", "库迪", "manner") -> "零食饮料"
+            has("下馆子", "聚餐", "餐厅", "饭店") -> "下馆子"
+
+            // --- 时段+金额兜底（更保守，不再把所有午饭都归外卖）---
+            h in 11..13 && band in setOf("tiny") && has("公司", "学校", "园区", "单位") -> "食堂"
+            h in 11..13 && band in setOf("medium", "large") -> "下馆子"
+            h in 17..20 && band in setOf("medium", "large") -> "下馆子"
+            h in 6..9 && band == "tiny" -> "公交"
+
             else -> null
         }
     }
 
     private fun defaultCategory(type: String): String =
-        if (type == TransactionRecord.TYPE_EXPENSE) "餐饮" else "其他收入"
+        if (type == TransactionRecord.TYPE_EXPENSE) "其他" else "其他收入"
 }

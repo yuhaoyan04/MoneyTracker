@@ -1,7 +1,12 @@
 package com.mudasir.smartledger.activity
 
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.RelativeSizeSpan
+import android.text.style.StyleSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
@@ -54,7 +59,6 @@ class StatsActivity : AppCompatActivity() {
     private var year: Int = cal.get(Calendar.YEAR)
     private var month: Int = cal.get(Calendar.MONTH)
 
-    // 缓存本月数据
     private var records: List<TransactionRecord> = emptyList()
     private var expenseByCat: List<Pair<String, Double>> = emptyList()
     private var incomeByCat: List<Pair<String, Double>> = emptyList()
@@ -62,20 +66,13 @@ class StatsActivity : AppCompatActivity() {
     private var totalIncome: Double = 0.0
     private var catColors: Map<String, Int> = emptyMap()
     private var pieModeExpense: Boolean = true
+    private var trendData: List<Triple<Int, Int, Pair<Double, Double>>> = emptyList()
 
-    // 大类回退配色（与 seedTaxonomy 的根色一致，确保每个大类颜色不同）
-    private val fallbackColors = mapOf(
-        "餐饮" to "#FF7043", "交通" to "#29B6F6", "网购" to "#AB47BC",
-        "日用" to "#66BB6A", "娱乐" to "#FFCA28", "医疗" to "#EF5350",
-        "居住" to "#78909C", "通讯" to "#26A69A", "教育" to "#5C6BC0", "其他" to "#90A4AE",
-        "工资" to "#66BB6A", "理财" to "#26A69A", "红包" to "#EF5350",
-        "退款" to "#29B6F6", "其他收入" to "#90A4AE", "未分类" to "#BDBDBD"
-    )
     private val palette = intArrayOf(
-        Color.parseColor("#FF7043"), Color.parseColor("#29B6F6"), Color.parseColor("#AB47BC"),
-        Color.parseColor("#66BB6A"), Color.parseColor("#FFCA28"), Color.parseColor("#EF5350"),
-        Color.parseColor("#26A69A"), Color.parseColor("#5C6BC0"), Color.parseColor("#8D6E63"),
-        Color.parseColor("#78909C")
+        Color.parseColor("#F44336"), Color.parseColor("#2196F3"), Color.parseColor("#9C27B0"),
+        Color.parseColor("#4CAF50"), Color.parseColor("#FF9800"), Color.parseColor("#009688"),
+        Color.parseColor("#795548"), Color.parseColor("#607D8B"), Color.parseColor("#E91E63"),
+        Color.parseColor("#3F51B5"), Color.parseColor("#FFC107"), Color.parseColor("#673AB7")
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -120,16 +117,9 @@ class StatsActivity : AppCompatActivity() {
         load()
     }
 
-    /** 把子分类映射到所属大类（一级）。 */
     private fun parentOf(catByName: Map<String, Category>, name: String): String {
         val raw = name.ifBlank { "未分类" }
         return catByName[raw]?.parentName ?: raw
-    }
-
-    private fun colorFor(catByName: Map<String, Category>, root: String, idx: Int): Int {
-        catByName[root]?.color?.let { return parseColor(it) }
-        fallbackColors[root]?.let { return Color.parseColor(it) }
-        return palette[idx % palette.size]
     }
 
     private fun load() {
@@ -143,7 +133,6 @@ class StatsActivity : AppCompatActivity() {
             totalIncome = records.filter { it.type == TransactionRecord.TYPE_INCOME }.sumOf { it.amount }
             totalExpense = records.filter { it.type == TransactionRecord.TYPE_EXPENSE }.sumOf { it.amount }
 
-            // 按大类聚合（子分类上卷到一级），保证「不同大类不同颜色」
             expenseByCat = records.filter { it.type == TransactionRecord.TYPE_EXPENSE }
                 .groupBy { parentOf(catByName, it.categoryName) }
                 .map { (k, v) -> k to v.sumOf { it.amount } }
@@ -153,10 +142,23 @@ class StatsActivity : AppCompatActivity() {
                 .map { (k, v) -> k to v.sumOf { it.amount } }
                 .sortedByDescending { it.second }
 
-            val allRoots = (expenseByCat.map { it.first } + incomeByCat.map { it.first }).distinct()
-            catColors = allRoots.withIndex().associate { (i, root) -> root to colorFor(catByName, root, i) }
+            val pieRoots = (expenseByCat.map { it.first } + incomeByCat.map { it.first }).distinct()
+            catColors = buildUniqueColors(pieRoots)
+
+            val tm = mutableListOf<Triple<Int, Int, Pair<Double, Double>>>()
+            val base = Calendar.getInstance().apply { set(year, month, 1) }
+            for (i in 5 downTo 0) {
+                val c = base.clone() as Calendar
+                c.add(Calendar.MONTH, -i)
+                val (s, e) = FormatUtil.monthRange(c.get(Calendar.YEAR), c.get(Calendar.MONTH))
+                val inc = db.transactionDao().sumByType(TransactionRecord.TYPE_INCOME, s, e)
+                val exp = db.transactionDao().sumByType(TransactionRecord.TYPE_EXPENSE, s, e)
+                tm.add(Triple(c.get(Calendar.YEAR), c.get(Calendar.MONTH), inc to exp))
+            }
+            trendData = tm
 
             withContext(Dispatchers.Main) {
+                if (isFinishing || isDestroyed) return@withContext
                 findViewById<TextView>(R.id.tvSumIncome).text = FormatUtil.money(totalIncome)
                 findViewById<TextView>(R.id.tvSumExpense).text = FormatUtil.money(totalExpense)
                 findViewById<TextView>(R.id.tvSumBalance).text = FormatUtil.money(totalIncome - totalExpense)
@@ -169,6 +171,23 @@ class StatsActivity : AppCompatActivity() {
         }
     }
 
+    private fun buildUniqueColors(roots: List<String>): Map<String, Int> {
+        val used = mutableSetOf<Int>()
+        val result = mutableMapOf<String, Int>()
+        var idx = 0
+        for (root in roots) {
+            var color = palette[idx % palette.size]
+            while (color in used) {
+                idx++
+                color = palette[idx % palette.size]
+            }
+            used.add(color)
+            result[root] = color
+            idx++
+        }
+        return result
+    }
+
     private fun renderPie() {
         try {
             val data = if (pieModeExpense) expenseByCat else incomeByCat
@@ -177,12 +196,11 @@ class StatsActivity : AppCompatActivity() {
                 pieChart.setNoDataText("暂无数据")
                 return
             }
+            val total = data.sumOf { it.second }
             val entries = data.map { (name, amt) -> PieEntry(amt.toFloat(), name) }
-            // 关键：setColors(List<Int>) 用 ARGB 原值；勿用 setColors(IntArray, Context)
             val colorList: List<Int> = data.mapIndexed { i, (name, _) ->
                 catColors[name] ?: palette[i % palette.size]
             }
-            val total = data.sumOf { it.second }
             val set = PieDataSet(entries, "").apply {
                 setColors(colorList)
                 setDrawValues(true)
@@ -202,12 +220,11 @@ class StatsActivity : AppCompatActivity() {
                 holeRadius = 45f
                 transparentCircleRadius = 50f
                 setDrawEntryLabels(false)
-                // 中心文字：总额
                 val centerLabel = if (pieModeExpense) "总支出" else "总收入"
-                centerText = android.text.SpannableString("$centerLabel\n${FormatUtil.money(total)}").apply {
-                    setSpan(android.text.style.RelativeSizeSpan(0.75f), 0, centerLabel.length, android.text.Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    setSpan(android.text.style.StyleSpan(android.graphics.Typeface.NORMAL), 0, centerLabel.length, android.text.Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
-                    setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), centerLabel.length, length, android.text.Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                centerText = SpannableString("$centerLabel\n${FormatUtil.money(total)}").apply {
+                    setSpan(RelativeSizeSpan(0.75f), 0, centerLabel.length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    setSpan(StyleSpan(Typeface.NORMAL), 0, centerLabel.length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    setSpan(StyleSpan(Typeface.BOLD), centerLabel.length, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                 }
                 setDrawCenterText(true)
                 legend.apply {
@@ -255,125 +272,135 @@ class StatsActivity : AppCompatActivity() {
     }
 
     private fun renderTrend() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val months = mutableListOf<Pair<Int, Int>>()
-            val base = Calendar.getInstance().apply { set(year, month, 1) }
-            for (i in 5 downTo 0) {
-                val c = base.clone() as Calendar
-                c.add(Calendar.MONTH, -i)
-                months.add(c.get(Calendar.YEAR) to c.get(Calendar.MONTH))
+        try {
+            if (trendData.isEmpty()) {
+                barChart.setNoDataText("暂无数据")
+                barChart.clear()
+                return
             }
             val incomeEntries = mutableListOf<BarEntry>()
             val expenseEntries = mutableListOf<BarEntry>()
-            months.forEachIndexed { i, (y, m) ->
-                val (s, e) = FormatUtil.monthRange(y, m)
-                incomeEntries.add(BarEntry(i.toFloat(), db.transactionDao().sumByType(TransactionRecord.TYPE_INCOME, s, e).toFloat()))
-                expenseEntries.add(BarEntry(i.toFloat(), db.transactionDao().sumByType(TransactionRecord.TYPE_EXPENSE, s, e).toFloat()))
+            val labels = mutableListOf<String>()
+            trendData.forEachIndexed { i, (y, m, pair) ->
+                incomeEntries.add(BarEntry(i.toFloat(), pair.first.toFloat()))
+                expenseEntries.add(BarEntry(i.toFloat(), pair.second.toFloat()))
+                labels.add("${m + 1}月")
             }
-            withContext(Dispatchers.Main) {
-                try {
-                    val incomeSet = BarDataSet(incomeEntries, "收入").apply {
-                        color = Color.parseColor("#2E9D6B")
-                        setGradientColor(Color.parseColor("#66BB6A"), Color.parseColor("#2E7D5B"))
-                    }
-                    val expenseSet = BarDataSet(expenseEntries, "支出").apply {
-                        color = Color.parseColor("#E5484D")
-                        setGradientColor(Color.parseColor("#FF8A80"), Color.parseColor("#C62828"))
-                    }
-                    val groupSpace = 0.2f
-                    val barSpace = 0.05f
-                    val barWidth = (1f - groupSpace) / 2 - barSpace
-                    val labels = months.map { (y, m) -> "${m + 1}月" }
-                    barChart.apply {
-                        data = BarData(incomeSet, expenseSet).apply {
-                            this.barWidth = barWidth
-                            groupBars(0f, groupSpace, barSpace)
-                            setValueTextSize(0f)
-                        }
-                        description.isEnabled = false
-                        setFitBars(true)
-                        xAxis.apply {
-                            position = XAxis.XAxisPosition.BOTTOM
-                            granularity = 1f
-                            setDrawGridLines(false)
-                            valueFormatter = object : ValueFormatter() {
-                                override fun getFormattedValue(value: Float): String =
-                                    labels.getOrElse(value.toInt()) { "" }
-                            }
-                            textColor = currentTextColor()
-                        }
-                        axisLeft.valueFormatter = object : ValueFormatter() {
-                            override fun getFormattedValue(value: Float): String = FormatUtil.money(value.toDouble())
-                        }
-                        axisLeft.textColor = currentTextColor()
-                        axisLeft.setDrawGridLines(true)
-                        axisRight.isEnabled = false
-                        legend.apply {
-                            isEnabled = true
-                            verticalAlignment = Legend.LegendVerticalAlignment.TOP
-                            horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
-                            orientation = Legend.LegendOrientation.HORIZONTAL
-                            setDrawInside(false)
-                            form = Legend.LegendForm.SQUARE
-                            formSize = 10f
-                            textSize = 12f
-                            xEntrySpace = 20f
-                            textColor = currentTextColor()
-                        }
-                        animateY(500)
-                        invalidate()
-                    }
-                } catch (_: Exception) { }
+            val incomeSet = BarDataSet(incomeEntries, "收入").apply {
+                color = Color.parseColor("#4CAF50")
+                setDrawValues(true)
+                valueTextSize = 9f
+                valueTextColor = Color.parseColor("#2E7D32")
+                valueFormatter = CompactMoneyFormatter()
             }
+            val expenseSet = BarDataSet(expenseEntries, "支出").apply {
+                color = Color.parseColor("#F44336")
+                setDrawValues(true)
+                valueTextSize = 9f
+                valueTextColor = Color.parseColor("#C62828")
+                valueFormatter = CompactMoneyFormatter()
+            }
+            val groupSpace = 0.2f
+            val barSpace = 0.05f
+            val barWidth = (1f - groupSpace) / 2 - barSpace
+            barChart.apply {
+                data = BarData(incomeSet, expenseSet).apply {
+                    this.barWidth = barWidth
+                    groupBars(0f, groupSpace, barSpace)
+                }
+                description.isEnabled = false
+                setFitBars(true)
+                xAxis.apply {
+                    position = XAxis.XAxisPosition.BOTTOM
+                    granularity = 1f
+                    setDrawGridLines(false)
+                    valueFormatter = object : ValueFormatter() {
+                        override fun getFormattedValue(value: Float): String =
+                            labels.getOrElse(value.toInt()) { "" }
+                    }
+                    textColor = currentTextColor()
+                    textSize = 11f
+                }
+                axisLeft.apply {
+                    valueFormatter = AxisMoneyFormatter()
+                    textColor = currentTextColor()
+                    textSize = 10f
+                    setDrawGridLines(true)
+                    axisMinimum = 0f
+                }
+                axisRight.isEnabled = false
+                legend.apply {
+                    isEnabled = true
+                    verticalAlignment = Legend.LegendVerticalAlignment.TOP
+                    horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
+                    orientation = Legend.LegendOrientation.HORIZONTAL
+                    setDrawInside(false)
+                    form = Legend.LegendForm.SQUARE
+                    formSize = 10f
+                    textSize = 12f
+                    xEntrySpace = 24f
+                    textColor = currentTextColor()
+                }
+                animateY(500)
+                invalidate()
+            }
+        } catch (e: Exception) {
+            barChart.clear()
         }
     }
 
     private fun renderDaily() {
-        lifecycleScope.launch(Dispatchers.Main) {
-            try {
-                val daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-                val expenseByDay = FloatArray(daysInMonth + 1)
-                records.filter { it.type == TransactionRecord.TYPE_EXPENSE }.forEach { r ->
-                    val d = r.day
-                    if (d in 1..daysInMonth) expenseByDay[d] += r.amount.toFloat()
-                }
-                val entries = (1..daysInMonth).map { BarEntry(it.toFloat(), expenseByDay[it]) }
-                val set = BarDataSet(entries, "每日支出").apply {
-                    color = Color.parseColor("#E5484D")
-                    setGradientColor(Color.parseColor("#FF8A80"), Color.parseColor("#C62828"))
-                    setDrawValues(false)
-                }
-                barChartDaily.apply {
-                    data = BarData(set).apply { barWidth = 0.6f }
-                    description.isEnabled = false
-                    setFitBars(true)
-                    xAxis.apply {
-                        position = XAxis.XAxisPosition.BOTTOM
-                        granularity = 1f
-                        setDrawGridLines(false)
-                        textColor = currentTextColor()
-                        labelCount = 7
+        try {
+            val daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+            val expenseByDay = FloatArray(daysInMonth + 1)
+            records.filter { it.type == TransactionRecord.TYPE_EXPENSE }.forEach { r ->
+                val d = r.day
+                if (d in 1..daysInMonth) expenseByDay[d] += r.amount.toFloat()
+            }
+            val entries = (1..daysInMonth).map { BarEntry(it.toFloat(), expenseByDay[it]) }
+            val monthTotal = expenseByDay.sum()
+            val set = BarDataSet(entries, "每日支出 ¥${String.format("%.0f", monthTotal)}").apply {
+                color = Color.parseColor("#F44336")
+                setDrawValues(false)
+            }
+            barChartDaily.apply {
+                data = BarData(set).apply { barWidth = 0.6f }
+                description.isEnabled = false
+                setFitBars(true)
+                xAxis.apply {
+                    position = XAxis.XAxisPosition.BOTTOM
+                    granularity = 1f
+                    setDrawGridLines(false)
+                    textColor = currentTextColor()
+                    textSize = 10f
+                    labelCount = 7
+                    valueFormatter = object : ValueFormatter() {
+                        override fun getFormattedValue(value: Float): String = "${value.toInt()}日"
                     }
-                    axisLeft.textColor = currentTextColor()
-                    axisLeft.setDrawGridLines(true)
-                    axisLeft.valueFormatter = object : ValueFormatter() {
-                        override fun getFormattedValue(value: Float): String = FormatUtil.money(value.toDouble())
-                    }
-                    axisRight.isEnabled = false
-                    legend.apply {
-                        isEnabled = true
-                        verticalAlignment = Legend.LegendVerticalAlignment.TOP
-                        horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
-                        setDrawInside(false)
-                        form = Legend.LegendForm.SQUARE
-                        formSize = 10f
-                        textSize = 12f
-                        textColor = currentTextColor()
-                    }
-                    animateY(400)
-                    invalidate()
                 }
-            } catch (_: Exception) { }
+                axisLeft.apply {
+                    valueFormatter = AxisMoneyFormatter()
+                    textColor = currentTextColor()
+                    textSize = 10f
+                    setDrawGridLines(true)
+                    axisMinimum = 0f
+                }
+                axisRight.isEnabled = false
+                legend.apply {
+                    isEnabled = true
+                    verticalAlignment = Legend.LegendVerticalAlignment.TOP
+                    horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
+                    setDrawInside(false)
+                    form = Legend.LegendForm.SQUARE
+                    formSize = 10f
+                    textSize = 12f
+                    textColor = currentTextColor()
+                }
+                animateY(400)
+                invalidate()
+            }
+        } catch (e: Exception) {
+            barChartDaily.clear()
         }
     }
 
@@ -397,6 +424,7 @@ class StatsActivity : AppCompatActivity() {
             val summary = AiHelper.summarizeTransactions(recs)
             val result = AiHelper.getInsight("transactions", summary, config)
             withContext(Dispatchers.Main) {
+                if (isFinishing || isDestroyed) return@withContext
                 loading.dismiss()
                 showAiDialog(result)
             }
@@ -409,6 +437,27 @@ class StatsActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setView(view).setPositiveButton("关闭", null).show()
     }
 
-    private fun parseColor(hex: String): Int =
-        runCatching { Color.parseColor(hex) }.getOrDefault(Color.parseColor("#179A9D"))
+    private class CompactMoneyFormatter : ValueFormatter() {
+        override fun getFormattedValue(value: Float): String {
+            val v = value.toDouble()
+            return when {
+                v <= 0 -> ""
+                v >= 10000 -> String.format("%.1f万", v / 10000)
+                v >= 1000 -> String.format("%.0f", v)
+                else -> String.format("%.0f", v)
+            }
+        }
+    }
+
+    private class AxisMoneyFormatter : ValueFormatter() {
+        override fun getFormattedValue(value: Float): String {
+            val v = value.toDouble()
+            return when {
+                v <= 0 -> ""
+                v >= 10000 -> String.format("%.0f万", v / 10000)
+                v >= 1000 -> String.format("%.0f", v)
+                else -> String.format("%.0f", v)
+            }
+        }
+    }
 }

@@ -19,6 +19,9 @@ class TransactionAdapter(
 
     init { setHasStableIds(true) }
 
+    var parentMap: Map<String, String> = emptyMap()
+        set(value) { field = value; notifyDataSetChanged() }
+
     override fun getItemId(position: Int): Long = getItem(position).id
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -37,15 +40,24 @@ class TransactionAdapter(
         private val tvChannelInitial: TextView = view.findViewById(R.id.tvChannelInitial)
 
         fun bind(r: TransactionRecord) {
-            val title = listOfNotNull(r.merchant, r.categoryName.takeIf { it.isNotBlank() }, r.note)
+            val title = listOfNotNull(r.merchant?.takeIf { it.isNotBlank() }, r.categoryName.takeIf { it.isNotBlank() }, r.note)
                 .firstOrNull()?.takeIf { it.isNotBlank() } ?: "交易"
             tvTitle.text = title
+
+            val parent = parentMap[r.categoryName]
+            val catDisplay = if (!parent.isNullOrBlank() && parent != r.categoryName) {
+                "$parent · ${r.categoryName}"
+            } else {
+                r.categoryName.takeIf { it.isNotBlank() } ?: ""
+            }
+
             val parts = listOfNotNull(
                 r.channelName.takeIf { it.isNotBlank() },
-                r.categoryName.takeIf { it.isNotBlank() },
-                r.paymentMethod
+                catDisplay.takeIf { it.isNotBlank() },
+                r.locationName?.takeIf { it.isNotBlank() }
             )
             tvSubtitle.text = if (parts.isEmpty()) "—" else parts.joinToString(" · ")
+
             tvAmount.text = FormatUtil.moneySigned(r.amount, r.type)
             tvAmount.setTextColor(
                 ContextCompat.getColor(itemView.context, if (r.type == TransactionRecord.TYPE_INCOME) R.color.color_income else R.color.color_expense)
