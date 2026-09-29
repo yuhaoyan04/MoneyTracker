@@ -182,9 +182,11 @@ class StatsActivity : AppCompatActivity() {
             val colorList: List<Int> = data.mapIndexed { i, (name, _) ->
                 catColors[name] ?: palette[i % palette.size]
             }
+            val total = data.sumOf { it.second }
             val set = PieDataSet(entries, "").apply {
                 setColors(colorList)
-                setDrawValues(false)
+                setDrawValues(true)
+                valueLineColor = Color.TRANSPARENT
                 sliceSpace = 2f
                 selectionShift = 6f
             }
@@ -197,9 +199,17 @@ class StatsActivity : AppCompatActivity() {
                 description.isEnabled = false
                 setUsePercentValues(true)
                 setHoleColor(Color.TRANSPARENT)
-                holeRadius = 42f
-                transparentCircleRadius = 47f
+                holeRadius = 45f
+                transparentCircleRadius = 50f
                 setDrawEntryLabels(false)
+                // 中心文字：总额
+                val centerLabel = if (pieModeExpense) "总支出" else "总收入"
+                centerText = android.text.SpannableString("$centerLabel\n${FormatUtil.money(total)}").apply {
+                    setSpan(android.text.style.RelativeSizeSpan(0.75f), 0, centerLabel.length, android.text.Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    setSpan(android.text.style.StyleSpan(android.graphics.Typeface.NORMAL), 0, centerLabel.length, android.text.Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                    setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), centerLabel.length, length, android.text.Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+                }
+                setDrawCenterText(true)
                 legend.apply {
                     isEnabled = true
                     verticalAlignment = Legend.LegendVerticalAlignment.BOTTOM
