@@ -64,7 +64,13 @@ class LedgerNotificationListener : NotificationListenerService() {
             val dao = AppDatabase.getDatabase(this@LedgerNotificationListener).transactionDao()
             if (parsed != null) {
                 if (isDuplicate(parsed)) return@launch
-                dao.insert(parsed.toRecord())
+                val rec = parsed.toRecord()
+                // 个性化打标冷启动：抓取时即给一个分类建议，减少用户手动分类负担
+                val suggested = com.mudasir.smartledger.ml.PersonalTagger.recommend(
+                    applicationContext,
+                    rec.type, rec.timestamp, rec.amount, rec.channelName, rec.merchant
+                )
+                dao.insert(rec.copy(categoryName = rec.categoryName.ifBlank { suggested }))
             } else if (watched && hasMoneySignal) {
                 // 兜底：监听包内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏
                 dao.insert(

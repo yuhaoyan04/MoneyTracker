@@ -3,16 +3,13 @@ package com.mudasir.smartledger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.Calendar
 
 /**
  * 统一交易记录实体。
  *
- * 一条记录可以来自：
- *  - 自动抓取（支付 App 通知 / 银行短信）：source = CAPTURE_NOTIFICATION / CAPTURE_SMS
- *  - 手动录入：source = MANUAL
- *
- * 自动抓取的记录默认 status = PENDING，进入「待确认收件箱」由用户核对后再 CONFIRMED，
- * 既保证「不遗漏每一条信息」，又允许用户修正分类/渠道/金额。
+ * 来源：自动抓取（通知/短信）或手动录入。自动抓取默认 PENDING，进收件箱确认后 CONFIRMED。
+ * v9 起新增地理信息（latitude/longitude/locationName）与支付地点，便于后续地图与个性化打标。
  */
 @Entity(
     tableName = "transactions",
@@ -33,11 +30,11 @@ data class TransactionRecord(
 
     val amount: Double = 0.0,
 
-    /** 自定义分类名称（自由文本，便于用户自定义）。同时保留 categoryId 便于聚合。 */
+    /** 分类 id（可空，聚合用）；categoryName 为展示与判别主键。 */
     val categoryId: Long? = null,
     val categoryName: String = "",
 
-    /** 渠道：微信支付 / 支付宝 / 京东 / 淘宝 / 银行卡 / 现金 … 自定义。 */
+    /** 渠道：微信支付 / 支付宝 / 京东 / 银行卡 / 现金 … */
     val channelName: String = "",
 
     /** 支付方式：余额 / 储蓄卡 / 信用卡 / 花呗 … 可空。 */
@@ -65,6 +62,11 @@ data class TransactionRecord(
     val isDeleted: Boolean = false,
     val deletedAt: Long? = null,
 
+    /** v9: 地理信息。自动抓取/手动确认时尽量写入。 */
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationName: String? = null,
+
     val createdAt: Long = System.currentTimeMillis()
 ) {
     companion object {
@@ -79,4 +81,17 @@ data class TransactionRecord(
         const val STATUS_CONFIRMED = "CONFIRMED"
         const val STATUS_DISMISSED = "DISMISSED"
     }
+
+    // ---- 计算属性（不入库，仅供图表/打标器使用） ----
+    private fun cal(): Calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
+
+    /** 当月第几日（1..31）。 */
+    val day: Int get() = cal().get(Calendar.DAY_OF_MONTH)
+    /** 0..23。 */
+    val hour: Int get() = cal().get(Calendar.HOUR_OF_DAY)
+    /** 1=周日 .. 7=周六。 */
+    val weekday: Int get() = cal().get(Calendar.DAY_OF_WEEK)
+    /** 月份 0..11。 */
+    val month0: Int get() = cal().get(Calendar.MONTH)
+    val year: Int get() = cal().get(Calendar.YEAR)
 }

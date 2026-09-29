@@ -1,8 +1,10 @@
 package com.mudasir.smartledger.activity
 
+import android.Manifest
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
@@ -25,10 +27,16 @@ class HomeActivity : AppCompatActivity() {
 
     private lateinit var adapter: TransactionAdapter
 
+    private val locationLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* 结果不重要：未授权则 AddEdit 静默跳过地点 */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
+
+        locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
 
         adapter = TransactionAdapter { r ->
             startActivity(Intent(this, AddEditTransactionActivity::class.java).putExtra(AddEditTransactionActivity.EXTRA_ID, r.id))
@@ -48,6 +56,9 @@ class HomeActivity : AppCompatActivity() {
         }
 
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_home)
+
+        // 启动即调度周期备份，确保即使用户不进设置也能自动备份到本机
+        com.mudasir.smartledger.util.BackupWorker.schedulePeriodic(this)
 
         observeData()
     }

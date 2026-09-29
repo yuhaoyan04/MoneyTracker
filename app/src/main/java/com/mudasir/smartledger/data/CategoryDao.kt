@@ -24,6 +24,15 @@ interface CategoryDao {
     @Query("SELECT * FROM categories ORDER BY sortOrder ASC, id ASC")
     suspend fun getAll(): List<Category>
 
+    @Query("SELECT * FROM categories WHERE type = :type AND level = 1 ORDER BY sortOrder ASC, id ASC")
+    suspend fun getRoots(type: String): List<Category>
+
+    @Query("SELECT * FROM categories WHERE parentName = :parentName AND type = :type ORDER BY sortOrder ASC, id ASC")
+    suspend fun getChildren(parentName: String, type: String): List<Category>
+
+    @Query("SELECT * FROM categories WHERE type = :type ORDER BY level ASC, parentName ASC, sortOrder ASC, id ASC")
+    suspend fun getStructured(type: String): List<Category>
+
     @Query("DELETE FROM categories WHERE id = :id")
     suspend fun delete(id: Long)
 }

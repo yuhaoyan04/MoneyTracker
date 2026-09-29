@@ -1,28 +1,32 @@
-package com.mudasir.smartledger.activity
+﻿package com.mudasir.smartledger.activity
 
 import android.Manifest
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.ArrayAdapter
-import android.widget.AutoCompleteTextView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.textfield.TextInputEditText
 import com.mudasir.smartledger.BuildConfig
 import com.mudasir.smartledger.R
+import com.mudasir.smartledger.data.AppDatabase
+import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.util.AiSettings
+import com.mudasir.smartledger.util.AutoBackupManager
+import com.mudasir.smartledger.util.BackupWorker
 import com.mudasir.smartledger.util.BottomNavHelper
 import com.mudasir.smartledger.util.PermissionHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsActivity : AppCompatActivity() {
 
-    private lateinit var actvProvider: AutoCompleteTextView
-    private lateinit var etBaseUrl: TextInputEditText
-    private lateinit var etModel: TextInputEditText
-    private lateinit var etApiKey: TextInputEditText
+    private val db by lazy { AppDatabase.getDatabase(this) }
 
     private val smsLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         refreshPermissionStatus()
@@ -34,41 +38,8 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<MaterialToolbar>(R.id.topAppBar).setNavigationOnClickListener { finish() }
 
-        actvProvider = findViewById(R.id.actvProvider)
-        etBaseUrl = findViewById(R.id.etBaseUrl)
-        etModel = findViewById(R.id.etModel)
-        etApiKey = findViewById(R.id.etApiKey)
-
-        val config = AiSettings.currentConfig(this)
-        val presetNames = AiSettings.presets.map { it.name }
-        actvProvider.setAdapter(ArrayAdapter(this, android.R.layout.simple_list_item_1, presetNames))
-        actvProvider.setText(config.providerName, false)
-        etBaseUrl.setText(config.baseUrl)
-        etModel.setText(config.model)
-        etApiKey.setText(config.apiKey)
-
-        actvProvider.setOnItemClickListener { parent, _, position, _ ->
-            val name = parent.getItemAtPosition(position).toString()
-            AiSettings.presets.find { it.name == name }?.let { p ->
-                if (p.name != "自定义") {
-                    etBaseUrl.setText(p.baseUrl)
-                    if (etModel.text.isNullOrBlank() || etModel.text.toString() == config.model) {
-                        etModel.setText(p.defaultModel)
-                    }
-                }
-            }
-        }
-
-        findViewById<View>(R.id.btnSaveAi).setOnClickListener {
-            AiSettings.save(
-                this,
-                providerName = actvProvider.text?.toString()?.trim().orEmpty().ifEmpty { presetNames[0] },
-                baseUrl = etBaseUrl.text?.toString()?.trim().orEmpty(),
-                model = etModel.text?.toString()?.trim().orEmpty(),
-                apiKey = etApiKey.text?.toString()?.trim().orEmpty()
-            )
-            refreshAiStatus()
-            Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+        findViewById<View>(R.id.cardAi).setOnClickListener {
+            startActivity(Intent(this, AiConfigActivity::class.java))
         }
 
         findViewById<View>(R.id.btnNotif).setOnClickListener {
@@ -78,9 +49,21 @@ class SettingsActivity : AppCompatActivity() {
             smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
         }
 
+        findViewById<View>(R.id.btnBackupNow).setOnClickListener { doBackup() }
+        findViewById<View>(R.id.btnRestore).setOnClickListener { doRestore() }
+        findViewById<View>(R.id.btnClearExpense).setOnClickListener { confirmClear(TransactionRecord.TYPE_EXPENSE, "支出") }
+        findViewById<View>(R.id.btnClearIncome).setOnClickListener { confirmClear(TransactionRecord.TYPE_INCOME, "收入") }
+
         findViewById<TextView>(R.id.tvVersion).text = "v${BuildConfig.VERSION_NAME}"
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_settings)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshPermissionStatus()
         refreshAiStatus()
+        refreshBackupStatus()
+        BackupWorker.schedulePeriodic(this)
     }
 
     private fun refreshAiStatus() {
@@ -90,9 +73,59 @@ class SettingsActivity : AppCompatActivity() {
             status.text = "已配置 · ${cfg.providerName} · ${cfg.model}"
             status.setTextColor(getColorCompat(R.color.color_income))
         } else {
-            status.text = "未配置 · 请填写 API Key 与 Base URL、模型名"
+            status.text = "未配置 · 点击填写"
             status.setTextColor(getColorCompat(R.color.color_expense))
         }
+    }
+
+    private fun refreshBackupStatus() {
+        findViewById<TextView>(R.id.tvBackupStatus).text = AutoBackupManager.lastBackupInfo(this)
+    }
+
+    private fun doBackup() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ok = runCatching { AutoBackupManager.backup(this@SettingsActivity) }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                refreshBackupStatus()
+                Toast.makeText(this@SettingsActivity, if (ok) "已备份到 Download/MoneyTracker" else "备份失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun doRestore() {
+        AlertDialog.Builder(this)
+            .setTitle("从备份恢复")
+            .setMessage("将把 Download/MoneyTracker 中的备份覆盖写入当前账本（保留历史清理状态）。继续？")
+            .setPositiveButton("恢复") { _, _ ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val n = AutoBackupManager.restore(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@SettingsActivity,
+                            if (n >= 0) "已恢复 $n 条记录" else "未找到备份或恢复失败",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun confirmClear(type: String, label: String) {
+        AlertDialog.Builder(this)
+            .setTitle("清理$label")
+            .setMessage("将把所有已确认的${label}记录移出显示（软删除）。备份文件不会改动，历史仍可恢复。继续？")
+            .setPositiveButton("清理") { _, _ ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    db.transactionDao().clearByType(type)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@SettingsActivity, "已清理$label", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun refreshPermissionStatus() {
@@ -112,10 +145,4 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun getColorCompat(resId: Int): Int = androidx.core.content.ContextCompat.getColor(this, resId)
-
-    override fun onResume() {
-        super.onResume()
-        refreshPermissionStatus()
-        refreshAiStatus()
-    }
 }

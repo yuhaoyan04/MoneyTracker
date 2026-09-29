@@ -1,4 +1,4 @@
-package com.mudasir.smartledger.activity
+﻿package com.mudasir.smartledger.activity
 
 import android.Manifest
 import android.content.Intent
@@ -40,6 +40,13 @@ class CaptureInboxActivity : AppCompatActivity() {
             onConfirm = { r ->
                 lifecycleScope.launch {
                     db.transactionDao().updateStatus(r.id, TransactionRecord.STATUS_CONFIRMED)
+                    // 用户直接确认 = 认可该分类，作为正样本训练打标器；并增量备份
+                    if (r.categoryName.isNotBlank()) {
+                        com.mudasir.smartledger.ml.PersonalTagger.learn(
+                            this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName
+                        )
+                    }
+                    runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
                 }
             },
             onEdit = { r ->
@@ -68,7 +75,13 @@ class CaptureInboxActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 adapter.currentList.forEach {
                     db.transactionDao().updateStatus(it.id, TransactionRecord.STATUS_CONFIRMED)
+                    if (it.categoryName.isNotBlank()) {
+                        com.mudasir.smartledger.ml.PersonalTagger.learn(
+                            this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName
+                        )
+                    }
                 }
+                runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
             }
         }
 

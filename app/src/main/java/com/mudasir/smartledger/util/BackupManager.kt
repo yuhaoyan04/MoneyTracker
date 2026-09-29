@@ -1,4 +1,4 @@
-package com.mudasir.smartledger.util
+﻿package com.mudasir.smartledger.util
 
 import android.content.Context
 import android.net.Uri

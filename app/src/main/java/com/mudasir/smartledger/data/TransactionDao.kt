@@ -113,4 +113,16 @@ interface TransactionDao {
 
     @Query("SELECT COALESCE(SUM(amount), 0.0) FROM transactions WHERE isDeleted = 0 AND status = 'CONFIRMED' AND type = :type")
     suspend fun sumAllByType(type: String): Double
+
+    // ---- 备份 / 恢复 / 清理 ----
+    /** 全量归档（含已软删除），保证备份文件永不因「清理」而丢失历史。 */
+    @Query("SELECT * FROM transactions ORDER BY timestamp ASC")
+    suspend fun getAllForBackup(): List<TransactionRecord>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(records: List<TransactionRecord>): List<Long>
+
+    /** 清理某类型已确认记录（软删除，仅影响展示，不触发备份重写）。 */
+    @Query("UPDATE transactions SET isDeleted = 1, deletedAt = :now WHERE isDeleted = 0 AND status = 'CONFIRMED' AND type = :type")
+    suspend fun clearByType(type: String, now: Long = System.currentTimeMillis())
 }

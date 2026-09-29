@@ -7,6 +7,7 @@ import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
@@ -17,7 +18,10 @@ import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.Category
 import com.mudasir.smartledger.data.PaymentChannel
 import com.mudasir.smartledger.data.TransactionRecord
+import com.mudasir.smartledger.ml.PersonalTagger
+import com.mudasir.smartledger.util.AutoBackupManager
 import com.mudasir.smartledger.util.FormatUtil
+import com.mudasir.smartledger.util.LocationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,6 +34,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
     private var pendingId: Long = 0
     private var editingRecord: TransactionRecord? = null
     private var selectedTs: Long = System.currentTimeMillis()
+    private var suggestedCategory: String? = null // 打标器给出的初始建议（用于修正学习）
 
     private lateinit var etAmount: TextInputEditText
     private lateinit var actvCategory: AutoCompleteTextView
@@ -56,12 +61,22 @@ class AddEditTransactionActivity : AppCompatActivity() {
 
         val btnExpense: MaterialButton = findViewById(R.id.btnExpense)
         val btnIncome: MaterialButton = findViewById(R.id.btnIncome)
-        btnExpense.setOnClickListener { expenseSelected = true }
-        btnIncome.setOnClickListener { expenseSelected = false }
+        btnExpense.setOnClickListener {
+            expenseSelected = true
+            reloadCategoryAutocomplete()
+            // 若分类为空或仍是上一次的建议，尝试重新打标
+            maybePrefillSuggestion()
+        }
+        btnIncome.setOnClickListener {
+            expenseSelected = false
+            reloadCategoryAutocomplete()
+            maybePrefillSuggestion()
+        }
         btnExpense.isChecked = true
 
         tvDate.text = FormatUtil.day(selectedTs) + " " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(selectedTs))
         findViewById<View>(R.id.cardDate).setOnClickListener { pickDate() }
+        findViewById<View>(R.id.btnPickCategory).setOnClickListener { pickCategory() }
 
         findViewById<View>(R.id.btnSave).setOnClickListener { save() }
         val btnDelete = findViewById<MaterialButton>(R.id.btnDelete)
@@ -69,6 +84,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
         editingId = intent.getLongExtra(EXTRA_ID, 0)
         pendingId = intent.getLongExtra(EXTRA_PENDING_ID, 0)
         loadAutocomplete()
+        maybePrefillSuggestion()
 
         if (editingId > 0) {
             btnDelete.visibility = View.VISIBLE
@@ -80,13 +96,71 @@ class AddEditTransactionActivity : AppCompatActivity() {
     }
 
     private fun loadAutocomplete() {
+        reloadCategoryAutocomplete()
         lifecycleScope.launch(Dispatchers.IO) {
-            val cats = db.categoryDao().getAll()
             val channels = db.channelDao().getAll()
             withContext(Dispatchers.Main) {
-                actvCategory.setAdapter(ArrayAdapter(this@AddEditTransactionActivity, android.R.layout.simple_list_item_1, cats.map { it.name }))
                 actvChannel.setAdapter(ArrayAdapter(this@AddEditTransactionActivity, android.R.layout.simple_list_item_1, channels.map { it.name }))
-                actvPaymentMethod.setAdapter(ArrayAdapter(this@AddEditTransactionActivity, android.R.layout.simple_list_item_1, listOf("余额", "零钱", "储蓄卡", "信用卡", "花呗", "余额宝")))
+                actvPaymentMethod.setAdapter(ArrayAdapter(this@AddEditTransactionActivity, android.R.layout.simple_list_item_1, listOf("余额", "零钱", "储蓄卡", "信用卡", "花呗", "余额宝", "微信零钱", "支付宝余额")))
+            }
+        }
+    }
+
+    private fun reloadCategoryAutocomplete() {
+        val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
+        lifecycleScope.launch(Dispatchers.IO) {
+            val cats = db.categoryDao().getByType(type)
+            withContext(Dispatchers.Main) {
+                actvCategory.setAdapter(ArrayAdapter(this@AddEditTransactionActivity, android.R.layout.simple_list_item_1, cats.map { it.name }))
+            }
+        }
+    }
+
+    /** 抓取条目无分类时，用打标器给个建议。 */
+    private fun maybePrefillSuggestion() {
+        if (editingId > 0 || pendingId > 0) return
+        val current = actvCategory.text?.toString()?.trim().orEmpty()
+        if (current.isNotBlank()) return
+        val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
+        val amount = etAmount.text?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
+        val channel = actvChannel.text?.toString()?.trim().orEmpty().ifEmpty { "其他" }
+        val merchant = etMerchant.text?.toString()?.trim()
+        val suggested = PersonalTagger.recommend(this, type, selectedTs, amount, channel, merchant)
+        suggestedCategory = suggested
+        actvCategory.setText(suggested, false)
+    }
+
+    private fun pickCategory() {
+        val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
+        lifecycleScope.launch(Dispatchers.IO) {
+            val roots = db.categoryDao().getRoots(type)
+            if (roots.isEmpty()) {
+                withContext(Dispatchers.Main) { Toast.makeText(this@AddEditTransactionActivity, "暂无分类", Toast.LENGTH_SHORT).show() }
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                AlertDialog.Builder(this@AddEditTransactionActivity)
+                    .setTitle("选择一级分类")
+                    .setItems(roots.map { it.name }.toTypedArray()) { _, i -> openChildren(roots[i].name, type) }
+                    .setNegativeButton("取消", null)
+                    .setNeutralButton("自定义") { _, _ -> actvCategory.requestFocus() }
+                    .show()
+            }
+        }
+    }
+
+    private fun openChildren(parent: String, type: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val children = db.categoryDao().getChildren(parent, type)
+            withContext(Dispatchers.Main) {
+                AlertDialog.Builder(this@AddEditTransactionActivity)
+                    .setTitle("选择：$parent")
+                    .setItems(children.map { it.name }.toTypedArray()) { _, j ->
+                        actvCategory.setText(children[j].name, false)
+                    }
+                    .setNegativeButton("返回", null)
+                    .setNeutralButton("用「$parent」") { _, _ -> actvCategory.setText(parent, false) }
+                    .show()
             }
         }
     }
@@ -97,6 +171,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
             editingRecord = r
             selectedTs = r.timestamp
             expenseSelected = r.type == TransactionRecord.TYPE_EXPENSE
+            suggestedCategory = r.categoryName // 原值，用于判断是否被修正
             withContext(Dispatchers.Main) {
                 findViewById<MaterialButton>(R.id.btnExpense).isChecked = expenseSelected
                 findViewById<MaterialButton>(R.id.btnIncome).isChecked = !expenseSelected
@@ -134,28 +209,52 @@ class AddEditTransactionActivity : AppCompatActivity() {
         val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
 
         lifecycleScope.launch(Dispatchers.IO) {
-            // 自动维护分类 / 渠道（自由新增）
             ensureCategory(category, type)
             ensureChannel(channel)
 
+            // 尽力获取地理位置（无权限则跳过，不阻塞）
+            val place = runCatching { LocationHelper.lastPlace(this@AddEditTransactionActivity) }.getOrNull()
+
             val existing = editingRecord
+            val saved: TransactionRecord
             if (existing != null) {
-                db.transactionDao().update(
-                    existing.copy(
-                        type = type, amount = amount, categoryName = category, channelName = channel,
-                        paymentMethod = pm, merchant = merchant, note = note, timestamp = selectedTs,
-                        status = TransactionRecord.STATUS_CONFIRMED
-                    )
+                saved = existing.copy(
+                    type = type, amount = amount, categoryName = category, channelName = channel,
+                    paymentMethod = pm, merchant = merchant, note = note, timestamp = selectedTs,
+                    status = TransactionRecord.STATUS_CONFIRMED,
+                    latitude = place?.latitude ?: existing.latitude,
+                    longitude = place?.longitude ?: existing.longitude,
+                    locationName = place?.name ?: existing.locationName
                 )
+                db.transactionDao().update(saved)
             } else {
-                db.transactionDao().insert(
-                    TransactionRecord(
-                        type = type, amount = amount, categoryName = category, channelName = channel,
-                        paymentMethod = pm, merchant = merchant, note = note, timestamp = selectedTs,
-                        source = TransactionRecord.SOURCE_MANUAL,
-                        status = TransactionRecord.STATUS_CONFIRMED
-                    )
+                saved = TransactionRecord(
+                    type = type, amount = amount, categoryName = category, channelName = channel,
+                    paymentMethod = pm, merchant = merchant, note = note, timestamp = selectedTs,
+                    source = TransactionRecord.SOURCE_MANUAL,
+                    status = TransactionRecord.STATUS_CONFIRMED,
+                    latitude = place?.latitude, longitude = place?.longitude, locationName = place?.name
                 )
+                db.transactionDao().insert(saved)
+            }
+
+            // 个性化打标学习：确认/修正即训练
+            if (category.isNotBlank()) {
+                val old = suggestedCategory
+                if (old != null && old != category) {
+                    PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, category)
+                } else {
+                    PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, category)
+                }
+            }
+
+            // 自动备份（增量触发）
+            runCatching { AutoBackupManager.backup(this@AddEditTransactionActivity) }
+
+            if (place?.name != null) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@AddEditTransactionActivity, "已记录地点：${place.name}", Toast.LENGTH_SHORT).show()
+                }
             }
             withContext(Dispatchers.Main) { finish() }
         }

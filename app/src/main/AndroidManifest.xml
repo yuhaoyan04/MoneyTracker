@@ -20,6 +20,14 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
 
+    <!-- 支付地点抓取（粗略/精确定位） -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- 公共目录备份：Android 9 及以下写公共 Download 需要 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <queries>
         <package android:name="com.google.android.apps.docs" />
     </queries>
@@ -50,6 +58,7 @@
         <activity android:name=".activity.CaptureInboxActivity" android:exported="false" android:screenOrientation="portrait" android:configChanges="orientation|screenSize" />
         <activity android:name=".activity.StatsActivity" android:exported="false" android:screenOrientation="portrait" android:configChanges="orientation|screenSize" />
         <activity android:name=".activity.SettingsActivity" android:exported="false" android:screenOrientation="portrait" android:configChanges="orientation|screenSize" />
+        <activity android:name=".activity.AiConfigActivity" android:exported="false" android:screenOrientation="portrait" android:configChanges="orientation|screenSize" android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".MainActivity"
