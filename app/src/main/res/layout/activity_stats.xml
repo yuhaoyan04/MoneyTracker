@@ -140,6 +140,7 @@
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"
+                    android:checked="true"
                     android:text="分类"
                     app:icon="@drawable/ic_category" />
 
@@ -174,6 +175,7 @@
                         style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:checked="true"
                         android:text="支出分类" />
 
                     <com.google.android.material.button.MaterialButton
@@ -238,6 +240,7 @@
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
+                        android:checked="true"
                         android:text="月" />
 
                     <com.google.android.material.button.MaterialButton
@@ -274,6 +277,7 @@
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
+                        android:checked="true"
                         android:text="按天" />
 
                     <com.google.android.material.button.MaterialButton

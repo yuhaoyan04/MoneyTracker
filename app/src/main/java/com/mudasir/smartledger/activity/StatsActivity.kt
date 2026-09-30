@@ -81,6 +81,8 @@ class StatsActivity : AppCompatActivity() {
 
     private var currentTimeRange: TimeRange = TimeRange.MONTH
     private var currentDataAgg: DataAgg = DataAgg.DAY
+    private var trendLoaded = false
+    private var suppressAgg = false
 
     private val palette = intArrayOf(
         Color.parseColor("#F44336"), Color.parseColor("#2196F3"), Color.parseColor("#9C27B0"),
@@ -111,6 +113,11 @@ class StatsActivity : AppCompatActivity() {
             if (!isChecked) return@addOnButtonCheckedListener
             sectionCategory.visibility = if (checkedId == R.id.btnDimCategory) View.VISIBLE else View.GONE
             sectionTrend.visibility = if (checkedId == R.id.btnDimTrend) View.VISIBLE else View.GONE
+            if (checkedId == R.id.btnDimTrend && !trendLoaded) {
+                trendLoaded = true
+                updateAggUI()
+                loadTrend()
+            }
         }
         findViewById<MaterialButtonToggleGroup>(R.id.togglePie).addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
@@ -129,12 +136,13 @@ class StatsActivity : AppCompatActivity() {
                 R.id.btnRangeDay -> TimeRange.DAY
                 else -> TimeRange.MONTH
             }
-            onTimeRangeChanged()
+            updateAggUI()
+            loadTrend()
         }
 
         // 数据粒度切换
         toggleAgg.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
+            if (!isChecked || suppressAgg) return@addOnButtonCheckedListener
             currentDataAgg = when (checkedId) {
                 R.id.btnAggDay -> DataAgg.DAY
                 R.id.btnAggWeek -> DataAgg.WEEK
@@ -147,7 +155,6 @@ class StatsActivity : AppCompatActivity() {
 
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_stats)
         load()
-        onTimeRangeChanged()
     }
 
     private fun shiftMonth(delta: Int) {
@@ -177,7 +184,7 @@ class StatsActivity : AppCompatActivity() {
         TimeRange.DAY -> DataAgg.DAY
     }
 
-    private fun onTimeRangeChanged() {
+    private fun updateAggUI() {
         val range = currentTimeRange
         if (range == TimeRange.DAY || range == TimeRange.WEEK) {
             toggleAgg.visibility = View.GONE
@@ -197,10 +204,11 @@ class StatsActivity : AppCompatActivity() {
                     DataAgg.MONTH -> R.id.btnAggMonth
                     DataAgg.QUARTER -> R.id.btnAggQuarter
                 }
+                suppressAgg = true
                 toggleAgg.check(btnId)
+                suppressAgg = false
             }
         }
-        loadTrend()
     }
 
     // ---- 月度分类数据 ----
@@ -412,7 +420,7 @@ class StatsActivity : AppCompatActivity() {
 
             val isManyPoints = entries.size > 30
             val tc = currentTextColor()
-            val gc = Color.parseColor("#30888888")
+            val gc = Color.parseColor("#40888888")
             val legendLabel = when (agg) { DataAgg.DAY -> "每日支出"; DataAgg.WEEK -> "每周支出"; DataAgg.MONTH -> "每月支出"; DataAgg.QUARTER -> "每季支出" }
 
             val set = LineDataSet(entries, "$legendLabel  ${FormatUtil.money(total.toDouble())}").apply {
@@ -434,43 +442,49 @@ class StatsActivity : AppCompatActivity() {
                 setDrawHorizontalHighlightIndicator(false)
             }
 
-            lineChart.apply {
-                data = LineData(set)
-                description.isEnabled = false
-                setDrawGridBackground(false)
-                setBackgroundColor(Color.TRANSPARENT)
-                setExtraOffsets(10f, 14f, 10f, 10f)
-                setTouchEnabled(true)
-                setDragEnabled(isManyPoints)
-                setScaleEnabled(false); setPinchZoom(false)
-                if (isManyPoints) setVisibleXRangeMaximum(60f)
+            lineChart.post {
+                try {
+                    lineChart.apply {
+                        data = LineData(set)
+                        description.isEnabled = false
+                        setDrawGridBackground(false)
+                        setBackgroundColor(Color.TRANSPARENT)
+                        setExtraOffsets(10f, 14f, 10f, 10f)
+                        setTouchEnabled(true)
+                        setDragEnabled(isManyPoints)
+                        setScaleEnabled(false); setPinchZoom(false)
+                        if (isManyPoints) setVisibleXRangeMaximum(60f)
 
-                xAxis.apply {
-                    position = XAxis.XAxisPosition.BOTTOM
-                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f
-                    setDrawLabels(true); textColor = tc; textSize = 12f; granularity = 1f
-                    labelCount = if (entries.size <= 12) entries.size else if (entries.size <= 30) 8 else 6
-                    labelRotationAngle = if (entries.size > 12) -30f else 0f
-                    valueFormatter = object : ValueFormatter() {
-                        override fun getFormattedValue(value: Float): String = labels.getOrElse(value.toInt()) { "" }
+                        xAxis.apply {
+                            position = XAxis.XAxisPosition.BOTTOM
+                            setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f
+                            setDrawAxisLine(true); axisLineColor = gc
+                            setDrawLabels(true); textColor = tc; textSize = 13f; granularity = 1f
+                            labelCount = if (entries.size <= 12) entries.size else if (entries.size <= 30) 8 else 6
+                            labelRotationAngle = if (entries.size > 12) -30f else 0f
+                            valueFormatter = object : ValueFormatter() {
+                                override fun getFormattedValue(value: Float): String = labels.getOrElse(value.toInt()) { "" }
+                            }
+                        }
+                        axisLeft.apply {
+                            setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
+                            textColor = tc; textSize = 13f
+                            setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
+                            setDrawAxisLine(true); axisLineColor = gc
+                        }
+                        axisRight.isEnabled = false
+                        legend.apply {
+                            isEnabled = true
+                            verticalAlignment = Legend.LegendVerticalAlignment.TOP
+                            horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
+                            setDrawInside(false)
+                            form = Legend.LegendForm.SQUARE; formSize = 10f
+                            textSize = 13f; textColor = tc
+                        }
+                        notifyDataSetChanged()
+                        animateX(800); invalidate()
                     }
-                }
-                axisLeft.apply {
-                    setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
-                    textColor = tc; textSize = 12f
-                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
-                }
-                axisRight.isEnabled = false
-                legend.apply {
-                    isEnabled = true
-                    verticalAlignment = Legend.LegendVerticalAlignment.TOP
-                    horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
-                    setDrawInside(false)
-                    form = Legend.LegendForm.SQUARE; formSize = 10f
-                    textSize = 13f; textColor = tc
-                }
-                notifyDataSetChanged()
-                animateX(800); invalidate()
+                } catch (e: Exception) { lineChart.clear() }
             }
         } catch (e: Exception) { lineChart.clear() }
     }
@@ -481,36 +495,43 @@ class StatsActivity : AppCompatActivity() {
         try {
             lineChart.visibility = View.GONE; barChartHourly.visibility = View.VISIBLE
             val tc = currentTextColor()
-            val gc = Color.parseColor("#30888888")
+            val gc = Color.parseColor("#40888888")
             val entries = (0..23).map { BarEntry(it.toFloat(), byHour[it]) }
             val set = BarDataSet(entries, "每小时支出  ${FormatUtil.money(total.toDouble())}").apply {
                 color = Color.parseColor("#F44336")
                 setGradientColor(Color.parseColor("#FF8A80"), Color.parseColor("#C62828"))
                 setDrawValues(false)
             }
-            barChartHourly.apply {
-                data = BarData(set).apply { barWidth = 0.6f }
-                description.isEnabled = false; setFitBars(true)
-                setExtraOffsets(10f, 14f, 10f, 10f)
-                xAxis.apply {
-                    position = XAxis.XAxisPosition.BOTTOM; granularity = 1f; setDrawGridLines(false)
-                    setDrawLabels(true); textColor = tc; textSize = 12f; labelCount = 8
-                    valueFormatter = object : ValueFormatter() {
-                        override fun getFormattedValue(value: Float): String = "${value.toInt()}时"
+            barChartHourly.post {
+                try {
+                    barChartHourly.apply {
+                        data = BarData(set).apply { barWidth = 0.6f }
+                        description.isEnabled = false; setFitBars(true)
+                        setExtraOffsets(10f, 14f, 10f, 10f)
+                        xAxis.apply {
+                            position = XAxis.XAxisPosition.BOTTOM; granularity = 1f; setDrawGridLines(false)
+                            setDrawAxisLine(true); axisLineColor = gc
+                            setDrawLabels(true); textColor = tc; textSize = 13f; labelCount = 8
+                            valueFormatter = object : ValueFormatter() {
+                                override fun getFormattedValue(value: Float): String = "${value.toInt()}时"
+                            }
+                        }
+                        axisLeft.apply {
+                            setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
+                            textColor = tc; textSize = 13f
+                            setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
+                            setDrawAxisLine(true); axisLineColor = gc
+                        }
+                        axisRight.isEnabled = false
+                        legend.apply {
+                            isEnabled = true; verticalAlignment = Legend.LegendVerticalAlignment.TOP
+                            horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER; setDrawInside(false)
+                            form = Legend.LegendForm.SQUARE; formSize = 10f; textSize = 13f; textColor = tc
+                        }
+                        notifyDataSetChanged()
+                        animateY(500); invalidate()
                     }
-                }
-                axisLeft.apply {
-                    setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
-                    textColor = tc; textSize = 12f
-                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
-                }
-                axisRight.isEnabled = false
-                legend.apply {
-                    isEnabled = true; verticalAlignment = Legend.LegendVerticalAlignment.TOP
-                    horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER; setDrawInside(false)
-                    form = Legend.LegendForm.SQUARE; formSize = 10f; textSize = 13f; textColor = tc
-                }
-                animateY(500); invalidate()
+                } catch (e: Exception) { barChartHourly.clear() }
             }
         } catch (e: Exception) { barChartHourly.clear() }
     }
