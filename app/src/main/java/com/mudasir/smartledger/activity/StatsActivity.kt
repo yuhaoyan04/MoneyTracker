@@ -10,6 +10,7 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewTreeObserver
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -83,6 +84,8 @@ class StatsActivity : AppCompatActivity() {
     private var currentDataAgg: DataAgg = DataAgg.DAY
     private var trendLoaded = false
     private var suppressAgg = false
+    private var pendingLineData: Any? = null
+    private var pendingBarData: Any? = null
 
     private val palette = intArrayOf(
         Color.parseColor("#F44336"), Color.parseColor("#2196F3"), Color.parseColor("#9C27B0"),
@@ -413,11 +416,31 @@ class StatsActivity : AppCompatActivity() {
 
     // ---- 渲染：趋势折线图 ----
 
-    private fun renderLineChart(entries: List<Entry>, labels: List<String>, total: Float, agg: DataAgg) {
-        try {
-            if (entries.isEmpty()) { lineChart.clear(); lineChart.setNoDataText("暂无数据"); return }
-            lineChart.visibility = View.VISIBLE; barChartHourly.visibility = View.GONE
+    private data class PendingLineData(val entries: List<Entry>, val labels: List<String>, val total: Float, val agg: DataAgg)
 
+    private fun renderLineChart(entries: List<Entry>, labels: List<String>, total: Float, agg: DataAgg) {
+        if (entries.isEmpty()) { lineChart.clear(); lineChart.setNoDataText("暂无数据"); return }
+        lineChart.visibility = View.VISIBLE; barChartHourly.visibility = View.GONE
+        pendingLineData = PendingLineData(entries, labels, total, agg)
+        doRenderLineChart()
+    }
+
+    private fun doRenderLineChart() {
+        val pd = pendingLineData as? PendingLineData ?: return
+        if (lineChart.width == 0 || lineChart.height == 0) {
+            val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    if (lineChart.width > 0 && lineChart.height > 0) {
+                        lineChart.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        doRenderLineChart()
+                    }
+                }
+            }
+            lineChart.viewTreeObserver.addOnGlobalLayoutListener(listener)
+            return
+        }
+        try {
+            val entries = pd.entries; val labels = pd.labels; val total = pd.total; val agg = pd.agg
             val isManyPoints = entries.size > 30
             val tc = currentTextColor()
             val gc = Color.parseColor("#40888888")
@@ -442,58 +465,76 @@ class StatsActivity : AppCompatActivity() {
                 setDrawHorizontalHighlightIndicator(false)
             }
 
-            lineChart.post {
-                try {
-                    lineChart.apply {
-                        data = LineData(set)
-                        description.isEnabled = false
-                        setDrawGridBackground(false)
-                        setBackgroundColor(Color.TRANSPARENT)
-                        setExtraOffsets(10f, 14f, 10f, 10f)
-                        setTouchEnabled(true)
-                        setDragEnabled(isManyPoints)
-                        setScaleEnabled(false); setPinchZoom(false)
-                        if (isManyPoints) setVisibleXRangeMaximum(60f)
+            lineChart.apply {
+                data = LineData(set)
+                description.isEnabled = false
+                setDrawGridBackground(false)
+                setBackgroundColor(Color.TRANSPARENT)
+                setExtraOffsets(10f, 14f, 10f, 10f)
+                setTouchEnabled(true)
+                setDragEnabled(isManyPoints)
+                setScaleEnabled(false); setPinchZoom(false)
+                if (isManyPoints) setVisibleXRangeMaximum(60f)
 
-                        xAxis.apply {
-                            position = XAxis.XAxisPosition.BOTTOM
-                            setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f
-                            setDrawAxisLine(true); axisLineColor = gc
-                            setDrawLabels(true); textColor = tc; textSize = 13f; granularity = 1f
-                            labelCount = if (entries.size <= 12) entries.size else if (entries.size <= 30) 8 else 6
-                            labelRotationAngle = if (entries.size > 12) -30f else 0f
-                            valueFormatter = object : ValueFormatter() {
-                                override fun getFormattedValue(value: Float): String = labels.getOrElse(value.toInt()) { "" }
-                            }
-                        }
-                        axisLeft.apply {
-                            setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
-                            textColor = tc; textSize = 13f
-                            setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
-                            setDrawAxisLine(true); axisLineColor = gc
-                        }
-                        axisRight.isEnabled = false
-                        legend.apply {
-                            isEnabled = true
-                            verticalAlignment = Legend.LegendVerticalAlignment.TOP
-                            horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
-                            setDrawInside(false)
-                            form = Legend.LegendForm.SQUARE; formSize = 10f
-                            textSize = 13f; textColor = tc
-                        }
-                        notifyDataSetChanged()
-                        animateX(800); invalidate()
+                xAxis.apply {
+                    position = XAxis.XAxisPosition.BOTTOM
+                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f
+                    setDrawAxisLine(true); axisLineColor = gc
+                    setDrawLabels(true); textColor = tc; textSize = 13f; granularity = 1f
+                    labelCount = if (entries.size <= 12) entries.size else if (entries.size <= 30) 8 else 6
+                    labelRotationAngle = if (entries.size > 12) -30f else 0f
+                    valueFormatter = object : ValueFormatter() {
+                        override fun getFormattedValue(value: Float): String = labels.getOrElse(value.toInt()) { "" }
                     }
-                } catch (e: Exception) { lineChart.clear() }
+                }
+                axisLeft.apply {
+                    setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
+                    textColor = tc; textSize = 13f
+                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
+                    setDrawAxisLine(true); axisLineColor = gc
+                }
+                axisRight.isEnabled = false
+                legend.apply {
+                    isEnabled = true
+                    verticalAlignment = Legend.LegendVerticalAlignment.TOP
+                    horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
+                    setDrawInside(false)
+                    form = Legend.LegendForm.SQUARE; formSize = 10f
+                    textSize = 13f; textColor = tc
+                }
+                notifyDataSetChanged()
+                requestLayout()
+                animateX(800); invalidate()
             }
         } catch (e: Exception) { lineChart.clear() }
     }
 
     // ---- 渲染：小时柱状图 ----
 
+    private data class PendingBarData(val byHour: FloatArray, val total: Float)
+
     private fun renderHourly(byHour: FloatArray, total: Float) {
+        lineChart.visibility = View.GONE; barChartHourly.visibility = View.VISIBLE
+        pendingBarData = PendingBarData(byHour, total)
+        doRenderHourly()
+    }
+
+    private fun doRenderHourly() {
+        val pd = pendingBarData as? PendingBarData ?: return
+        if (barChartHourly.width == 0 || barChartHourly.height == 0) {
+            val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    if (barChartHourly.width > 0 && barChartHourly.height > 0) {
+                        barChartHourly.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        doRenderHourly()
+                    }
+                }
+            }
+            barChartHourly.viewTreeObserver.addOnGlobalLayoutListener(listener)
+            return
+        }
         try {
-            lineChart.visibility = View.GONE; barChartHourly.visibility = View.VISIBLE
+            val byHour = pd.byHour; val total = pd.total
             val tc = currentTextColor()
             val gc = Color.parseColor("#40888888")
             val entries = (0..23).map { BarEntry(it.toFloat(), byHour[it]) }
@@ -502,36 +543,33 @@ class StatsActivity : AppCompatActivity() {
                 setGradientColor(Color.parseColor("#FF8A80"), Color.parseColor("#C62828"))
                 setDrawValues(false)
             }
-            barChartHourly.post {
-                try {
-                    barChartHourly.apply {
-                        data = BarData(set).apply { barWidth = 0.6f }
-                        description.isEnabled = false; setFitBars(true)
-                        setExtraOffsets(10f, 14f, 10f, 10f)
-                        xAxis.apply {
-                            position = XAxis.XAxisPosition.BOTTOM; granularity = 1f; setDrawGridLines(false)
-                            setDrawAxisLine(true); axisLineColor = gc
-                            setDrawLabels(true); textColor = tc; textSize = 13f; labelCount = 8
-                            valueFormatter = object : ValueFormatter() {
-                                override fun getFormattedValue(value: Float): String = "${value.toInt()}时"
-                            }
-                        }
-                        axisLeft.apply {
-                            setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
-                            textColor = tc; textSize = 13f
-                            setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
-                            setDrawAxisLine(true); axisLineColor = gc
-                        }
-                        axisRight.isEnabled = false
-                        legend.apply {
-                            isEnabled = true; verticalAlignment = Legend.LegendVerticalAlignment.TOP
-                            horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER; setDrawInside(false)
-                            form = Legend.LegendForm.SQUARE; formSize = 10f; textSize = 13f; textColor = tc
-                        }
-                        notifyDataSetChanged()
-                        animateY(500); invalidate()
+            barChartHourly.apply {
+                data = BarData(set).apply { barWidth = 0.6f }
+                description.isEnabled = false; setFitBars(true)
+                setExtraOffsets(10f, 14f, 10f, 10f)
+                xAxis.apply {
+                    position = XAxis.XAxisPosition.BOTTOM; granularity = 1f; setDrawGridLines(false)
+                    setDrawAxisLine(true); axisLineColor = gc
+                    setDrawLabels(true); textColor = tc; textSize = 13f; labelCount = 8
+                    valueFormatter = object : ValueFormatter() {
+                        override fun getFormattedValue(value: Float): String = "${value.toInt()}时"
                     }
-                } catch (e: Exception) { barChartHourly.clear() }
+                }
+                axisLeft.apply {
+                    setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
+                    textColor = tc; textSize = 13f
+                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
+                    setDrawAxisLine(true); axisLineColor = gc
+                }
+                axisRight.isEnabled = false
+                legend.apply {
+                    isEnabled = true; verticalAlignment = Legend.LegendVerticalAlignment.TOP
+                    horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER; setDrawInside(false)
+                    form = Legend.LegendForm.SQUARE; formSize = 10f; textSize = 13f; textColor = tc
+                }
+                notifyDataSetChanged()
+                requestLayout()
+                animateY(500); invalidate()
             }
         } catch (e: Exception) { barChartHourly.clear() }
     }

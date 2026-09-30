@@ -93,7 +93,8 @@ object PersonalTagger {
         timestamp: Long,
         amount: Double,
         channel: String,
-        merchant: String?
+        merchant: String?,
+        rawText: String? = null
     ): String {
         val m = load(context)
         val norm = normalizeMerchant(merchant)
@@ -110,7 +111,7 @@ object PersonalTagger {
         }
 
         // 3. 规则
-        rulePredict(type, timestamp, amount, channel, merchant)?.let { return it }
+        rulePredict(type, timestamp, amount, channel, merchant, rawText)?.let { return it }
 
         // 4. 默认
         return defaultCategory(type)
@@ -302,91 +303,127 @@ object PersonalTagger {
 
     // ---- 规则引擎 ----
 
-    private fun rulePredict(type: String, ts: Long, amount: Double, channel: String, merchant: String?): String? {
+    private fun rulePredict(type: String, ts: Long, amount: Double, channel: String, merchant: String?, rawText: String?): String? {
         val c = Calendar.getInstance().apply { timeInMillis = ts }
         val h = c.get(Calendar.HOUR_OF_DAY)
-        val band = amountBand(amount)
-        val combined = ((merchant.orEmpty()) + " " + channel).lowercase()
+        val combined = ((merchant.orEmpty()) + " " + channel + " " + (rawText.orEmpty())).lowercase()
         val ch = channel.lowercase()
         val mRaw = (merchant.orEmpty()).lowercase()
+        val amt = amount
 
         fun has(vararg kw: String) = kw.any { combined.contains(it) }
         fun chHas(vararg kw: String) = kw.any { ch.contains(it) }
         fun mHas(vararg kw: String) = kw.any { mRaw.contains(it) }
 
         if (type != TransactionRecord.TYPE_INCOME) {
-            return when {
-                has("美团", "饿了吗", "饿了么", "外卖", "keeta") -> "外卖"
 
-                has("地铁") -> "地铁"
-                has("公交", "巴士", "乘车码", "乘车") -> "公交"
-                has("滴滴", "打车", "出租", "网约", "t3", "曹操", "首汽", "哈啰", "出行") -> "打车"
-                has("加油", "中石化", "中石油", "壳牌", "加油站") -> "加油停车"
-                has("停车费", "停车场", "停车") -> "加油停车"
-                has("高铁", "火车", "12306", "机票", "航班", "航空", "携程", "去哪儿", "飞猪", "同程") -> "火车机票"
+            // ===== TIER 1: 强商户信号（品牌名/平台名直接命中）=====
 
-                has("话费", "移动", "联通", "电信", "运营商") -> "话费"
-                has("流量包", "数据包") -> "流量"
+            if (has("美团", "饿了吗", "饿了么", "外卖", "keeta", "kika", "配送费", "骑手")) return "外卖"
 
-                chHas("淘宝", "天猫") || mHas("淘宝", "天猫") -> when {
-                    has("服饰", "衣服", "鞋", "包", "服装", "裙", "外套", "裤") -> "服饰"
-                    has("数码", "电子", "手机", "电脑", "耳机", "充电", "配件", "键盘", "鼠标") -> "数码"
-                    has("美妆", "护肤", "化妆", "面膜", "口红", "粉底") -> "美妆护肤"
-                    has("食品", "零食", "水果", "生鲜") -> "超市日用"
-                    band == "big" -> "数码"
-                    band == "large" -> "服饰"
-                    else -> "日用品"
-                }
-                chHas("京东", "jd") || mHas("京东") -> when {
-                    has("数码", "电子", "手机", "电脑", "家电", "电器", "耳机", "电视") -> "数码"
-                    has("服饰", "衣服", "鞋") -> "服饰"
-                    has("食品", "生鲜", "水果") -> "超市日用"
-                    else -> "数码"
-                }
-                chHas("拼多多") || mHas("拼多多") -> "日用品"
-                chHas("苏宁", "当当") || mHas("苏宁", "当当") -> "数码"
+            if (has("滴滴", "打车", "出租", "网约", "t3", "曹操", "首汽", "哈啰出行", "花小猪", "如祺", "嘀嗒")) return "打车"
+            if (has("地铁", "metro", "乘车码", "乘车")) return "地铁"
+            if (has("公交", "巴士", "brt")) return "公交"
+            if (has("共享单车", "美团单车", "哈啰单车", "青桔", "bike", "骑行")) return "公交"
+            if (has("高铁", "火车", "12306", "铁路", "机票", "航班", "航空", "携程", "去哪儿", "飞猪", "同程")) return "火车机票"
+            if (has("加油", "中石化", "中石油", "壳牌", "加油站", "中化石油")) return "加油停车"
+            if (has("停车费", "停车场", "停车")) return "加油停车"
 
-                has("电影", "演出", "票务", "影院", "猫眼", "大麦", "淘票票") -> "电影演出"
-                has("游戏", "steam", "psn", "nintendo", "switch", "xbox", "原神", "王者", "腾讯视频", "爱奇艺", "b站", "bilibili", "优酷", "网易云") -> "游戏充值"
-                has("旅行", "旅游", "酒店", "民宿", "飞猪", "途家", "airbnb") -> "旅行出游"
-                has("健身", "健身房", "瑜伽", "游泳", "运动") -> "旅行出游"
+            if (has("肯德基", "kfc", "麦当劳", "汉堡王", "必胜客", "德克士", "华莱士", "萨莉亚", "吉野家", "真功夫")) return "下馆子"
+            if (has("海底捞", "呷哺", "火锅", "烧烤", "串串", "烤肉", "日料", "韩餐", "西餐", "寿司", "刺身")) return "下馆子"
+            if (has("星巴克", "瑞幸", "咖啡", "manner", "costa", "tim hortons", "seesaw")) return "零食饮料"
+            if (has("奶茶", "喜茶", "蜜雪", "茶颜", "库迪", "coco", "一点点", "茶百道", "书亦", "古茗", "益禾堂", "甜啦啦")) return "零食饮料"
 
-                has("药", "药店", "医院", "挂号", "门诊", "诊所", "体检") -> "挂号门诊"
-                has("处方", "胶囊", "感冒药", "退烧") -> "药品"
+            if (has("食堂", "公司餐", "员工餐")) return "食堂"
+            if (has("下馆子", "聚餐", "餐厅", "饭店", "美食", "小吃", "排档")) return "下馆子"
+            if (has("零食", "面包", "蛋糕", "甜品", "便利店", "711", "全家", "罗森", "便利")) return "零食饮料"
 
-                has("房租", "租金", "押金") -> "房租"
-                has("电费", "水费", "燃气", "物业", "宽带", "网费", "暖气", "供暖") -> "水电燃气"
+            if (has("超市", "永辉", "沃尔玛", "家乐福", "盒马", "大润发", "物美", "华润万家", "山姆", "costco", "麦德龙")) return "超市日用"
 
-                has("课程", "培训", "学费", "网课", "得到", "极客", "知识付费") -> "课程培训"
-                has("书", "文具", "教材", "kindle") -> "书籍文具"
+            if (has("话费", "移动", "联通", "电信", "运营商")) return "话费"
+            if (has("流量包", "数据包", "流量")) return "流量"
 
-                has("超市", "便利店", "永辉", "沃尔玛", "家乐福", "711", "全家", "罗森", "盒马", "大润发", "物美", "华润万家") -> "超市日用"
+            if (has("房租", "租金", "押金")) return "房租"
+            if (has("电费", "水费", "燃气", "暖气", "供暖")) return "水电燃气"
+            if (has("物业", "宽带", "网费", "wifi")) return "物业宽带"
 
-                has("食堂", "公司餐", "员工餐") -> "食堂"
-                has("星巴克", "瑞幸", "咖啡", "manner", "costa") -> "零食饮料"
-                has("奶茶", "喜茶", "蜜雪", "茶颜", "库迪", "coco", "一点点", "茶百道") -> "零食饮料"
-                has("下馆子", "聚餐", "餐厅", "饭店", "火锅", "烧烤", "日料", "韩餐", "西餐") -> "下馆子"
-                has("零食", "面包", "蛋糕", "甜品") -> "零食饮料"
+            if (has("药", "药店", "医院", "挂号", "门诊", "诊所", "体检", "齿科", "眼科", "牙科")) return "挂号门诊"
+            if (has("处方", "胶囊", "感冒药", "退烧", "膏药", "维生素", "健之佳", "大参林", "益丰")) return "药品"
 
-                has("红包") -> "收发红包"
-                has("转账", "转给") -> "其他"
+            if (has("电影", "演出", "票务", "影院", "猫眼", "大麦", "淘票票")) return "电影演出"
+            if (has("游戏", "steam", "psn", "nintendo", "switch", "xbox", "原神", "王者", "腾讯视频", "爱奇艺", "b站", "bilibili", "优酷", "网易云", "qq音乐", "酷狗", "酷我", "spotify", "netflix")) return "游戏充值"
+            if (has("旅行", "旅游", "酒店", "民宿", "飞猪", "途家", "airbnb", "门票", "景点", "乐园", "迪士尼", "方特")) return "旅行出游"
+            if (has("健身", "健身房", "瑜伽", "游泳", "运动", "keep", "超级猩猩")) return "旅行出游"
 
-                h in 11..13 && band == "tiny" && has("公司", "学校", "园区", "单位", "大厦") -> "食堂"
-                h in 11..13 && band in setOf("medium", "large") -> "下馆子"
-                h in 17..20 && band in setOf("medium", "large") -> "下馆子"
-                h in 6..9 && band == "tiny" -> "公交"
+            if (has("课程", "培训", "学费", "网课", "得到", "极客", "知识付费", "知乎", "樊登", "混沌")) return "课程培训"
+            if (has("书籍", "文具", "教材", "kindle", "当当", "图书")) return "书籍文具"
 
+            // ===== TIER 2: 网购平台细分 =====
+
+            if (chHas("淘宝", "天猫") || mHas("淘宝", "天猫")) return when {
+                has("服饰", "衣服", "鞋", "包", "服装", "裙", "外套", "裤", "内衣", "羽绒服", "卫衣", "衬衫") -> "服饰"
+                has("数码", "电子", "手机", "电脑", "耳机", "充电", "配件", "键盘", "鼠标", "平板", "显示器") -> "数码"
+                has("美妆", "护肤", "化妆", "面膜", "口红", "粉底", "精华", "乳液", "防晒", "香水") -> "美妆护肤"
+                has("食品", "零食", "水果", "生鲜", "大米", "牛奶", "饮料") -> "超市日用"
+                amt >= 500 -> "数码"
+                amt >= 100 -> "服饰"
+                else -> "日用品"
+            }
+            if (chHas("京东", "jd") || mHas("京东")) return when {
+                has("数码", "电子", "手机", "电脑", "家电", "电器", "耳机", "电视", "冰箱", "洗衣机", "空调") -> "数码"
+                has("服饰", "衣服", "鞋") -> "服饰"
+                has("食品", "生鲜", "水果", "牛奶") -> "超市日用"
+                has("美妆", "护肤", "化妆") -> "美妆护肤"
+                else -> "数码"
+            }
+            if (chHas("拼多多") || mHas("拼多多")) return "日用品"
+            if (chHas("苏宁") || mHas("苏宁")) return "数码"
+
+            if (has("红包")) return "收发红包"
+            if (has("转账", "转给")) return "其他"
+
+            // ===== TIER 3: 渠道 + 金额 + 时段推断 =====
+
+            if (chHas("京东", "jd")) return "数码"
+            if (chHas("淘宝", "天猫")) return "日用品"
+
+            // 早餐时段小额 → 通勤公交
+            if (h in 6..9 && amt < 20) return "公交"
+            // 午餐时段 → 按金额细分
+            if (h in 11..13) return when {
+                amt < 15 -> "食堂"
+                amt < 40 -> "外卖"
+                amt < 200 -> "下馆子"
                 else -> null
             }
+            // 晚餐时段
+            if (h in 17..20) return when {
+                amt < 15 -> "零食饮料"
+                amt < 200 -> "下馆子"
+                else -> null
+            }
+            // 深夜 → 零食饮料或娱乐
+            if (h in 21..23 || h in 0..4) return when {
+                amt < 30 -> "零食饮料"
+                amt < 100 -> "游戏充值"
+                else -> null
+            }
+            // 上午工作时间中等金额 → 日用品
+            if (h in 9..11 && amt in 30.0..300.0) return "日用品"
+            // 下午工作时间小额 → 零食饮料
+            if (h in 14..16 && amt < 30) return "零食饮料"
+
+            return null
         }
 
+        // ===== 收入类 =====
         return when {
-            has("工资", "薪", "薪资") -> "基本工资"
+            has("工资", "薪", "薪资", "代发") -> "基本工资"
             has("奖金", "提成", "绩效") -> "奖金提成"
             has("利息", "分红", "收益", "理财收益") -> "利息分红"
             has("基金", "股票", "理财", "余额宝", "定期") -> "基金股票"
             has("红包") -> "收发红包"
-            has("退款", "退回") -> "转账退款"
+            has("退款", "退回", "退货") -> "转账退款"
             else -> null
         }
     }

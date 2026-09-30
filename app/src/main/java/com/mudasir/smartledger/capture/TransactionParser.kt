@@ -115,15 +115,34 @@ object TransactionParser {
         return "其他"
     }
 
+    private val knownChannelNames = setOf(
+        "微信支付", "微信", "支付宝", "京东", "淘宝", "天猫", "银行卡", "银行",
+        "信用卡", "花呗", "借呗", "云闪付", "数字人民币", "现金", "其他", "android"
+    )
+
     private fun inferMerchant(text: String): String? {
-        // 常见：在某某商户消费 / 向XX转账 / XX商城
         listOf(
-            Regex("在\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20}?)\\s*(消费|付款|支付|购物)"),
+            Regex("在\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20}?)\\s*(消费|付款|支付|购物|买单)"),
+            Regex("于\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20}?)\\s*(消费|付款|支付|购物)"),
             Regex("向\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20}?)\\s*(转账|付款|支付)"),
+            Regex("至\\s*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20}?)\\s*(转账|付款|支付)"),
             Regex("商户[:：\\s]*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20})"),
-            Regex("【([\\u4e00-\\u9fa5A-Za-z0-9]{2,20}?)】")
+            Regex("收款方[:：\\s]*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20})"),
+            Regex("付款方[:：\\s]*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20})"),
+            Regex("对方[:：\\s]*([\\u4e00-\\u9fa5A-Za-z0-9]{2,20})"),
+            Regex("【([\\u4e00-\\u9fa5A-Za-z0-9]{2,20}?)】"),
+            Regex("《([\\u4e00-\\u9fa5A-Za-z0-9]{2,20}?)》")
         ).forEach { pattern ->
             pattern.find(text)?.groupValues?.getOrNull(1)?.let { if (it.isNotBlank()) return it }
+        }
+
+        // 尝试从通知标题段（第一个 | 之前）提取商户名
+        val firstSegment = text.substringBefore(" | ").trim()
+        if (firstSegment.length in 2..20) {
+            val lower = firstSegment.lowercase()
+            if (knownChannelNames.none { lower.contains(it.lowercase()) }) {
+                return firstSegment
+            }
         }
         return null
     }
