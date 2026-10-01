@@ -23,6 +23,21 @@ class LedgerNotificationListener : NotificationListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val recentHashes = LinkedHashMap<Long, String>()
 
+    // 商户关联缓冲区：记录最近解析的通知（含商户名），用于跨 App 商户补全
+    private data class RecentCapture(
+        val amount: Double,
+        val merchant: String?,
+        val pkg: String,
+        val timestamp: Long
+    )
+    private val recentCaptures = mutableListOf<RecentCapture>()
+
+    // 渠道名集合 —— 如果 merchant 字段只是渠道名（如"微信支付"），则视为缺失商户
+    private val channelNames = setOf(
+        "微信支付", "微信", "支付宝", "京东", "淘宝", "天猫", "银行卡", "银行",
+        "信用卡", "花呗", "借呗", "云闪付", "数字人民币", "现金", "其他", "android"
+    )
+
     // 监听这些包名的通知。null 表示来源未知，但仍尝试解析。
     private val watchedPackages = setOf(
         "com.tencent.mm",           // 微信
@@ -67,6 +82,33 @@ class LedgerNotificationListener : NotificationListenerService() {
         return paymentActionKeywords.any { lower.contains(it.lowercase()) }
     }
 
+    /** 判断 merchant 字段是否为空或只是渠道名（需要跨 App 补全） */
+    private fun needsMerchant(merchant: String?): Boolean {
+        if (merchant.isNullOrBlank()) return true
+        val lower = merchant.lowercase()
+        return channelNames.any { lower.contains(it.lowercase()) }
+    }
+
+    /** 在 60s 窗口内查找金额匹配、来源不同的通知，补全商户名 */
+    private fun correlateMerchant(amount: Double, pkg: String, timestamp: Long): String? {
+        val now = System.currentTimeMillis()
+        synchronized(recentCaptures) {
+            recentCaptures.removeAll { it.timestamp < now - 60_000 }
+            return recentCaptures.find {
+                kotlin.math.abs(it.amount - amount) < 0.01 &&
+                it.pkg != pkg &&
+                !needsMerchant(it.merchant)
+            }?.merchant
+        }
+    }
+
+    /** 将本次抓取存入缓冲区，供后续通知关联 */
+    private fun storeCapture(amount: Double, merchant: String?, pkg: String, timestamp: Long) {
+        synchronized(recentCaptures) {
+            recentCaptures.add(RecentCapture(amount, merchant, pkg, timestamp))
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         val pkg = sbn?.packageName ?: return
         val notification = sbn.notification ?: return
@@ -103,22 +145,43 @@ class LedgerNotificationListener : NotificationListenerService() {
         scope.launch {
             val dao = AppDatabase.getDatabase(this@LedgerNotificationListener).transactionDao()
             if (parsed != null) {
-                if (isDuplicate(parsed)) return@launch
+                if (isDuplicate(parsed)) {
+                    // 跨 App 去重：同一笔交易被多个 App 通知。
+                    // 若本次通知带有商户名，尝试补全已入库记录的空商户。
+                    if (!needsMerchant(parsed.merchant)) {
+                        val cutoff = parsed.timestamp - 60_000
+                        dao.updatePendingMerchant(parsed.merchant!!, parsed.amount, cutoff)
+                    }
+                    return@launch
+                }
                 val rec = parsed.toRecord()
+                // 商户关联：若当前通知缺少商户，从 60s 窗口内其他 App 的通知补全
+                val enrichedMerchant = if (needsMerchant(rec.merchant)) {
+                    correlateMerchant(rec.amount, pkg, rec.timestamp) ?: rec.merchant
+                } else {
+                    rec.merchant
+                }
+                // 存入缓冲区供后续通知关联
+                storeCapture(rec.amount, enrichedMerchant, pkg, rec.timestamp)
                 // 个性化打标冷启动：抓取时即给一个分类建议，减少用户手动分类负担
                 val suggested = com.mudasir.smartledger.ml.PersonalTagger.recommend(
                     applicationContext,
-                    rec.type, rec.timestamp, rec.amount, rec.channelName, rec.merchant, rec.rawText
+                    rec.type, rec.timestamp, rec.amount, rec.channelName, enrichedMerchant, rec.rawText
                 )
-                dao.insert(rec.copy(categoryName = rec.categoryName.ifBlank { suggested }))
+                dao.insert(rec.copy(
+                    categoryName = rec.categoryName.ifBlank { suggested },
+                    merchant = enrichedMerchant
+                ))
             } else if (watched && hasAction) {
                 // 兜底：监听包内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏
+                val fallbackMerchant = title.takeIf { it.isNotBlank() && !needsMerchant(title) }
+                    ?: correlateMerchant(0.0, pkg, sbn.postTime)
                 dao.insert(
                     TransactionRecord(
                         type = TransactionRecord.TYPE_EXPENSE,
                         amount = 0.0,
                         channelName = TransactionParser.channelForPackage(pkg) ?: "其他",
-                        merchant = title.takeIf { it.isNotBlank() },
+                        merchant = fallbackMerchant,
                         rawText = combined,
                         source = TransactionRecord.SOURCE_CAPTURE_NOTIFICATION,
                         packageName = pkg,

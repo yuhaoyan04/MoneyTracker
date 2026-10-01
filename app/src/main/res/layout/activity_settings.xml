@@ -36,144 +36,11 @@
             android:orientation="vertical"
             android:paddingBottom="24dp">
 
+            <!-- 1. 自动抓取（最重要，放最前面） -->
             <TextView
                 style="@style/DetailHeader"
                 android:layout_marginStart="20dp"
-                android:text="AI 助手" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardAi"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginTop="4dp"
-                android:foreground="?attr/selectableItemBackground"
-                android:clickable="true"
-                android:focusable="true"
-                app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="?attr/colorSurfaceVariant"
-                app:strokeWidth="0dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="模型与 Key"
-                            android:textColor="?attr/colorOnSurface"
-                            android:textSize="15sp" />
-
-                        <TextView
-                            android:id="@+id/tvAiStatus"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="未配置"
-                            android:textColor="@color/color_expense"
-                            android:textSize="12sp" />
-                    </LinearLayout>
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:text="点击配置服务商 / 模型 / API Key（Key 不在此页明文显示，存于本机私有文件）"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <TextView
-                style="@style/DetailHeader"
-                android:layout_marginStart="20dp"
-                android:layout_marginTop="20dp"
-                android:text="数据与备份" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginTop="4dp"
-                app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="?attr/colorSurfaceVariant"
-                app:strokeWidth="0dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:id="@+id/tvBackupStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="备份状态：—"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnBackupNow"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="立即备份到本机" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnRestore"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="从备份恢复" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnExportCsv"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="导出 CSV（全部交易）" />
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginVertical="12dp"
-                        android:background="@color/divider" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnClearExpense"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="清理全部支出（仅清空显示，备份不变）"
-                        android:textColor="@color/color_expense" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnClearIncome"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="清理全部收入（仅清空显示，备份不变）"
-                        android:textColor="@color/color_expense" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <TextView
-                style="@style/DetailHeader"
-                android:layout_marginStart="20dp"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="16dp"
                 android:text="自动抓取" />
 
             <com.google.android.material.card.MaterialCardView
@@ -263,12 +130,150 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="授权后可自动抓取微信、支付宝、京东、淘宝及银行 App 的交易通知与短信，进入「收件箱」核对后即可记账，确保不遗漏。"
+                        android:text="授权后自动抓取微信、支付宝、京东、淘宝及银行 App 的支付通知与短信，进入收件箱核对即可记账。"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- 2. 数据与备份 -->
+            <TextView
+                style="@style/DetailHeader"
+                android:layout_marginStart="20dp"
+                android:layout_marginTop="20dp"
+                android:text="数据与备份" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="4dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                app:strokeWidth="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/tvBackupStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="备份状态：—"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnBackupNow"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="立即备份到本机" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnRestore"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="从备份恢复" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnExportCsv"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="导出 CSV（全部交易）" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="12dp"
+                        android:background="@color/divider" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnClearExpense"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="清理全部支出（仅清空显示，备份不变）"
+                        android:textColor="@color/color_expense" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnClearIncome"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="清理全部收入（仅清空显示，备份不变）"
+                        android:textColor="@color/color_expense" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 3. AI 助手 -->
+            <TextView
+                style="@style/DetailHeader"
+                android:layout_marginStart="20dp"
+                android:layout_marginTop="20dp"
+                android:text="AI 助手" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardAi"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="4dp"
+                android:foreground="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                app:strokeWidth="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="模型与 Key"
+                            android:textColor="?attr/colorOnSurface"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:id="@+id/tvAiStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="未配置"
+                            android:textColor="@color/color_expense"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="点击配置服务商 / 模型 / API Key（存于本机私有文件）"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 4. 关于 -->
             <TextView
                 style="@style/DetailHeader"
                 android:layout_marginStart="20dp"

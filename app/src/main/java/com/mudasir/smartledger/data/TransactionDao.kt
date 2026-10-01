@@ -104,6 +104,9 @@ interface TransactionDao {
     @Query("UPDATE transactions SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: Long, status: String)
 
+    @Query("UPDATE transactions SET merchant = :merchant WHERE isDeleted = 0 AND status = 'PENDING' AND amount = :amount AND timestamp >= :cutoff")
+    suspend fun updatePendingMerchant(merchant: String, amount: Double, cutoff: Long)
+
     // ---- 汇总 ----
     @Query(
         """
