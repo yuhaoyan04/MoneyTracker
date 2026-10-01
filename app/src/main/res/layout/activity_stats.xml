@@ -77,15 +77,16 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                app:cardCornerRadius="20dp"
+                app:cardBackgroundColor="@color/teal_main"
+                app:cardElevation="2dp"
                 app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:padding="16dp">
+                    android:padding="20dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -94,9 +95,9 @@
                         android:orientation="vertical"
                         android:gravity="center">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:text="收入" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                            android:text="收入" android:textColor="#B2DFDB" android:textSize="12sp" />
                         <TextView android:id="@+id/tvSumIncome" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp" android:text="¥0" android:textColor="@color/color_income" android:textSize="16sp" android:textStyle="bold" />
+                            android:layout_marginTop="4dp" android:text="¥0" android:textColor="@android:color/white" android:textSize="17sp" android:textStyle="bold" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -106,9 +107,9 @@
                         android:orientation="vertical"
                         android:gravity="center">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:text="支出" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                            android:text="支出" android:textColor="#B2DFDB" android:textSize="12sp" />
                         <TextView android:id="@+id/tvSumExpense" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp" android:text="¥0" android:textColor="@color/color_expense" android:textSize="16sp" android:textStyle="bold" />
+                            android:layout_marginTop="4dp" android:text="¥0" android:textColor="@android:color/white" android:textSize="17sp" android:textStyle="bold" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -118,9 +119,9 @@
                         android:orientation="vertical"
                         android:gravity="center">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:text="结余" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                            android:text="结余" android:textColor="#B2DFDB" android:textSize="12sp" />
                         <TextView android:id="@+id/tvSumBalance" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp" android:text="¥0" android:textColor="?attr/colorOnSurface" android:textSize="16sp" android:textStyle="bold" />
+                            android:layout_marginTop="4dp" android:text="¥0" android:textColor="@android:color/white" android:textSize="17sp" android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -189,8 +190,9 @@
                 <com.github.mikephil.charting.charts.PieChart
                     android:id="@+id/pieChart"
                     android:layout_width="match_parent"
-                    android:layout_height="260dp"
-                    android:layout_marginTop="8dp" />
+                    android:layout_height="280dp"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginHorizontal="8dp" />
 
                 <LinearLayout
                     android:id="@+id/llBreakdown"
@@ -320,8 +322,8 @@
                 <FrameLayout
                     android:layout_width="match_parent"
                     android:layout_height="360dp"
-                    android:layout_marginTop="4dp"
-                    android:background="?attr/colorSurfaceVariant">
+                    android:layout_marginHorizontal="8dp"
+                    android:layout_marginTop="4dp">
 
                     <com.github.mikephil.charting.charts.LineChart
                         android:id="@+id/lineChartTrend"
