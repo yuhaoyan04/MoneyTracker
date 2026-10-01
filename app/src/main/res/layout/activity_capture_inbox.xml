@@ -17,7 +17,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="?attr/actionBarSize"
-            android:background="@color/teal_main"
+            android:background="?attr/colorPrimary"
             app:title="待确认"
             app:subtitle="自动抓取的交易，请核对后确认"
             app:titleTextColor="@android:color/white"

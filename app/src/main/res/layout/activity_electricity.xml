@@ -22,7 +22,7 @@
                 android:id="@+id/topAppBar"
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
-                android:background="@color/teal_main"
+                android:background="?attr/colorPrimary"
                 app:navigationIcon="@drawable/ic_arrow_back"
                 app:title="Electricity"
                 app:titleTextColor="@color/white"

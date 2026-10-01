@@ -13,7 +13,7 @@
         android:id="@+id/topAppBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/teal_main"
+        android:background="?attr/colorPrimary"
         app:title="Calculator"
         app:titleTextColor="@color/white"
         app:navigationIcon="@drawable/ic_arrow_back" />

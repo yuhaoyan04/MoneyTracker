@@ -17,7 +17,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="?attr/actionBarSize"
-            android:background="@color/teal_main"
+            android:background="?attr/colorPrimary"
             app:title="统计"
             app:titleTextColor="@android:color/white"
             app:navigationIcon="@drawable/ic_arrow_back" />

@@ -1,13 +1,19 @@
 package com.mudasir.smartledger.activity
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.widget.EditText
+import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -31,6 +37,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var adapter: TransactionAdapter
     private var allRecords: List<TransactionRecord> = emptyList()
     private var searchQuery: String = ""
+    private var currentExpense: Double = 0.0
 
     private val locationLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -68,6 +75,11 @@ class HomeActivity : AppCompatActivity() {
                 applySearch()
             }
         })
+
+        findViewById<View>(R.id.balanceCard).setOnLongClickListener {
+            showBudgetDialog()
+            true
+        }
 
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_home)
 
@@ -129,6 +141,7 @@ class HomeActivity : AppCompatActivity() {
 
         val income = db.transactionDao().sumByType(TransactionRecord.TYPE_INCOME, start, end)
         val expense = db.transactionDao().sumByType(TransactionRecord.TYPE_EXPENSE, start, end)
+        currentExpense = expense
         val now = java.util.Calendar.getInstance()
         withContext(Dispatchers.Main) {
             findViewById<android.widget.TextView>(R.id.tvMonthLabel).text =
@@ -136,6 +149,60 @@ class HomeActivity : AppCompatActivity() {
             findViewById<android.widget.TextView>(R.id.tvBalance).text = FormatUtil.money(income - expense)
             findViewById<android.widget.TextView>(R.id.tvIncome).text = FormatUtil.money(income)
             findViewById<android.widget.TextView>(R.id.tvExpense).text = FormatUtil.money(expense)
+            updateBudgetProgress(expense)
         }
+    }
+
+    private fun updateBudgetProgress(expense: Double) {
+        val prefs = getSharedPreferences("budget_prefs", Context.MODE_PRIVATE)
+        val budget = prefs.getFloat("monthly_budget", 0f).toDouble()
+        val budgetSection = findViewById<View>(R.id.budgetSection)
+        if (budget <= 0) {
+            budgetSection.visibility = View.GONE
+            return
+        }
+        budgetSection.visibility = View.VISIBLE
+        val pct = if (budget > 0) ((expense / budget) * 100).toInt().coerceIn(0, 100) else 0
+        findViewById<TextView>(R.id.tvBudgetInfo).text =
+            "${FormatUtil.money(expense)} / ${FormatUtil.money(budget)}"
+        val bar = findViewById<ProgressBar>(R.id.budgetProgress)
+        bar.progress = pct
+        val color = when {
+            pct >= 90 -> ContextCompat.getColor(this, R.color.color_expense)
+            pct >= 70 -> android.graphics.Color.parseColor("#FFB300")
+            else -> ContextCompat.getColor(this, R.color.color_income)
+        }
+        bar.progressTintList = android.content.res.ColorStateList.valueOf(color)
+    }
+
+    private fun showBudgetDialog() {
+        val prefs = getSharedPreferences("budget_prefs", Context.MODE_PRIVATE)
+        val current = prefs.getFloat("monthly_budget", 0f)
+        val et = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            hint = "如 5000"
+            setText(if (current > 0) current.toInt().toString() else "")
+            setSelection(text.length)
+        }
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(56, 24, 56, 0)
+            addView(et)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("设置月度支出预算")
+            .setMessage("长按余额卡片可随时修改。设置后将显示进度条。")
+            .setView(container)
+            .setPositiveButton("保存") { _, _ ->
+                val value = et.text?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
+                prefs.edit().putFloat("monthly_budget", value.toFloat()).apply()
+                updateBudgetProgress(currentExpense)
+            }
+            .setNegativeButton("取消", null)
+            .setNeutralButton("清除") { _, _ ->
+                prefs.edit().remove("monthly_budget").apply()
+                updateBudgetProgress(currentExpense)
+            }
+            .show()
     }
 }
