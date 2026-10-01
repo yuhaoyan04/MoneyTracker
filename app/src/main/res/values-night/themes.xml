@@ -1,8 +1,13 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Base.Theme.SmartLedger" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/teal_dark</item>
-        <item name="colorOutline">#B0B0B0</item>
-        <item name="colorOnSurfaceVariant">#B0B0B0</item>
+        <item name="colorPrimary">@color/teal_main</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorOutline">#3A3833</item>
+        <item name="colorOnSurfaceVariant">#A8A49C</item>
+
+        <item name="android:windowBackground">@color/surface_dim</item>
+        <item name="colorSurface">@color/surface_card</item>
+        <item name="colorSurfaceVariant">@color/surface_card</item>
 
         <item name="android:windowAnimationStyle">@style/SmoothActivityAnimation</item>
 

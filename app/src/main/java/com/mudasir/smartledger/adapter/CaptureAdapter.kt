@@ -11,7 +11,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.mudasir.smartledger.R
 import com.mudasir.smartledger.data.TransactionRecord
-import com.mudasir.smartledger.util.CategoryStyle
 import com.mudasir.smartledger.util.FormatUtil
 
 class CaptureAdapter(
@@ -37,8 +36,6 @@ class CaptureAdapter(
         private val tvMerchant: TextView = view.findViewById(R.id.tvCapMerchant)
         private val tvChannel: TextView = view.findViewById(R.id.tvCapChannel)
         private val tvRaw: TextView = view.findViewById(R.id.tvCapRaw)
-        private val vCatDot: View = view.findViewById(R.id.vCatDot)
-        private val tvCatInitial: TextView = view.findViewById(R.id.tvCatInitial)
         private val btnConfirm: MaterialButton = view.findViewById(R.id.btnConfirm)
         private val btnEdit: MaterialButton = view.findViewById(R.id.btnEdit)
         private val btnDismiss: MaterialButton = view.findViewById(R.id.btnDismiss)
@@ -62,10 +59,6 @@ class CaptureAdapter(
                 .joinToString(" · ").ifBlank { "未知渠道" }
             tvRaw.text = r.rawText ?: "无原文"
             tvRaw.visibility = if (r.rawText.isNullOrBlank()) View.GONE else View.VISIBLE
-
-            val catColor = CategoryStyle.color(itemView.context, r.categoryName, parent)
-            vCatDot.background?.mutate()?.setTint(catColor)
-            tvCatInitial.text = CategoryStyle.initial(r.categoryName)
 
             btnConfirm.setOnClickListener { onConfirm(r) }
             btnEdit.setOnClickListener { onEdit(r) }

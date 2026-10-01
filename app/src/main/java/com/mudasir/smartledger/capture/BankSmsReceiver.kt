@@ -25,6 +25,27 @@ class BankSmsReceiver : BroadcastReceiver() {
 
     private val bankSignalKeywords = listOf("尾号", "银行", "信用社", "消费", "支出", "入账", "到账", "代发", "扣款", "退款")
 
+    // 新闻/内容/通知短信黑名单 —— 命中即丢弃，避免新闻被误判为交易
+    private val newsBlacklist = listOf(
+        "男子", "女子", "网友", "爆料", "报道", "新闻", "事件", "吃出", "发现",
+        "曝光", "维权", "投诉", "热搜", "刷屏", "意外", "震惊", "提醒大家",
+        "注意了", "警惕", "骗局", "诈骗", "中奖通知", "验证码", "验证", "登录",
+        "注册", "动态", "好友", "群消息", "公众号", "订阅", "取件", "快递柜",
+        "取件码", "好评返现", "邀请你", "帮你砍", "拼团成功", "助力",
+        "直播", "开播", "预告", "更新", "评论", "点赞", "关注", "粉丝",
+        "面试", "简历", "职位", "hr", "boss直聘", "拉勾", "智联",
+        "短信测试", "测试短信"
+    )
+
+    // 银行短信格式特征 —— 真正的银行交易短信通常包含这些结构化表述
+    private val bankFormatPatterns = listOf(
+        Regex("尾号\\d{4}"),
+        Regex("账户尾号\\d{4}"),
+        Regex("卡.*尾号\\d{4}"),
+        Regex("\\d{4}的卡"),
+        Regex("活期|定期|储蓄|信用|借记")
+    )
+
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
@@ -37,6 +58,13 @@ class BankSmsReceiver : BroadcastReceiver() {
         val hasMoney = body.contains("¥") || body.contains("￥") || body.contains("元")
         val hasBankSignal = bankSignalKeywords.any { body.contains(it) }
         if (!hasMoney || !hasBankSignal) return
+
+        // 新闻/内容短信过滤 —— 命中新闻关键词直接丢弃
+        val lowerBody = body.lowercase()
+        if (newsBlacklist.any { lowerBody.contains(it.lowercase()) }) return
+
+        // 银行短信格式验证 —— 至少匹配一个银行格式特征
+        if (bankFormatPatterns.none { it.containsMatchIn(body) }) return
 
         val sender = messages.firstOrNull()?.displayOriginatingAddress
         val timestamp = messages.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()

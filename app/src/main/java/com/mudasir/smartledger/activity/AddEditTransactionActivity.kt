@@ -14,8 +14,6 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.chip.Chip
-import com.google.android.material.chip.ChipGroup
 import com.google.android.material.textfield.TextInputEditText
 import com.mudasir.smartledger.R
 import com.mudasir.smartledger.data.AppDatabase
@@ -24,7 +22,6 @@ import com.mudasir.smartledger.data.PaymentChannel
 import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.ml.PersonalTagger
 import com.mudasir.smartledger.util.AutoBackupManager
-import com.mudasir.smartledger.util.CategoryStyle
 import com.mudasir.smartledger.util.FormatUtil
 import com.mudasir.smartledger.util.LocationHelper
 import kotlinx.coroutines.Dispatchers
@@ -148,170 +145,112 @@ class AddEditTransactionActivity : AppCompatActivity() {
         type: String
     ) {
         val sheet = BottomSheetDialog(this)
-        val container = LinearLayout(this).apply {
+        val ctx = sheet.context
+        val container = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 20, 24, 32)
+            setPadding(28, 24, 28, 48)
         }
-        val title = TextView(this).apply {
-            text = "选择分类"
-            textSize = 18f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setTextColor(getColor(com.mudasir.smartledger.R.color.text_primary))
-        }
-        container.addView(title)
 
-        val chipGroup = ChipGroup(this).apply {
-            isSingleSelection = true
-            chipSpacingHorizontal = 8
-            chipSpacingVertical = 8
+        // 标题
+        container.addView(TextView(ctx).apply {
+            text = "选择分类"
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(getColor(R.color.text_primary))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = 16
+            }
+        })
+
+        // 用 ScrollView 包裹列表
+        val scroll = android.widget.ScrollView(ctx).apply {
+            isFillViewport = true
         }
+        val list = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
 
         for (root in roots) {
-            val rootColor = CategoryStyle.color(this, root.name, null)
-            val rootChip = Chip(this).apply {
+            val children = childrenByRoot[root.name].orEmpty()
+
+            // 分类标题
+            list.addView(TextView(ctx).apply {
                 text = root.name
-                chipBackgroundColor = android.content.res.ColorStateList.valueOf(rootColor)
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 13f
-                isCheckable = true
-                chipCornerRadius = 20f
-                val children = childrenByRoot[root.name].orEmpty()
-                if (children.isEmpty()) {
+                textSize = 12f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(getColor(R.color.teal_main))
+                letterSpacing = 0.08f
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(16)
+                    bottomMargin = dp(4)
+                }
+            })
+
+            // 如果有子分类，逐行展示
+            if (children.isEmpty()) {
+                list.addView(TextView(ctx).apply {
+                    text = root.name
+                    textSize = 15f
+                    setTextColor(getColor(R.color.text_primary))
+                    setPadding(dp(4), dp(10), dp(4), dp(10))
+                    background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
                     setOnClickListener {
                         actvCategory.setText(root.name, false)
                         sheet.dismiss()
                     }
-                } else {
-                    setOnClickListener {
-                        chipGroup.removeAllViews()
-                        val backChip = Chip(this@AddEditTransactionActivity).apply {
-                            text = "‹ 返回"
-                            setTextColor(getColor(com.mudasir.smartledger.R.color.teal_main))
-                            isCheckable = false
-                            chipBackgroundColor = android.content.res.ColorStateList.valueOf(getColor(com.mudasir.smartledger.R.color.surface_dim))
-                            setOnClickListener { rebuildRootChips(chipGroup, roots, childrenByRoot, sheet) }
+                })
+            } else {
+                for (child in children) {
+                    list.addView(TextView(ctx).apply {
+                        text = child.name
+                        textSize = 15f
+                        setTextColor(getColor(R.color.text_primary))
+                        setPadding(dp(8), dp(10), dp(8), dp(10))
+                        background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
+                        setOnClickListener {
+                            actvCategory.setText(child.name, false)
+                            sheet.dismiss()
                         }
-                        chipGroup.addView(backChip)
-                        val useRootChip = Chip(this@AddEditTransactionActivity).apply {
-                            text = "用「$root」"
-                            chipBackgroundColor = android.content.res.ColorStateList.valueOf(rootColor)
-                            setTextColor(android.graphics.Color.WHITE)
-                            textSize = 13f
-                            isCheckable = false
-                            chipCornerRadius = 20f
-                            setOnClickListener {
-                                actvCategory.setText(root.name, false)
-                                sheet.dismiss()
-                            }
-                        }
-                        chipGroup.addView(useRootChip)
-                        for (child in children) {
-                            val childChip = Chip(this@AddEditTransactionActivity).apply {
-                                text = child.name
-                                chipBackgroundColor = android.content.res.ColorStateList.valueOf(rootColor)
-                                setTextColor(android.graphics.Color.WHITE)
-                                textSize = 13f
-                                isCheckable = true
-                                chipCornerRadius = 20f
-                                setOnClickListener {
-                                    actvCategory.setText(child.name, false)
-                                    sheet.dismiss()
-                                }
-                            }
-                            chipGroup.addView(childChip)
-                        }
-                    }
+                    })
                 }
+                // 也可以直接用父分类
+                list.addView(TextView(ctx).apply {
+                    text = "用「${root.name}」"
+                    textSize = 13f
+                    setTextColor(getColor(R.color.text_secondary))
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    setOnClickListener {
+                        actvCategory.setText(root.name, false)
+                        sheet.dismiss()
+                    }
+                })
             }
-            chipGroup.addView(rootChip)
         }
 
-        container.addView(chipGroup)
+        scroll.addView(list)
+        container.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
 
+        // 自定义输入按钮
         val customBtn = com.google.android.material.button.MaterialButton(
-            this, null, com.google.android.material.R.style.Widget_Material3_Button_TextButton
+            ctx, null, com.google.android.material.R.style.Widget_Material3_Button_TextButton
         ).apply {
             text = "自定义输入"
+            setTextColor(getColor(R.color.teal_main))
             setOnClickListener {
                 sheet.dismiss()
                 actvCategory.requestFocus()
                 actvCategory.showDropDown()
             }
         }
-        val btnParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        btnParams.topMargin = 12
-        container.addView(customBtn, btnParams)
+        container.addView(customBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(8)
+        })
 
         sheet.setContentView(container)
         sheet.show()
-    }
-
-    private fun rebuildRootChips(
-        chipGroup: ChipGroup,
-        roots: List<Category>,
-        childrenByRoot: Map<String, List<Category>>,
-        sheet: BottomSheetDialog
-    ) {
-        chipGroup.removeAllViews()
-        for (root in roots) {
-            val rootColor = CategoryStyle.color(this, root.name, null)
-            val rootChip = Chip(this).apply {
-                text = root.name
-                chipBackgroundColor = android.content.res.ColorStateList.valueOf(rootColor)
-                setTextColor(android.graphics.Color.WHITE)
-                textSize = 13f
-                isCheckable = true
-                chipCornerRadius = 20f
-                val children = childrenByRoot[root.name].orEmpty()
-                if (children.isEmpty()) {
-                    setOnClickListener {
-                        actvCategory.setText(root.name, false)
-                        sheet.dismiss()
-                    }
-                } else {
-                    setOnClickListener {
-                        chipGroup.removeAllViews()
-                        val backChip = Chip(this@AddEditTransactionActivity).apply {
-                            text = "‹ 返回"
-                            setTextColor(getColor(com.mudasir.smartledger.R.color.teal_main))
-                            isCheckable = false
-                            chipBackgroundColor = android.content.res.ColorStateList.valueOf(getColor(com.mudasir.smartledger.R.color.surface_dim))
-                            setOnClickListener { rebuildRootChips(chipGroup, roots, childrenByRoot, sheet) }
-                        }
-                        chipGroup.addView(backChip)
-                        val useRootChip = Chip(this@AddEditTransactionActivity).apply {
-                            text = "用「$root」"
-                            chipBackgroundColor = android.content.res.ColorStateList.valueOf(rootColor)
-                            setTextColor(android.graphics.Color.WHITE)
-                            textSize = 13f
-                            isCheckable = false
-                            chipCornerRadius = 20f
-                            setOnClickListener {
-                                actvCategory.setText(root.name, false)
-                                sheet.dismiss()
-                            }
-                        }
-                        chipGroup.addView(useRootChip)
-                        for (child in children) {
-                            val childChip = Chip(this@AddEditTransactionActivity).apply {
-                                text = child.name
-                                chipBackgroundColor = android.content.res.ColorStateList.valueOf(rootColor)
-                                setTextColor(android.graphics.Color.WHITE)
-                                textSize = 13f
-                                isCheckable = true
-                                chipCornerRadius = 20f
-                                setOnClickListener {
-                                    actvCategory.setText(child.name, false)
-                                    sheet.dismiss()
-                                }
-                            }
-                            chipGroup.addView(childChip)
-                        }
-                    }
-                }
-            }
-            chipGroup.addView(rootChip)
-        }
     }
 
     private fun loadForEdit(id: Long) {

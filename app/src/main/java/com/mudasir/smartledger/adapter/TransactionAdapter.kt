@@ -10,7 +10,6 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.mudasir.smartledger.R
 import com.mudasir.smartledger.data.TransactionRecord
-import com.mudasir.smartledger.util.CategoryStyle
 import com.mudasir.smartledger.util.FormatUtil
 
 class TransactionAdapter(
@@ -36,8 +35,6 @@ class TransactionAdapter(
         private val tvSubtitle: TextView = view.findViewById(R.id.tvSubtitle)
         private val tvAmount: TextView = view.findViewById(R.id.tvAmount)
         private val tvDate: TextView = view.findViewById(R.id.tvDate)
-        private val vChannelDot: View = view.findViewById(R.id.vChannelDot)
-        private val tvChannelInitial: TextView = view.findViewById(R.id.tvChannelInitial)
 
         fun bind(r: TransactionRecord) {
             val title = listOfNotNull(
@@ -66,10 +63,6 @@ class TransactionAdapter(
                 ContextCompat.getColor(itemView.context, if (r.type == TransactionRecord.TYPE_INCOME) R.color.color_income else R.color.color_expense)
             )
             tvDate.text = FormatUtil.date(r.timestamp)
-
-            val catColor = CategoryStyle.color(itemView.context, r.categoryName, parent)
-            vChannelDot.background?.mutate()?.setTint(catColor)
-            tvChannelInitial.text = CategoryStyle.initial(r.categoryName)
 
             itemView.setOnClickListener { onClick(r) }
         }

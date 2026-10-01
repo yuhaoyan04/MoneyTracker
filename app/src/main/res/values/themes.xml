@@ -1,9 +1,14 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Base.Theme.SmartLedger" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/teal_main</item>
+        <item name="colorOnPrimary">@color/white</item>
 
-        <item name="colorOutline">@color/text_secondary</item>
+        <item name="colorOutline">@color/divider</item>
         <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+
+        <item name="android:windowBackground">@color/surface_dim</item>
+        <item name="colorSurface">@color/surface_card</item>
+        <item name="colorSurfaceVariant">@color/surface_dim</item>
 
         <item name="windowActionModeOverlay">true</item>
         <item name="actionModeStyle">@style/CustomActionMode</item>
@@ -21,11 +26,9 @@
 
     <style name="CustomActionMode" parent="Widget.AppCompat.ActionMode">
         <item name="background">@color/teal_dark</item>
-
         <item name="actionModeCloseDrawable">@drawable/ic_close</item>
         <item name="android:actionModeCloseDrawable">@drawable/ic_close</item>
         <item name="closeIcon">@drawable/ic_close</item>
-
         <item name="titleTextStyle">@style/ActionModeTitle</item>
     </style>
 
@@ -35,8 +38,8 @@
     </style>
 
     <style name="Theme.App.PopupOverlay" parent="ThemeOverlay.MaterialComponents.Light">
-        <item name="android:textColor">@color/black</item>
-        <item name="android:colorBackground">@color/white</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:colorBackground">@color/surface_card</item>
     </style>
 
     <style name="App.MaterialDatePicker" parent="ThemeOverlay.Material3.MaterialCalendar">
@@ -56,7 +59,7 @@
     <style name="Theme.SmartLedger" parent="Base.Theme.SmartLedger" />
 
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/teal_main</item>
+        <item name="windowSplashScreenBackground">@color/splash_bg</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.SmartLedger</item>
     </style>
@@ -64,7 +67,7 @@
     <style name="Widget.App.TextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox">
         <item name="boxStrokeColor">@color/selector_text_input_stroke</item>
         <item name="boxStrokeWidth">1dp</item>
-        <item name="boxStrokeWidthFocused">2dp</item>
+        <item name="boxStrokeWidthFocused">1.5dp</item>
     </style>
 
     <style name="DetailHeader">
@@ -73,6 +76,8 @@
         <item name="android:layout_marginTop">16dp</item>
         <item name="android:textColor">@color/teal_main</item>
         <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.05</item>
     </style>
 
     <style name="DetailValue">

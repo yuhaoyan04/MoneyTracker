@@ -5,33 +5,28 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
+    android:background="@color/surface_dim"
     tools:context=".activity.HomeActivity">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appBar"
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/topAppBar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent"
-        app:liftOnScroll="true">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/topAppBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="?attr/actionBarSize"
-            app:title="智能账本"
-            app:titleTextColor="@android:color/white"
-            app:subtitle="自动记录你的每一笔收支"
-            app:subtitleTextColor="@color/teal_light" />
-    </com.google.android.material.appbar.AppBarLayout>
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/surface_dim"
+        app:title="账本"
+        app:titleTextColor="@color/text_primary"
+        app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
+        app:subtitle="自动记录每一笔收支"
+        app:subtitleTextColor="@color/text_secondary"
+        app:subtitleTextAppearance="@style/TextAppearance.Material3.BodySmall"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/scroll"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:fillViewport="true"
-        app:layout_constraintTop_toBottomOf="@id/appBar"
+        app:layout_constraintTop_toBottomOf="@id/topAppBar"
         app:layout_constraintBottom_toTopOf="@id/bottomNav"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -42,17 +37,18 @@
             android:orientation="vertical"
             android:paddingBottom="24dp">
 
-            <!-- 本月收支概览 — 渐变卡片 -->
+            <!-- 本月收支概览 — 白底极简卡片 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/balanceCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
-                android:layout_marginTop="16dp"
-                app:cardCornerRadius="24dp"
-                app:cardElevation="4dp"
-                app:strokeWidth="0dp"
-                app:cardBackgroundColor="@color/teal_main">
+                android:layout_marginTop="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="@color/divider"
+                app:cardBackgroundColor="@color/surface_card">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -65,9 +61,10 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="本月结余"
-                        android:textColor="#B2DFDB"
-                        android:textSize="13sp"
-                        android:letterSpacing="0.05" />
+                        android:textColor="@color/teal_main"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.08" />
 
                     <TextView
                         android:id="@+id/tvBalance"
@@ -75,8 +72,8 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="¥0.00"
-                        android:textColor="@android:color/white"
-                        android:textSize="34sp"
+                        android:textColor="@color/text_primary"
+                        android:textSize="36sp"
                         android:textStyle="bold"
                         android:letterSpacing="-0.02" />
 
@@ -84,7 +81,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
                         android:layout_marginVertical="16dp"
-                        android:background="#22FFFFFF" />
+                        android:background="@color/divider" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -101,7 +98,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="收入"
-                                android:textColor="#B2DFDB"
+                                android:textColor="@color/text_secondary"
                                 android:textSize="12sp" />
 
                             <TextView
@@ -110,8 +107,8 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
                                 android:text="¥0"
-                                android:textColor="@android:color/white"
-                                android:textSize="17sp"
+                                android:textColor="@color/text_primary"
+                                android:textSize="16sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -125,7 +122,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="支出"
-                                android:textColor="#B2DFDB"
+                                android:textColor="@color/text_secondary"
                                 android:textSize="12sp" />
 
                             <TextView
@@ -134,8 +131,8 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
                                 android:text="¥0"
-                                android:textColor="@android:color/white"
-                                android:textSize="17sp"
+                                android:textColor="@color/text_primary"
+                                android:textSize="16sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -150,7 +147,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="待确认"
-                                android:textColor="#B2DFDB"
+                                android:textColor="@color/text_secondary"
                                 android:textSize="12sp" />
 
                             <TextView
@@ -159,8 +156,8 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
                                 android:text="0"
-                                android:textColor="@android:color/white"
-                                android:textSize="17sp"
+                                android:textColor="@color/teal_main"
+                                android:textSize="16sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
                     </LinearLayout>
@@ -183,7 +180,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="月度预算"
-                                android:textColor="#B2DFDB"
+                                android:textColor="@color/text_secondary"
                                 android:textSize="12sp" />
 
                             <TextView
@@ -193,7 +190,7 @@
                                 android:layout_weight="1"
                                 android:gravity="end"
                                 android:text="¥0 / ¥0"
-                                android:textColor="@android:color/white"
+                                android:textColor="@color/text_primary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
@@ -202,7 +199,7 @@
                             android:id="@+id/budgetProgress"
                             style="@android:style/Widget.ProgressBar.Horizontal"
                             android:layout_width="match_parent"
-                            android:layout_height="6dp"
+                            android:layout_height="4dp"
                             android:layout_marginTop="8dp"
                             android:max="100"
                             android:progress="0"
@@ -220,13 +217,15 @@
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="16dp"
                 app:startIconDrawable="@drawable/ic_search"
-                app:boxCornerRadiusTopStart="28dp"
-                app:boxCornerRadiusTopEnd="28dp"
-                app:boxCornerRadiusBottomStart="28dp"
-                app:boxCornerRadiusBottomEnd="28dp"
-                app:boxStrokeWidth="0dp"
-                app:boxStrokeWidthFocused="1dp"
-                app:hintEnabled="false">
+                app:boxCornerRadiusTopStart="12dp"
+                app:boxCornerRadiusTopEnd="12dp"
+                app:boxCornerRadiusBottomStart="12dp"
+                app:boxCornerRadiusBottomEnd="12dp"
+                app:boxStrokeWidth="1dp"
+                app:boxStrokeWidthFocused="1.5dp"
+                app:boxStrokeColor="@color/divider"
+                app:hintEnabled="false"
+                app:boxBackgroundColor="@color/surface_card">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etSearch"
@@ -236,7 +235,8 @@
                     android:inputType="text"
                     android:imeOptions="actionSearch"
                     android:maxLines="1"
-                    android:textSize="14sp" />
+                    android:textSize="14sp"
+                    android:textColor="@color/text_primary" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <!-- 最近交易标题 -->
@@ -254,8 +254,8 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="最近交易"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -288,10 +288,10 @@
                 android:visibility="gone">
 
                 <ImageView
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
                     android:src="@drawable/ic_receipt"
-                    android:alpha="0.3"
+                    android:alpha="0.25"
                     app:tint="?attr/colorOnSurface" />
 
                 <TextView
@@ -300,7 +300,7 @@
                     android:layout_marginTop="16dp"
                     android:text="还没有交易记录"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <TextView
