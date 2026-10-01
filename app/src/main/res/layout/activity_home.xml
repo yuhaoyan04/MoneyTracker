@@ -278,17 +278,41 @@
                 android:clipToPadding="false"
                 android:paddingBottom="8dp" />
 
-            <TextView
+            <LinearLayout
                 android:id="@+id/tvEmptyRecent"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="56dp"
                 android:gravity="center"
-                android:text="还没有交易记录\n点击下方按钮添加，或在设置中开启自动抓取"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
-                android:lineSpacingExtra="4dp"
-                android:visibility="gone" />
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_receipt"
+                    android:alpha="0.3"
+                    app:tint="?attr/colorOnSurface" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="还没有交易记录"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:gravity="center"
+                    android:text="点击「记一笔」添加，或在设置中开启自动抓取"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp"
+                    android:lineSpacingExtra="4dp" />
+            </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

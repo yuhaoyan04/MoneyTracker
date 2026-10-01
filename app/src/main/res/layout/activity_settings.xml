@@ -138,6 +138,14 @@
                         android:layout_marginTop="8dp"
                         android:text="从备份恢复" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnExportCsv"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="导出 CSV（全部交易）" />
+
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"

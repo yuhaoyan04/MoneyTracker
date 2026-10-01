@@ -2,6 +2,7 @@
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
@@ -19,10 +20,14 @@ import com.mudasir.smartledger.util.AiSettings
 import com.mudasir.smartledger.util.AutoBackupManager
 import com.mudasir.smartledger.util.BackupWorker
 import com.mudasir.smartledger.util.BottomNavHelper
+import com.mudasir.smartledger.util.FormatUtil
 import com.mudasir.smartledger.util.PermissionHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -30,6 +35,12 @@ class SettingsActivity : AppCompatActivity() {
 
     private val smsLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         refreshPermissionStatus()
+    }
+
+    private val csvExportLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        uri?.let { exportCsv(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,6 +62,10 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.btnBackupNow).setOnClickListener { doBackup() }
         findViewById<View>(R.id.btnRestore).setOnClickListener { doRestore() }
+        findViewById<View>(R.id.btnExportCsv).setOnClickListener {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            csvExportLauncher.launch("SmartLedger_${sdf.format(Date())}.csv")
+        }
         findViewById<View>(R.id.btnClearExpense).setOnClickListener { confirmClear(TransactionRecord.TYPE_EXPENSE, "支出") }
         findViewById<View>(R.id.btnClearIncome).setOnClickListener { confirmClear(TransactionRecord.TYPE_INCOME, "收入") }
 
@@ -145,4 +160,43 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun getColorCompat(resId: Int): Int = androidx.core.content.ContextCompat.getColor(this, resId)
+
+    private fun exportCsv(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val records = db.transactionDao().getActiveRaw()
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                val sb = StringBuilder()
+                sb.append("日期,类型,金额,分类,渠道,支付方式,商户,备注,地点\n")
+                for (r in records) {
+                    sb.append(sdf.format(Date(r.timestamp))).append(",")
+                    sb.append(if (r.type == TransactionRecord.TYPE_EXPENSE) "支出" else "收入").append(",")
+                    sb.append(r.amount).append(",")
+                    sb.append(escapeCsv(r.categoryName)).append(",")
+                    sb.append(escapeCsv(r.channelName)).append(",")
+                    sb.append(escapeCsv(r.paymentMethod ?: "")).append(",")
+                    sb.append(escapeCsv(r.merchant ?: "")).append(",")
+                    sb.append(escapeCsv(r.note ?: "")).append(",")
+                    sb.append(escapeCsv(r.locationName ?: "")).append("\n")
+                }
+                contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+                    out.write(sb.toString().toByteArray(Charsets.UTF_8))
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@SettingsActivity, "已导出 ${records.size} 条交易记录", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@SettingsActivity, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun escapeCsv(s: String): String {
+        return if (s.contains(",") || s.contains("\"") || s.contains("\n")) {
+            "\"${s.replace("\"", "\"\"")}\""
+        } else s
+    }
 }
