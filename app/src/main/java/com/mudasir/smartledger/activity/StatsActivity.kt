@@ -1,5 +1,6 @@
 package com.mudasir.smartledger.activity
 
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -10,7 +11,6 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewTreeObserver
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -45,7 +45,6 @@ import com.mudasir.smartledger.util.AiHelper
 import com.mudasir.smartledger.util.AiSettings
 import com.mudasir.smartledger.util.BottomNavHelper
 import com.mudasir.smartledger.util.FormatUtil
-import com.mudasir.smartledger.util.ThemeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,15 +83,35 @@ class StatsActivity : AppCompatActivity() {
     private var currentDataAgg: DataAgg = DataAgg.DAY
     private var trendLoaded = false
     private var suppressAgg = false
+
+    // 语义化色板：大类 → 基色
+    private val rootColorMap = mapOf(
+        "餐饮" to "#FF7043", "交通" to "#29B6F6", "网购" to "#AB47BC",
+        "日用" to "#66BB6A", "娱乐" to "#FFCA28", "医疗" to "#EF5350",
+        "居住" to "#78909C", "通讯" to "#26A69A", "教育" to "#5C6BC0",
+        "其他" to "#90A4AE",
+        "工资" to "#66BB6A", "理财" to "#26A69A", "红包" to "#EF5350",
+        "退款" to "#29B6F6", "其他收入" to "#90A4AE"
+    )
+    private val fallbackPalette = intArrayOf(
+        Color.parseColor("#FF7043"), Color.parseColor("#29B6F6"), Color.parseColor("#AB47BC"),
+        Color.parseColor("#66BB6A"), Color.parseColor("#FFCA28"), Color.parseColor("#EF5350"),
+        Color.parseColor("#78909C"), Color.parseColor("#26A69A"), Color.parseColor("#5C6BC0"),
+        Color.parseColor("#90A4AE")
+    )
+
+    // 趋势图主题色
+    private val trendLineColor = Color.parseColor("#FF5252")
+    private val trendFillTop = Color.parseColor("#33FF5252")
+    private val trendFillBottom = Color.parseColor("#05FF5252")
+
+    // 待渲染数据
+    private data class PendingLineData(val entries: List<Entry>, val labels: List<String>, val total: Float, val agg: DataAgg)
+    private data class PendingBarData(val byHour: FloatArray, val total: Float)
     private var pendingLineData: Any? = null
     private var pendingBarData: Any? = null
 
-    private val palette = intArrayOf(
-        Color.parseColor("#F44336"), Color.parseColor("#2196F3"), Color.parseColor("#9C27B0"),
-        Color.parseColor("#4CAF50"), Color.parseColor("#FF9800"), Color.parseColor("#009688"),
-        Color.parseColor("#795548"), Color.parseColor("#607D8B"), Color.parseColor("#E91E63"),
-        Color.parseColor("#3F51B5"), Color.parseColor("#FFC107"), Color.parseColor("#673AB7")
-    )
+    // ===== Lifecycle =====
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -116,9 +135,11 @@ class StatsActivity : AppCompatActivity() {
             if (!isChecked) return@addOnButtonCheckedListener
             sectionCategory.visibility = if (checkedId == R.id.btnDimCategory) View.VISIBLE else View.GONE
             sectionTrend.visibility = if (checkedId == R.id.btnDimTrend) View.VISIBLE else View.GONE
-            if (checkedId == R.id.btnDimTrend && !trendLoaded) {
-                trendLoaded = true
-                updateAggUI()
+            if (checkedId == R.id.btnDimTrend) {
+                if (!trendLoaded) {
+                    trendLoaded = true
+                    updateAggUI()
+                }
                 loadTrend()
             }
         }
@@ -128,7 +149,6 @@ class StatsActivity : AppCompatActivity() {
             renderPie(); renderBreakdown()
         }
 
-        // 时间范围切换
         findViewById<MaterialButtonToggleGroup>(R.id.toggleRange).addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             currentTimeRange = when (checkedId) {
@@ -143,7 +163,6 @@ class StatsActivity : AppCompatActivity() {
             loadTrend()
         }
 
-        // 数据粒度切换
         toggleAgg.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked || suppressAgg) return@addOnButtonCheckedListener
             currentDataAgg = when (checkedId) {
@@ -160,11 +179,23 @@ class StatsActivity : AppCompatActivity() {
         load()
     }
 
+    override fun onResume() {
+        super.onResume()
+        load()
+        if (trendLoaded && sectionTrend.visibility == View.VISIBLE) {
+            loadTrend()
+        }
+    }
+
+    // ===== Navigation =====
+
     private fun shiftMonth(delta: Int) {
         cal.set(year, month, 1); cal.add(Calendar.MONTH, delta)
         year = cal.get(Calendar.YEAR); month = cal.get(Calendar.MONTH)
         load()
     }
+
+    // ===== Category helpers =====
 
     private fun parentOf(catByName: Map<String, Category>, name: String): String {
         val raw = name.ifBlank { "未分类" }
@@ -214,7 +245,7 @@ class StatsActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 月度分类数据 ----
+    // ===== Data loading =====
 
     private fun load() {
         findViewById<TextView>(R.id.tvMonth).text = FormatUtil.monthLabel(year, month)
@@ -232,7 +263,7 @@ class StatsActivity : AppCompatActivity() {
                 .groupBy { parentOf(catByName, it.categoryName) }
                 .map { (k, v) -> k to v.sumOf { it.amount } }.sortedByDescending { it.second }
             val pieRoots = (expenseByCat.map { it.first } + incomeByCat.map { it.first }).distinct()
-            catColors = buildUniqueColors(pieRoots)
+            catColors = buildSemanticColors(pieRoots)
             withContext(Dispatchers.Main) {
                 if (isFinishing || isDestroyed) return@withContext
                 findViewById<TextView>(R.id.tvSumIncome).text = FormatUtil.money(totalIncome)
@@ -244,17 +275,20 @@ class StatsActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildUniqueColors(roots: List<String>): Map<String, Int> {
-        val used = mutableSetOf<Int>(); val result = mutableMapOf<String, Int>(); var idx = 0
+    private fun buildSemanticColors(roots: List<String>): Map<String, Int> {
+        val result = mutableMapOf<String, Int>()
+        var idx = 0
         for (root in roots) {
-            var c = palette[idx % palette.size]
-            while (c in used) { idx++; c = palette[idx % palette.size] }
-            used.add(c); result[root] = c; idx++
+            val hex = rootColorMap[root]
+            if (hex != null) {
+                result[root] = Color.parseColor(hex)
+            } else {
+                result[root] = fallbackPalette[idx % fallbackPalette.size]
+                idx++
+            }
         }
         return result
     }
-
-    // ---- 趋势数据 ----
 
     private fun loadTrend() {
         val range = currentTimeRange; val agg = currentDataAgg
@@ -356,25 +390,47 @@ class StatsActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 渲染：饼图 ----
+    // ===== Pie Chart =====
 
     private fun renderPie() {
         try {
             val data = if (pieModeExpense) expenseByCat else incomeByCat
-            if (data.isEmpty()) { pieChart.clear(); pieChart.setNoDataText("暂无数据"); return }
+            if (data.isEmpty()) {
+                pieChart.clear()
+                pieChart.setNoDataText("暂无数据")
+                pieChart.setNoDataTextColor(chartTextColor())
+                return
+            }
             val total = data.sumOf { it.second }
             val entries = data.map { (name, amt) -> PieEntry(amt.toFloat(), name) }
-            val colorList: List<Int> = data.mapIndexed { i, (name, _) -> catColors[name] ?: palette[i % palette.size] }
-            val set = PieDataSet(entries, "").apply {
-                setColors(colorList); setDrawValues(true); valueLineColor = Color.TRANSPARENT
-                sliceSpace = 2f; selectionShift = 6f
+            val colorList = data.mapIndexed { i, (name, _) ->
+                catColors[name] ?: fallbackPalette[i % fallbackPalette.size]
             }
+
+            val set = PieDataSet(entries, "").apply {
+                setColors(colorList)
+                setDrawValues(true)
+                valueLineColor = Color.TRANSPARENT
+                sliceSpace = 3f
+                selectionShift = 8f
+                setAutomaticallyDisableSliceSpacing(true)
+            }
+
             pieChart.apply {
                 this.data = PieData(set).apply {
-                    setValueFormatter(PercentFormatter(pieChart)); setValueTextSize(11f); setValueTextColor(Color.WHITE)
+                    setValueFormatter(PercentFormatter(pieChart))
+                    setValueTextSize(11f)
+                    setValueTextColor(Color.WHITE)
                 }
-                description.isEnabled = false; setUsePercentValues(true); setHoleColor(Color.TRANSPARENT)
-                holeRadius = 45f; transparentCircleRadius = 50f; setDrawEntryLabels(false)
+                description.isEnabled = false
+                setUsePercentValues(true)
+                setHoleColor(Color.TRANSPARENT)
+                holeRadius = 42f
+                transparentCircleRadius = 47f
+                setTransparentCircleColor(Color.WHITE)
+                setTransparentCircleAlpha(50)
+                setDrawEntryLabels(false)
+                setExtraOffsets(8f, 8f, 8f, 8f)
                 val centerLabel = if (pieModeExpense) "总支出" else "总收入"
                 centerText = SpannableString("$centerLabel\n${FormatUtil.money(total)}").apply {
                     setSpan(RelativeSizeSpan(0.75f), 0, centerLabel.length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
@@ -382,13 +438,22 @@ class StatsActivity : AppCompatActivity() {
                     setSpan(StyleSpan(Typeface.BOLD), centerLabel.length, length, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                 }
                 setDrawCenterText(true)
+                setCenterTextSize(14f)
                 legend.apply {
-                    isEnabled = true; verticalAlignment = Legend.LegendVerticalAlignment.BOTTOM
+                    isEnabled = true
+                    verticalAlignment = Legend.LegendVerticalAlignment.BOTTOM
                     horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
-                    orientation = Legend.LegendOrientation.HORIZONTAL; setDrawInside(false)
-                    textSize = 11f; form = Legend.LegendForm.CIRCLE; xEntrySpace = 12f; textColor = currentTextColor()
+                    orientation = Legend.LegendOrientation.HORIZONTAL
+                    setDrawInside(false)
+                    textSize = 11f
+                    form = Legend.LegendForm.CIRCLE
+                    formSize = 9f
+                    xEntrySpace = 10f
+                    yEntrySpace = 4f
+                    textColor = chartTextColor()
                 }
-                animateY(600); invalidate()
+                animateY(700)
+                invalidate()
             }
         } catch (e: Exception) { pieChart.clear() }
     }
@@ -405,7 +470,7 @@ class StatsActivity : AppCompatActivity() {
             v.findViewById<TextView>(R.id.tvName).text = name
             v.findViewById<TextView>(R.id.tvAmount).text = FormatUtil.money(amt)
             v.findViewById<TextView>(R.id.tvPercent).text = "$pct%"
-            val color = catColors[name] ?: palette[i % palette.size]
+            val color = catColors[name] ?: fallbackPalette[i % fallbackPalette.size]
             v.findViewById<View>(R.id.vDot).background?.mutate()?.setTint(color)
             val bar = v.findViewById<ProgressBar>(R.id.progress)
             bar.max = 100; bar.progress = pct
@@ -414,54 +479,58 @@ class StatsActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 渲染：趋势折线图 ----
-
-    private data class PendingLineData(val entries: List<Entry>, val labels: List<String>, val total: Float, val agg: DataAgg)
+    // ===== Line Chart =====
 
     private fun renderLineChart(entries: List<Entry>, labels: List<String>, total: Float, agg: DataAgg) {
-        if (entries.isEmpty()) { lineChart.clear(); lineChart.setNoDataText("暂无数据"); return }
-        lineChart.visibility = View.VISIBLE; barChartHourly.visibility = View.GONE
-        pendingLineData = PendingLineData(entries, labels, total, agg)
-        doRenderLineChart()
-    }
-
-    private fun doRenderLineChart() {
-        val pd = pendingLineData as? PendingLineData ?: return
-        if (lineChart.width == 0 || lineChart.height == 0) {
-            val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
-                override fun onGlobalLayout() {
-                    if (lineChart.width > 0 && lineChart.height > 0) {
-                        lineChart.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                        doRenderLineChart()
-                    }
-                }
-            }
-            lineChart.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        if (entries.isEmpty()) {
+            lineChart.clear()
+            lineChart.setNoDataText("暂无数据")
+            lineChart.setNoDataTextColor(chartTextColor())
             return
         }
+        lineChart.visibility = View.VISIBLE
+        barChartHourly.visibility = View.GONE
+        pendingLineData = PendingLineData(entries, labels, total, agg)
+        doRenderLineChart(0)
+    }
+
+    private fun doRenderLineChart(retry: Int) {
+        val pd = pendingLineData as? PendingLineData ?: return
+        if (pd.entries.isEmpty()) return
+
+        if (lineChart.width == 0 || lineChart.height == 0) {
+            if (retry < 20) {
+                lineChart.postDelayed({ doRenderLineChart(retry + 1) }, 50L)
+            }
+            return
+        }
+
         try {
             val entries = pd.entries; val labels = pd.labels; val total = pd.total; val agg = pd.agg
             val isManyPoints = entries.size > 30
-            val tc = currentTextColor()
-            val gc = Color.parseColor("#40888888")
-            val legendLabel = when (agg) { DataAgg.DAY -> "每日支出"; DataAgg.WEEK -> "每周支出"; DataAgg.MONTH -> "每月支出"; DataAgg.QUARTER -> "每季支出" }
+            val tc = chartTextColor()
+            val gc = Color.parseColor("#30808080")
+            val legendLabel = when (agg) {
+                DataAgg.DAY -> "每日支出"; DataAgg.WEEK -> "每周支出"
+                DataAgg.MONTH -> "每月支出"; DataAgg.QUARTER -> "每季支出"
+            }
 
             val set = LineDataSet(entries, "$legendLabel  ${FormatUtil.money(total.toDouble())}").apply {
-                color = Color.parseColor("#F44336")
-                lineWidth = if (isManyPoints) 1f else 2f
+                color = trendLineColor
+                lineWidth = if (isManyPoints) 1.2f else 2.5f
                 setDrawCircles(true)
-                circleRadius = if (isManyPoints) 1.5f else 3f
-                circleHoleRadius = if (isManyPoints) 0f else 1.5f
-                setCircleColor(Color.parseColor("#F44336"))
+                circleRadius = if (isManyPoints) 1.5f else 4f
+                circleHoleRadius = if (isManyPoints) 0f else 2f
+                setCircleColor(trendLineColor)
                 setDrawValues(false)
                 setDrawFilled(true)
                 fillDrawable = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(Color.parseColor("#33F44336"), Color.parseColor("#05F44336")))
+                    intArrayOf(trendFillTop, trendFillBottom))
                 mode = if (isManyPoints) LineDataSet.Mode.LINEAR else LineDataSet.Mode.CUBIC_BEZIER
-                cubicIntensity = 0.15f
+                cubicIntensity = 0.2f
                 setHighlightEnabled(true)
-                setHighLightColor(Color.parseColor("#88F44336"))
-                highlightLineWidth = 1f
+                setHighLightColor(Color.parseColor("#80FF5252"))
+                highlightLineWidth = 1.5f
                 setDrawHorizontalHighlightIndicator(false)
             }
 
@@ -470,118 +539,203 @@ class StatsActivity : AppCompatActivity() {
                 description.isEnabled = false
                 setDrawGridBackground(false)
                 setBackgroundColor(Color.TRANSPARENT)
-                setExtraOffsets(10f, 14f, 10f, 10f)
+                setExtraOffsets(8f, 12f, 8f, 8f)
                 setTouchEnabled(true)
                 setDragEnabled(isManyPoints)
-                setScaleEnabled(false); setPinchZoom(false)
+                setScaleEnabled(false)
+                setPinchZoom(false)
                 if (isManyPoints) setVisibleXRangeMaximum(60f)
+                setNoDataText("暂无数据")
+                setNoDataTextColor(tc)
 
                 xAxis.apply {
                     position = XAxis.XAxisPosition.BOTTOM
-                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f
-                    setDrawAxisLine(true); axisLineColor = gc
-                    setDrawLabels(true); textColor = tc; textSize = 13f; granularity = 1f
-                    labelCount = if (entries.size <= 12) entries.size else if (entries.size <= 30) 8 else 6
-                    labelRotationAngle = if (entries.size > 12) -30f else 0f
+                    setDrawGridLines(true)
+                    gridColor = gc
+                    gridLineWidth = 0.5f
+                    setDrawAxisLine(true)
+                    axisLineColor = gc
+                    setDrawLabels(true)
+                    textColor = tc
+                    textSize = 13f
+                    granularity = 1f
+                    labelCount = when {
+                        entries.size <= 7 -> entries.size
+                        entries.size <= 14 -> 7
+                        entries.size <= 30 -> 6
+                        else -> 5
+                    }
+                    labelRotationAngle = if (entries.size > 10) -25f else 0f
                     valueFormatter = object : ValueFormatter() {
-                        override fun getFormattedValue(value: Float): String = labels.getOrElse(value.toInt()) { "" }
+                        override fun getFormattedValue(value: Float): String {
+                            return labels.getOrElse(value.toInt()) { "" }
+                        }
                     }
                 }
+
                 axisLeft.apply {
-                    setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
-                    textColor = tc; textSize = 13f
-                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
-                    setDrawAxisLine(true); axisLineColor = gc
+                    setDrawLabels(true)
+                    valueFormatter = AxisMoneyFormatter()
+                    textColor = tc
+                    textSize = 13f
+                    setDrawGridLines(true)
+                    gridColor = gc
+                    gridLineWidth = 0.5f
+                    axisMinimum = 0f
+                    setDrawAxisLine(true)
+                    axisLineColor = gc
+                    setDrawZeroLine(true)
+                    zeroLineColor = gc
                 }
+
                 axisRight.isEnabled = false
+
                 legend.apply {
                     isEnabled = true
                     verticalAlignment = Legend.LegendVerticalAlignment.TOP
                     horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
                     setDrawInside(false)
-                    form = Legend.LegendForm.SQUARE; formSize = 10f
-                    textSize = 13f; textColor = tc
+                    form = Legend.LegendForm.SQUARE
+                    formSize = 10f
+                    xEntrySpace = 8f
+                    textSize = 13f
+                    textColor = tc
                 }
+
                 notifyDataSetChanged()
                 requestLayout()
-                animateX(800); invalidate()
+                animateX(800)
+                invalidate()
             }
-        } catch (e: Exception) { lineChart.clear() }
+        } catch (e: Exception) {
+            lineChart.clear()
+        }
     }
 
-    // ---- 渲染：小时柱状图 ----
-
-    private data class PendingBarData(val byHour: FloatArray, val total: Float)
+    // ===== Bar Chart (hourly) =====
 
     private fun renderHourly(byHour: FloatArray, total: Float) {
-        lineChart.visibility = View.GONE; barChartHourly.visibility = View.VISIBLE
+        lineChart.visibility = View.GONE
+        barChartHourly.visibility = View.VISIBLE
         pendingBarData = PendingBarData(byHour, total)
-        doRenderHourly()
+        doRenderHourly(0)
     }
 
-    private fun doRenderHourly() {
+    private fun doRenderHourly(retry: Int) {
         val pd = pendingBarData as? PendingBarData ?: return
+
         if (barChartHourly.width == 0 || barChartHourly.height == 0) {
-            val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
-                override fun onGlobalLayout() {
-                    if (barChartHourly.width > 0 && barChartHourly.height > 0) {
-                        barChartHourly.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                        doRenderHourly()
-                    }
-                }
+            if (retry < 20) {
+                barChartHourly.postDelayed({ doRenderHourly(retry + 1) }, 50L)
             }
-            barChartHourly.viewTreeObserver.addOnGlobalLayoutListener(listener)
             return
         }
+
         try {
             val byHour = pd.byHour; val total = pd.total
-            val tc = currentTextColor()
-            val gc = Color.parseColor("#40888888")
+            val tc = chartTextColor()
+            val gc = Color.parseColor("#30808080")
             val entries = (0..23).map { BarEntry(it.toFloat(), byHour[it]) }
+
             val set = BarDataSet(entries, "每小时支出  ${FormatUtil.money(total.toDouble())}").apply {
-                color = Color.parseColor("#F44336")
+                color = trendLineColor
                 setGradientColor(Color.parseColor("#FF8A80"), Color.parseColor("#C62828"))
                 setDrawValues(false)
+                setHighlightEnabled(true)
+                setHighLightColor(Color.parseColor("#80FF5252"))
             }
+
             barChartHourly.apply {
                 data = BarData(set).apply { barWidth = 0.6f }
-                description.isEnabled = false; setFitBars(true)
-                setExtraOffsets(10f, 14f, 10f, 10f)
+                description.isEnabled = false
+                setFitBars(true)
+                setExtraOffsets(8f, 12f, 8f, 8f)
+                setTouchEnabled(true)
+                setDrawGridBackground(false)
+                setBackgroundColor(Color.TRANSPARENT)
+                setNoDataText("暂无数据")
+                setNoDataTextColor(tc)
+
                 xAxis.apply {
-                    position = XAxis.XAxisPosition.BOTTOM; granularity = 1f; setDrawGridLines(false)
-                    setDrawAxisLine(true); axisLineColor = gc
-                    setDrawLabels(true); textColor = tc; textSize = 13f; labelCount = 8
+                    position = XAxis.XAxisPosition.BOTTOM
+                    granularity = 1f
+                    setDrawGridLines(false)
+                    setDrawAxisLine(true)
+                    axisLineColor = gc
+                    setDrawLabels(true)
+                    textColor = tc
+                    textSize = 13f
+                    labelCount = 8
                     valueFormatter = object : ValueFormatter() {
-                        override fun getFormattedValue(value: Float): String = "${value.toInt()}时"
+                        override fun getFormattedValue(value: Float): String {
+                            return "${value.toInt()}时"
+                        }
                     }
                 }
+
                 axisLeft.apply {
-                    setDrawLabels(true); valueFormatter = AxisMoneyFormatter()
-                    textColor = tc; textSize = 13f
-                    setDrawGridLines(true); gridColor = gc; gridLineWidth = 0.5f; axisMinimum = 0f
-                    setDrawAxisLine(true); axisLineColor = gc
+                    setDrawLabels(true)
+                    valueFormatter = AxisMoneyFormatter()
+                    textColor = tc
+                    textSize = 13f
+                    setDrawGridLines(true)
+                    gridColor = gc
+                    gridLineWidth = 0.5f
+                    axisMinimum = 0f
+                    setDrawAxisLine(true)
+                    axisLineColor = gc
+                    setDrawZeroLine(true)
+                    zeroLineColor = gc
                 }
+
                 axisRight.isEnabled = false
+
                 legend.apply {
-                    isEnabled = true; verticalAlignment = Legend.LegendVerticalAlignment.TOP
-                    horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER; setDrawInside(false)
-                    form = Legend.LegendForm.SQUARE; formSize = 10f; textSize = 13f; textColor = tc
+                    isEnabled = true
+                    verticalAlignment = Legend.LegendVerticalAlignment.TOP
+                    horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
+                    setDrawInside(false)
+                    form = Legend.LegendForm.SQUARE
+                    formSize = 10f
+                    xEntrySpace = 8f
+                    textSize = 13f
+                    textColor = tc
                 }
+
                 notifyDataSetChanged()
                 requestLayout()
-                animateY(500); invalidate()
+                animateY(600)
+                invalidate()
             }
-        } catch (e: Exception) { barChartHourly.clear() }
+        } catch (e: Exception) {
+            barChartHourly.clear()
+        }
     }
 
-    // ---- 工具 ----
+    // ===== Helpers =====
 
-    private fun currentTextColor(): Int = ThemeColor.onSurface(this)
+    private fun chartTextColor(): Int {
+        val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        return if (nightMode == Configuration.UI_MODE_NIGHT_YES) {
+            Color.parseColor("#E0E0E0")
+        } else {
+            Color.parseColor("#424242")
+        }
+    }
+
+    // ===== AI =====
 
     private fun runAiAnalysis() {
         val config = AiSettings.currentConfig(this)
-        if (!config.isReady) { Toast.makeText(this, "请先在设置中配置 AI API Key", Toast.LENGTH_LONG).show(); return }
-        val loading = AlertDialog.Builder(this).setTitle("AI 智能分析").setMessage("正在生成本月洞察，请稍候…").setCancelable(false).create()
+        if (!config.isReady) {
+            Toast.makeText(this, "请先在设置中配置 AI API Key", Toast.LENGTH_LONG).show()
+            return
+        }
+        val loading = AlertDialog.Builder(this)
+            .setTitle("AI 智能分析")
+            .setMessage("正在生成本月洞察，请稍候…")
+            .setCancelable(false)
+            .create()
         loading.show()
         lifecycleScope.launch(Dispatchers.IO) {
             val (start, end) = FormatUtil.monthRange(year, month)
@@ -590,7 +744,8 @@ class StatsActivity : AppCompatActivity() {
             val result = AiHelper.getInsight("transactions", summary, config)
             withContext(Dispatchers.Main) {
                 if (isFinishing || isDestroyed) return@withContext
-                loading.dismiss(); showAiDialog(result)
+                loading.dismiss()
+                showAiDialog(result)
             }
         }
     }
@@ -606,7 +761,7 @@ class StatsActivity : AppCompatActivity() {
             val v = value.toDouble()
             return when {
                 v <= 0 -> ""
-                v >= 10000 -> String.format("%.0f万", v / 10000)
+                v >= 10000 -> String.format("%.1f万", v / 10000)
                 v >= 1000 -> String.format("%.0f", v)
                 else -> String.format("%.0f", v)
             }
