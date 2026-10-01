@@ -40,7 +40,11 @@ class CustomDailyActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_custom_daily)
 
-        ledger = intent.getSerializableExtra("ledger_template") as CustomLedger
+        ledger = (intent.getSerializableExtra("ledger_template") as? CustomLedger) ?: run {
+            Toast.makeText(this, "数据错误", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
         record = intent.getSerializableExtra("daily_record") as? CustomDailyRecord
 
         setupInsets()

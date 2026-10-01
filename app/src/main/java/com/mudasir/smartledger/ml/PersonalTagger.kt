@@ -43,6 +43,8 @@ object PersonalTagger {
     private const val HIGH_CONFIDENCE = 0.7f
     private const val DECAY_HALF_LIFE_DAYS = 90.0
 
+    private val lock = Any()
+
     data class CatStat(
         var count: Int = 0,
         var sumAmount: Double = 0.0,
@@ -69,7 +71,7 @@ object PersonalTagger {
 
     private fun file(context: Context) = java.io.File(context.applicationContext.filesDir, FILE)
 
-    private fun load(context: Context): Model {
+    private fun loadImpl(context: Context): Model {
         return try {
             val raw = file(context).readText()
             val type = object : TypeToken<Model>() {}.type
@@ -90,7 +92,7 @@ object PersonalTagger {
         }
     }
 
-    private fun save(context: Context, m: Model) {
+    private fun saveImpl(context: Context, m: Model) {
         val now = System.currentTimeMillis()
         if (m.lastUpdate > 0) {
             val elapsedDays = (now - m.lastUpdate) / 86400000.0
@@ -132,7 +134,7 @@ object PersonalTagger {
         merchant: String?,
         rawText: String? = null
     ): String {
-        val m = load(context)
+        val m = synchronized(lock) { loadImpl(context) }
         val norm = normalizeMerchant(merchant)
 
         // Layer 1: Merchant memory + confidence
@@ -184,25 +186,27 @@ object PersonalTagger {
         merchant: String? = null
     ) {
         if (category.isBlank()) return
-        val m = load(context)
-        val feats = featuresOf(type, timestamp, amount, channel)
+        synchronized(lock) {
+            val m = loadImpl(context)
+            val feats = featuresOf(type, timestamp, amount, channel)
 
-        m.total++
-        m.prior[category] = (m.prior[category] ?: 0) + 1
-        for ((f, v) in feats) {
-            m.feat.getOrPut(f) { mutableMapOf() }
-                .getOrPut(v) { mutableMapOf() }
-                .let { it[category] = (it[category] ?: 0) + 1 }
+            m.total++
+            m.prior[category] = (m.prior[category] ?: 0) + 1
+            for ((f, v) in feats) {
+                m.feat.getOrPut(f) { mutableMapOf() }
+                    .getOrPut(v) { mutableMapOf() }
+                    .let { it[category] = (it[category] ?: 0) + 1 }
+            }
+
+            val norm = normalizeMerchant(merchant)
+            if (norm.isNotEmpty()) {
+                m.merchantMap.getOrPut(norm) { mutableMapOf() }
+                    .let { it[category] = (it[category] ?: 0) + 1 }
+            }
+
+            updateCatStats(m, category, amount, +1)
+            saveImpl(context, m)
         }
-
-        val norm = normalizeMerchant(merchant)
-        if (norm.isNotEmpty()) {
-            m.merchantMap.getOrPut(norm) { mutableMapOf() }
-                .let { it[category] = (it[category] ?: 0) + 1 }
-        }
-
-        updateCatStats(m, category, amount, +1)
-        save(context, m)
     }
 
     fun correct(
@@ -216,42 +220,44 @@ object PersonalTagger {
         merchant: String? = null
     ) {
         if (newCategory.isBlank()) return
-        val m = load(context)
-        val feats = featuresOf(type, timestamp, amount, channel)
-        val norm = normalizeMerchant(merchant)
+        synchronized(lock) {
+            val m = loadImpl(context)
+            val feats = featuresOf(type, timestamp, amount, channel)
+            val norm = normalizeMerchant(merchant)
 
-        if (!oldCategory.isNullOrBlank() && oldCategory != newCategory) {
-            m.total = max(0, m.total - 1)
-            val p = m.prior[oldCategory]
-            if (p != null && p > 0) m.prior[oldCategory] = p - 1
+            if (!oldCategory.isNullOrBlank() && oldCategory != newCategory) {
+                m.total = max(0, m.total - 1)
+                val p = m.prior[oldCategory]
+                if (p != null && p > 0) m.prior[oldCategory] = p - 1
+                for ((f, v) in feats) {
+                    val inner = m.feat[f]?.get(v)?.get(oldCategory)
+                    if (inner != null && inner > 0) m.feat[f]!![v]!![oldCategory] = inner - 1
+                }
+                if (norm.isNotEmpty()) {
+                    m.merchantMap[norm]?.let { cats ->
+                        val c = cats[oldCategory]
+                        if (c != null && c > 0) cats[oldCategory] = c - 1
+                    }
+                    m.merchantCorrect[norm] = (m.merchantCorrect[norm] ?: 0) + 1
+                }
+                updateCatStats(m, oldCategory, amount, -1)
+            }
+
+            m.total++
+            m.prior[newCategory] = (m.prior[newCategory] ?: 0) + 1
             for ((f, v) in feats) {
-                val inner = m.feat[f]?.get(v)?.get(oldCategory)
-                if (inner != null && inner > 0) m.feat[f]!![v]!![oldCategory] = inner - 1
+                m.feat.getOrPut(f) { mutableMapOf() }
+                    .getOrPut(v) { mutableMapOf() }
+                    .let { it[newCategory] = (it[newCategory] ?: 0) + 1 }
             }
             if (norm.isNotEmpty()) {
-                m.merchantMap[norm]?.let { cats ->
-                    val c = cats[oldCategory]
-                    if (c != null && c > 0) cats[oldCategory] = c - 1
-                }
-                m.merchantCorrect[norm] = (m.merchantCorrect[norm] ?: 0) + 1
+                m.merchantMap.getOrPut(norm) { mutableMapOf() }
+                    .let { it[newCategory] = (it[newCategory] ?: 0) + 1 }
             }
-            updateCatStats(m, oldCategory, amount, -1)
-        }
+            updateCatStats(m, newCategory, amount, +1)
 
-        m.total++
-        m.prior[newCategory] = (m.prior[newCategory] ?: 0) + 1
-        for ((f, v) in feats) {
-            m.feat.getOrPut(f) { mutableMapOf() }
-                .getOrPut(v) { mutableMapOf() }
-                .let { it[newCategory] = (it[newCategory] ?: 0) + 1 }
+            saveImpl(context, m)
         }
-        if (norm.isNotEmpty()) {
-            m.merchantMap.getOrPut(norm) { mutableMapOf() }
-                .let { it[newCategory] = (it[newCategory] ?: 0) + 1 }
-        }
-        updateCatStats(m, newCategory, amount, +1)
-
-        save(context, m)
     }
 
     // ===== 商户记忆 + 置信度 =====
@@ -501,7 +507,7 @@ object PersonalTagger {
             if (has("电影", "演出", "票务", "影院", "猫眼", "大麦", "淘票票")) return "电影演出"
             if (has("游戏", "steam", "psn", "nintendo", "switch", "xbox", "原神", "王者", "腾讯视频", "爱奇艺", "b站", "bilibili", "优酷", "网易云", "qq音乐", "酷狗", "酷我", "spotify", "netflix")) return "游戏充值"
             if (has("旅行", "旅游", "酒店", "民宿", "飞猪", "途家", "airbnb", "门票", "景点", "乐园", "迪士尼", "方特")) return "旅行出游"
-            if (has("健身", "健身房", "瑜伽", "游泳", "运动", "keep", "超级猩猩")) return "旅行出游"
+            if (has("健身", "健身房", "瑜伽", "游泳", "运动", "keep", "超级猩猩")) return "娱乐"
 
             if (has("课程", "培训", "学费", "网课", "得到", "极客", "知识付费", "知乎", "樊登", "混沌")) return "课程培训"
             if (has("书籍", "文具", "教材", "kindle", "当当", "图书")) return "书籍文具"

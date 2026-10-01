@@ -34,7 +34,8 @@ class AiConfigActivity : AppCompatActivity() {
         etBaseUrl.setText(config.baseUrl)
         etModel.setText(config.model)
         // Key 不回显原文，避免明文；仅提示是否已存
-        etApiKey.setText(if (config.apiKey.isNotBlank()) config.apiKey else "")
+        etApiKey.setText("")
+        etApiKey.hint = if (config.apiKey.isNotBlank()) "已保存（输入新值覆盖，留空保持不变）" else "输入 API Key"
 
         actvProvider.setOnItemClickListener { parent, _, position, _ ->
             val name = parent.getItemAtPosition(position).toString()
@@ -47,12 +48,14 @@ class AiConfigActivity : AppCompatActivity() {
         }
 
         findViewById<android.view.View>(R.id.btnSave).setOnClickListener {
+            val newKey = etApiKey.text?.toString()?.trim().orEmpty()
+            val effectiveKey = if (newKey.isBlank()) config.apiKey else newKey
             AiSettings.save(
                 this,
                 providerName = actvProvider.text?.toString()?.trim().orEmpty().ifEmpty { names[0] },
                 baseUrl = etBaseUrl.text?.toString()?.trim().orEmpty(),
                 model = etModel.text?.toString()?.trim().orEmpty(),
-                apiKey = etApiKey.text?.toString()?.trim().orEmpty()
+                apiKey = effectiveKey
             )
             Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
             finish()

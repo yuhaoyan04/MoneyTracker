@@ -56,7 +56,9 @@ class CaptureInboxActivity : AppCompatActivity() {
                     .putExtra(AddEditTransactionActivity.EXTRA_PENDING_ID, r.id))
             },
             onDismiss = { r ->
-                lifecycleScope.launch { db.transactionDao().deleteById(r.id) }
+                lifecycleScope.launch {
+                    db.transactionDao().moveToTrash(r.id)
+                }
             }
         )
 

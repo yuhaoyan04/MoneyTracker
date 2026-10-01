@@ -135,7 +135,9 @@ class GenericViewActivity : AppCompatActivity() {
         when (ledger?.dateMode) {
             DateMode.RANGE -> {
                 val type = object : TypeToken<Map<String, String>>() {}.type
-                val dataMap: Map<String, String> = Gson().fromJson(entry!!.dataJson, type)
+                val dataMap: Map<String, String> = try {
+                    Gson().fromJson(entry!!.dataJson, type) ?: emptyMap()
+                } catch (e: Exception) { emptyMap() }
                 val endStr = dataMap["SYS_END_DATE"]?.toLongOrNull()?.let { sdfSingle.format(Date(it)) } ?: "-"
 
                 containerDateSection.addView(createDateColumn("Start Date", sdfSingle.format(Date(entry!!.date))))
@@ -150,7 +152,9 @@ class GenericViewActivity : AppCompatActivity() {
         }
 
         val type = object : TypeToken<Map<String, String>>() {}.type
-        val dataMap: Map<String, String> = Gson().fromJson(entry!!.dataJson, type)
+        val dataMap: Map<String, String> = try {
+            Gson().fromJson(entry!!.dataJson, type) ?: emptyMap()
+        } catch (e: Exception) { emptyMap() }
 
         containerDetails.removeAllViews()
         ledger?.fields?.forEach { field ->

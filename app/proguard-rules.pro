@@ -8,14 +8,9 @@
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
 
 # ---------------------------------------------------------------------
-# AI Models & Groq API Service (DO NOT OBFUSCATE OR REMOVE)
+# AI Models & API Service (DO NOT OBFUSCATE OR REMOVE)
 # ---------------------------------------------------------------------
 -keep class com.mudasir.smartledger.util.AiHelper** { *; }
--keep class com.mudasir.smartledger.util.GroqRequest { *; }
--keep class com.mudasir.smartledger.util.GroqResponse { *; }
--keep class com.mudasir.smartledger.util.Choice { *; }
--keep class com.mudasir.smartledger.util.AiMessage { *; }
--keep interface com.mudasir.smartledger.util.AiHelper$GroqApiService { *; }
 
 # DeepSeek / 多模型 OpenAI 兼容客户端（含 Gson 反射用的嵌套数据类）
 -keep class com.mudasir.smartledger.util.DeepSeekClient { *; }

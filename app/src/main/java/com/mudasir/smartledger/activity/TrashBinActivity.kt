@@ -103,7 +103,7 @@ class TrashBinActivity : AppCompatActivity(), NavigationView.OnNavigationItemSel
         tvEmpty = findViewById(R.id.tvEmpty)
 
         setSupportActionBar(topAppBar)
-        topAppBar.setNavigationOnClickListener { onBackPressed() }
+        topAppBar.setNavigationOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED)
         navigationView.setNavigationItemSelectedListener(this)

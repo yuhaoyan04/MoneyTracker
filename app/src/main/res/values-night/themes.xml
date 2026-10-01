@@ -4,6 +4,8 @@
         <item name="colorOutline">#B0B0B0</item>
         <item name="colorOnSurfaceVariant">#B0B0B0</item>
 
+        <item name="android:windowAnimationStyle">@style/SmoothActivityAnimation</item>
+
         <item name="windowActionModeOverlay">true</item>
         <item name="actionModeStyle">@style/CustomActionMode</item>
         <item name="actionModeCloseDrawable">@drawable/ic_close</item>
