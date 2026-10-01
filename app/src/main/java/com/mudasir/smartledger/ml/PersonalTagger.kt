@@ -7,25 +7,32 @@ import com.google.gson.reflect.TypeToken
 import com.mudasir.smartledger.data.TransactionRecord
 import java.util.Calendar
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
- * 个性化消费打标系统 —— 三层架构：
+ * 个性化消费打标系统 —— 四层自进化架构：
  *
- * 1) 商户记忆（merchant memory）：最强国号。用户给某商户打过一次标，
- *    下次该商户出现即直接复用。支持子串模糊匹配，命中率随使用增长。
+ * 1) 商户记忆（merchant memory）+ 置信度评分：
+ *    Laplace 平滑 confidence = (hits+1) / (hits+corrections+2)。
+ *    高置信度（>=0.7）直接命中，无需其他层参与。
  *
- * 2) 朴素贝叶斯 + 金额区间（Naive Bayes + amount range）：四特征边际
- *    计数（时段/金额段/工作日/渠道）+ 每类金额均值±标准差对数增益。
- *    样本越多越准，能捕捉「A 中午食堂、B 下午外卖」这类个体差异。
+ * 2) 朴素贝叶斯 + 金额区间（Naive Bayes + amount range）：
+ *    四特征边际计数 + 金额均值±标准差对数增益。
  *
- * 3) 规则引擎（rule engine）：冷启动兜底。覆盖 30+ 高频场景关键词，
- *    并按渠道/商户/时段/金额多维度判定。
+ * 3) 规则引擎（rule engine）：关键词 + 金额/时段推断，冷启动兜底。
  *
- * 预测优先级：商户记忆 → 贝叶斯 → 规则 → 默认「其他」。
- * 随用户使用，前两层逐渐主导，规则退居兜底。
+ * 4) 冷启动决策表（cold start table）：
+ *    amount × hour × weekday × channel → (category, probability) 概率矩阵。
+ *    无关键词、无商户信息时仍能给出合理推断。
+ *
+ * 自进化机制：
+ * - 自适应权重：随数据量增长，merchant/Bayes 权重提升，rules/cold 退居兜底
+ * - 时间衰减：90 天半衰期，旧样本权重降低，适应用户习惯变化
+ * - 静默确认：用户未修正的 PENDING 记录 7 天后自动 learn()
  */
 object PersonalTagger {
 
@@ -33,6 +40,8 @@ object PersonalTagger {
     private const val TAG = "PersonalTagger"
     private const val MIN_SAMPLES = 5
     private const val MERCHANT_MIN = 1
+    private const val HIGH_CONFIDENCE = 0.7f
+    private const val DECAY_HALF_LIFE_DAYS = 90.0
 
     data class CatStat(
         var count: Int = 0,
@@ -51,7 +60,9 @@ object PersonalTagger {
         var prior: MutableMap<String, Int> = mutableMapOf(),
         var feat: MutableMap<String, MutableMap<String, MutableMap<String, Int>>> = mutableMapOf(),
         var merchantMap: MutableMap<String, MutableMap<String, Int>> = mutableMapOf(),
-        var catStats: MutableMap<String, CatStat> = mutableMapOf()
+        var merchantCorrect: MutableMap<String, Int> = mutableMapOf(),
+        var catStats: MutableMap<String, CatStat> = mutableMapOf(),
+        var lastUpdate: Long = 0
     )
 
     private val FEATURES = listOf("hour", "amount", "weekday", "channel")
@@ -70,6 +81,8 @@ object PersonalTagger {
             @Suppress("SENSELESS_COMPARISON")
             if (m.merchantMap == null) m.merchantMap = mutableMapOf()
             @Suppress("SENSELESS_COMPARISON")
+            if (m.merchantCorrect == null) m.merchantCorrect = mutableMapOf()
+            @Suppress("SENSELESS_COMPARISON")
             if (m.catStats == null) m.catStats = mutableMapOf()
             m
         } catch (e: Exception) {
@@ -78,6 +91,29 @@ object PersonalTagger {
     }
 
     private fun save(context: Context, m: Model) {
+        val now = System.currentTimeMillis()
+        if (m.lastUpdate > 0) {
+            val elapsedDays = (now - m.lastUpdate) / 86400000.0
+            if (elapsedDays > 7) {
+                val factor = exp(-elapsedDays / DECAY_HALF_LIFE_DAYS)
+                m.total = (m.total * factor).toInt().coerceAtLeast(1)
+                m.prior.keys.toList().forEach { m.prior[it] = ((m.prior[it] ?: 0) * factor).toInt().coerceAtLeast(0) }
+                for ((_, v1) in m.feat) {
+                    for ((_, v2) in v1) {
+                        v2.keys.toList().forEach { v2[it] = ((v2[it] ?: 0) * factor).toInt().coerceAtLeast(0) }
+                    }
+                }
+                for ((_, cats) in m.merchantMap) {
+                    cats.keys.toList().forEach { cats[it] = ((cats[it] ?: 0) * factor).toInt().coerceAtLeast(0) }
+                }
+                for ((_, stat) in m.catStats) {
+                    stat.count = (stat.count * factor).toInt().coerceAtLeast(0)
+                    stat.sumAmount *= factor
+                    stat.sumSqAmount *= factor
+                }
+            }
+        }
+        m.lastUpdate = now
         try {
             file(context).apply { parentFile?.mkdirs() }.writeText(Gson().toJson(m))
         } catch (e: Exception) {
@@ -85,7 +121,7 @@ object PersonalTagger {
         }
     }
 
-    // ---- 公开 API ----
+    // ===== 公开 API =====
 
     fun recommend(
         context: Context,
@@ -99,22 +135,43 @@ object PersonalTagger {
         val m = load(context)
         val norm = normalizeMerchant(merchant)
 
-        // 1. 商户记忆
-        if (norm.isNotEmpty()) {
-            bestMerchantCategory(m, norm)?.let { return it }
+        // Layer 1: Merchant memory + confidence
+        val merchantHit: Pair<String, Float>? = if (norm.isNotEmpty()) {
+            bestMerchantWithConfidence(m, norm)
+        } else null
+
+        // High confidence → direct return
+        if (merchantHit != null && merchantHit.second >= HIGH_CONFIDENCE) {
+            return merchantHit.first
         }
 
-        // 2. 贝叶斯 + 金额区间
-        if (m.total >= MIN_SAMPLES && m.prior.isNotEmpty()) {
+        // Layer 2: Bayes
+        val bayesHit: String? = if (m.total >= MIN_SAMPLES && m.prior.isNotEmpty()) {
             val feats = featuresOf(type, timestamp, amount, channel)
-            bayesArgmax(m, feats, amount)?.let { return it }
-        }
+            bayesArgmax(m, feats, amount)
+        } else null
 
-        // 3. 规则
-        rulePredict(type, timestamp, amount, channel, merchant, rawText)?.let { return it }
+        // Layer 3: Rules (keyword + amount/time)
+        val ruleHit: String? = rulePredict(type, timestamp, amount, channel, merchant, rawText)
 
-        // 4. 默认
-        return defaultCategory(type)
+        // Layer 4: Cold start decision table
+        val coldHit: Pair<String, Float>? = coldStartPredict(type, timestamp, amount, channel)
+
+        // === Adaptive weighted voting ===
+        val merchantSamples = m.merchantMap[norm]?.values?.sum() ?: 0
+        val wMerchant = if (merchantHit != null) min(0.6, 0.25 + merchantSamples * 0.02) else 0.0
+        val wBayes = min(0.35, m.total.toDouble() / 100.0 * 0.35)
+        val wRules = if (ruleHit != null) 0.45 else 0.0
+        val wCold = (1.0 - wMerchant - wBayes - wRules).coerceIn(0.0, 0.5)
+
+        val scores = mutableMapOf<String, Double>()
+        merchantHit?.let { (cat, conf) -> scores[cat] = (scores[cat] ?: 0.0) + conf * wMerchant }
+        bayesHit?.let { scores[it] = (scores[it] ?: 0.0) + 0.5 * wBayes }
+        ruleHit?.let { scores[it] = (scores[it] ?: 0.0) + 0.6 * wRules }
+        coldHit?.let { (cat, conf) -> scores[cat] = (scores[cat] ?: 0.0) + conf * wCold }
+
+        val best = scores.maxByOrNull { it.value }
+        return best?.takeIf { it.value > 0.01 }?.key ?: defaultCategory(type)
     }
 
     fun learn(
@@ -145,7 +202,6 @@ object PersonalTagger {
         }
 
         updateCatStats(m, category, amount, +1)
-
         save(context, m)
     }
 
@@ -162,6 +218,7 @@ object PersonalTagger {
         if (newCategory.isBlank()) return
         val m = load(context)
         val feats = featuresOf(type, timestamp, amount, channel)
+        val norm = normalizeMerchant(merchant)
 
         if (!oldCategory.isNullOrBlank() && oldCategory != newCategory) {
             m.total = max(0, m.total - 1)
@@ -171,12 +228,12 @@ object PersonalTagger {
                 val inner = m.feat[f]?.get(v)?.get(oldCategory)
                 if (inner != null && inner > 0) m.feat[f]!![v]!![oldCategory] = inner - 1
             }
-            val norm = normalizeMerchant(merchant)
             if (norm.isNotEmpty()) {
                 m.merchantMap[norm]?.let { cats ->
                     val c = cats[oldCategory]
                     if (c != null && c > 0) cats[oldCategory] = c - 1
                 }
+                m.merchantCorrect[norm] = (m.merchantCorrect[norm] ?: 0) + 1
             }
             updateCatStats(m, oldCategory, amount, -1)
         }
@@ -188,7 +245,6 @@ object PersonalTagger {
                 .getOrPut(v) { mutableMapOf() }
                 .let { it[newCategory] = (it[newCategory] ?: 0) + 1 }
         }
-        val norm = normalizeMerchant(merchant)
         if (norm.isNotEmpty()) {
             m.merchantMap.getOrPut(norm) { mutableMapOf() }
                 .let { it[newCategory] = (it[newCategory] ?: 0) + 1 }
@@ -198,7 +254,7 @@ object PersonalTagger {
         save(context, m)
     }
 
-    // ---- 商户记忆 ----
+    // ===== 商户记忆 + 置信度 =====
 
     private fun normalizeMerchant(s: String?): String {
         if (s.isNullOrBlank()) return ""
@@ -208,24 +264,39 @@ object PersonalTagger {
             .trim()
     }
 
-    private fun bestMerchantCategory(m: Model, merchant: String): String? {
-        // 精确匹配
+    private fun bestMerchantWithConfidence(m: Model, merchant: String): Pair<String, Float>? {
+        var bestCat: String? = null
+        var bestCount = 0
+        var totalSamples = 0
+
         m.merchantMap[merchant]?.let { cats ->
-            val best = cats.maxByOrNull { it.value }
-            if (best != null && best.value >= MERCHANT_MIN) return best.key
-        }
-        // 子串匹配（双向，要求 key 长度 >= 2 避免误匹配）
-        for ((key, cats) in m.merchantMap) {
-            if (key.length < 2) continue
-            if (merchant.contains(key) || key.contains(merchant)) {
-                val best = cats.maxByOrNull { it.value }
-                if (best != null && best.value >= MERCHANT_MIN) return best.key
+            for ((cat, cnt) in cats) {
+                totalSamples += cnt
+                if (cnt > bestCount) { bestCount = cnt; bestCat = cat }
             }
         }
-        return null
+
+        if (bestCat == null) {
+            for ((key, cats) in m.merchantMap) {
+                if (key.length < 2) continue
+                if (merchant.contains(key) || key.contains(merchant)) {
+                    for ((cat, cnt) in cats) {
+                        totalSamples += cnt
+                        if (cnt > bestCount) { bestCount = cnt; bestCat = cat }
+                    }
+                    if (bestCat != null) break
+                }
+            }
+        }
+
+        if (bestCat == null || bestCount < MERCHANT_MIN) return null
+
+        val corrections = m.merchantCorrect[merchant] ?: 0
+        val confidence = (bestCount + 1).toFloat() / (totalSamples + corrections + 2).toFloat()
+        return bestCat to confidence
     }
 
-    // ---- 特征 + 贝叶斯 ----
+    // ===== 特征 + 贝叶斯 =====
 
     private fun featuresOf(type: String, ts: Long, amount: Double, channel: String): Map<String, String> {
         val c = Calendar.getInstance().apply { timeInMillis = ts }
@@ -283,7 +354,6 @@ object PersonalTagger {
                 val p = (c + 1.0) / (sumFc + vocab)
                 logp += ln(p)
             }
-            // 金额区间增益：交易金额落在此类均值附近 → 加分；远离 → 减分
             val stat = m.catStats[cat]
             if (stat != null && stat.count >= 3 && stat.std > 0) {
                 val z = abs(amount - stat.mean) / stat.std
@@ -301,7 +371,85 @@ object PersonalTagger {
         return bestCat
     }
 
-    // ---- 规则引擎 ----
+    // ===== 冷启动决策表 =====
+
+    private fun coldStartPredict(type: String, ts: Long, amount: Double, channel: String): Pair<String, Float>? {
+        if (type != TransactionRecord.TYPE_EXPENSE) return null
+        val c = Calendar.getInstance().apply { timeInMillis = ts }
+        val h = c.get(Calendar.HOUR_OF_DAY)
+        val isWeekend = c.get(Calendar.DAY_OF_WEEK).let { it == 1 || it == 7 }
+        val ch = channel.lowercase()
+        val candidates = mutableListOf<Pair<String, Float>>()
+
+        // 通勤
+        if (h in 6..9 && !isWeekend && amount < 20) {
+            candidates.add("公交" to 0.45f)
+            candidates.add("地铁" to 0.25f)
+            candidates.add("零食饮料" to 0.12f)
+        }
+        // 午餐
+        else if (h in 11..13) {
+            when {
+                amount < 15 -> { candidates.add("食堂" to 0.40f); candidates.add("外卖" to 0.22f) }
+                amount < 40 -> { candidates.add("外卖" to 0.35f); candidates.add("食堂" to 0.20f); candidates.add("下馆子" to 0.12f) }
+                amount < 150 -> { candidates.add("下馆子" to 0.35f); candidates.add("外卖" to 0.15f) }
+                amount < 500 -> { candidates.add("下馆子" to 0.22f); candidates.add("日用品" to 0.12f) }
+            }
+        }
+        // 晚餐
+        else if (h in 17..20) {
+            when {
+                amount < 15 -> candidates.add("零食饮料" to 0.35f)
+                amount < 150 -> { candidates.add("下馆子" to 0.38f); candidates.add("外卖" to 0.12f) }
+                amount < 500 -> { candidates.add("下馆子" to 0.20f); candidates.add("日用品" to 0.12f) }
+            }
+        }
+        // 深夜
+        else if (h in 21..23 || h in 0..4) {
+            when {
+                amount < 30 -> candidates.add("零食饮料" to 0.32f)
+                amount < 100 -> { candidates.add("游戏充值" to 0.22f); candidates.add("零食饮料" to 0.18f) }
+            }
+        }
+        // 下午
+        else if (h in 14..16) {
+            if (amount < 30) candidates.add("零食饮料" to 0.28f)
+            else if (amount < 200) candidates.add("日用品" to 0.18f)
+        }
+        // 上午工作时段
+        else if (h in 9..11) {
+            when {
+                amount < 30 -> candidates.add("零食饮料" to 0.18f)
+                amount < 300 -> candidates.add("日用品" to 0.22f)
+                else -> candidates.add("数码" to 0.15f)
+            }
+        }
+
+        // 渠道加权
+        if (ch.contains("京东") || ch.contains("jd")) {
+            candidates.add("数码" to 0.28f)
+        } else if (ch.contains("淘宝") || ch.contains("天猫")) {
+            candidates.add("日用品" to 0.22f)
+            if (amount > 100) candidates.add("服饰" to 0.14f)
+        }
+
+        // 大额推断
+        if (amount >= 1000) {
+            candidates.add("房租" to 0.18f)
+            candidates.add("数码" to 0.12f)
+        } else if (amount in 200.0..1000.0) {
+            candidates.add("数码" to 0.14f)
+            candidates.add("服饰" to 0.10f)
+        }
+
+        // 合并同类项取最大概率
+        val merged = candidates.groupBy { it.first }
+            .mapValues { (_, list) -> list.maxOf { it.second } }
+        val best = merged.maxByOrNull { it.value }
+        return if (best != null && best.value >= 0.10f) best.toPair() else null
+    }
+
+    // ===== 规则引擎 =====
 
     private fun rulePredict(type: String, ts: Long, amount: Double, channel: String, merchant: String?, rawText: String?): String? {
         val c = Calendar.getInstance().apply { timeInMillis = ts }
@@ -317,7 +465,7 @@ object PersonalTagger {
 
         if (type != TransactionRecord.TYPE_INCOME) {
 
-            // ===== TIER 1: 强商户信号（品牌名/平台名直接命中）=====
+            // ===== TIER 1: 强商户信号 =====
 
             if (has("美团", "饿了吗", "饿了么", "外卖", "keeta", "kika", "配送费", "骑手")) return "外卖"
 
@@ -382,41 +530,34 @@ object PersonalTagger {
             if (has("红包")) return "收发红包"
             if (has("转账", "转给")) return "其他"
 
-            // ===== TIER 3: 渠道 + 金额 + 时段推断 =====
+            // ===== TIER 3: 渠道 + 金额 + 时段 =====
 
             if (chHas("京东", "jd")) return "数码"
             if (chHas("淘宝", "天猫")) return "日用品"
 
-            // 早餐时段小额 → 通勤公交
             if (h in 6..9 && amt < 20) return "公交"
-            // 午餐时段 → 按金额细分
             if (h in 11..13) return when {
                 amt < 15 -> "食堂"
                 amt < 40 -> "外卖"
                 amt < 200 -> "下馆子"
                 else -> null
             }
-            // 晚餐时段
             if (h in 17..20) return when {
                 amt < 15 -> "零食饮料"
                 amt < 200 -> "下馆子"
                 else -> null
             }
-            // 深夜 → 零食饮料或娱乐
             if (h in 21..23 || h in 0..4) return when {
                 amt < 30 -> "零食饮料"
                 amt < 100 -> "游戏充值"
                 else -> null
             }
-            // 上午工作时间中等金额 → 日用品
             if (h in 9..11 && amt in 30.0..300.0) return "日用品"
-            // 下午工作时间小额 → 零食饮料
             if (h in 14..16 && amt < 30) return "零食饮料"
 
             return null
         }
 
-        // ===== 收入类 =====
         return when {
             has("工资", "薪", "薪资", "代发") -> "基本工资"
             has("奖金", "提成", "绩效") -> "奖金提成"
