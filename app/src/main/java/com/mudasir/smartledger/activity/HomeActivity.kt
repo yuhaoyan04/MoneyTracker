@@ -59,6 +59,8 @@ class HomeActivity : AppCompatActivity() {
 
         // 启动即调度周期备份，确保即使用户不进设置也能自动备份到本机
         com.mudasir.smartledger.util.BackupWorker.schedulePeriodic(this)
+        // 静默确认：7天未修正的 PENDING 记录自动确认并学习，闭环自进化
+        com.mudasir.smartledger.util.SilentConfirmWorker.schedulePeriodic(this)
 
         observeData()
     }

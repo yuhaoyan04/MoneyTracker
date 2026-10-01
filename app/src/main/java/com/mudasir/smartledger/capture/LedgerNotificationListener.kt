@@ -132,9 +132,11 @@ class LedgerNotificationListener : NotificationListenerService() {
 
     private fun isDuplicate(parsed: ParsedTransaction): Boolean {
         val now = System.currentTimeMillis()
-        val hash = "${parsed.type}|${parsed.amount}|${parsed.channelName}|${parsed.timestamp / 60000}"
-        // 清理 2 分钟以上的旧记录
-        val cutoff = now - 120_000
+        // 跨应用去重：同一笔交易可能同时被微信和银行App通知，
+        // 按 type + amount + 分钟桶匹配，忽略渠道差异
+        val hash = "${parsed.type}|${parsed.amount}|${parsed.timestamp / 60000}"
+        // 清理 3 分钟以上的旧记录（扩大窗口以覆盖跨应用延迟）
+        val cutoff = now - 180_000
         val it = recentHashes.entries.iterator()
         while (it.hasNext()) {
             if (it.next().key < cutoff) it.remove() else break
