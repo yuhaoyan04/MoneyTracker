@@ -15,8 +15,10 @@ import com.mudasir.smartledger.adapter.CaptureAdapter
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.util.PermissionHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CaptureInboxActivity : AppCompatActivity() {
 
@@ -86,7 +88,16 @@ class CaptureInboxActivity : AppCompatActivity() {
         }
 
         observe()
+        loadCategoryMap()
         com.mudasir.smartledger.util.BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_inbox)
+    }
+
+    private fun loadCategoryMap() {
+        lifecycleScope.launch {
+            val cats = db.categoryDao().getAll()
+            val map = cats.filter { it.parentName != null }.associate { it.name to it.parentName!! }
+            adapter.parentMap = map
+        }
     }
 
     private fun observe() {

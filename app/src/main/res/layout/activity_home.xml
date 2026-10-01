@@ -12,14 +12,14 @@
         android:id="@+id/appBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        app:liftOnScroll="true">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/topAppBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="?attr/actionBarSize"
-            android:background="@color/teal_main"
             app:title="智能账本"
             app:titleTextColor="@android:color/white"
             app:subtitle="自动记录你的每一笔收支"
@@ -42,47 +42,49 @@
             android:orientation="vertical"
             android:paddingBottom="24dp">
 
-            <!-- 本月收支概览 -->
+            <!-- 本月收支概览 — 渐变卡片 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/balanceCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginTop="16dp"
-                app:cardBackgroundColor="@color/teal_main"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="2dp"
-                app:strokeWidth="0dp">
+                app:cardCornerRadius="24dp"
+                app:cardElevation="4dp"
+                app:strokeWidth="0dp"
+                app:cardBackgroundColor="@color/teal_main">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="20dp">
+                    android:padding="24dp">
 
                     <TextView
                         android:id="@+id/tvMonthLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="本月结余"
-                        android:textColor="@color/teal_light"
-                        android:textSize="13sp" />
+                        android:textColor="#B2DFDB"
+                        android:textSize="13sp"
+                        android:letterSpacing="0.05" />
 
                     <TextView
                         android:id="@+id/tvBalance"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
+                        android:layout_marginTop="6dp"
                         android:text="¥0.00"
                         android:textColor="@android:color/white"
-                        android:textSize="32sp"
-                        android:textStyle="bold" />
+                        android:textSize="34sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="-0.02" />
 
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
-                        android:layout_marginVertical="14dp"
-                        android:background="#33FFFFFF" />
+                        android:layout_marginVertical="16dp"
+                        android:background="#22FFFFFF" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -99,17 +101,17 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="收入"
-                                android:textColor="@color/teal_light"
+                                android:textColor="#B2DFDB"
                                 android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/tvIncome"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
+                                android:layout_marginTop="3dp"
                                 android:text="¥0"
                                 android:textColor="@android:color/white"
-                                android:textSize="16sp"
+                                android:textSize="17sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -123,17 +125,17 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="支出"
-                                android:textColor="@color/teal_light"
+                                android:textColor="#B2DFDB"
                                 android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/tvExpense"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
+                                android:layout_marginTop="3dp"
                                 android:text="¥0"
                                 android:textColor="@android:color/white"
-                                android:textSize="16sp"
+                                android:textSize="17sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -148,22 +150,50 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="待确认"
-                                android:textColor="@color/teal_light"
+                                android:textColor="#B2DFDB"
                                 android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/tvPending"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
+                                android:layout_marginTop="3dp"
                                 android:text="0"
                                 android:textColor="@android:color/white"
-                                android:textSize="16sp"
+                                android:textSize="17sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- 搜索栏 -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/searchLayout"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="16dp"
+                app:startIconDrawable="@drawable/ic_search"
+                app:boxCornerRadiusTopStart="28dp"
+                app:boxCornerRadiusTopEnd="28dp"
+                app:boxCornerRadiusBottomStart="28dp"
+                app:boxCornerRadiusBottomEnd="28dp"
+                app:boxStrokeWidth="0dp"
+                app:boxStrokeWidthFocused="1dp"
+                app:hintEnabled="false">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etSearch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="搜索商户、分类、备注…"
+                    android:inputType="text"
+                    android:imeOptions="actionSearch"
+                    android:maxLines="1"
+                    android:textSize="14sp" />
+            </com.google.android.material.textfield.TextInputLayout>
 
             <!-- 最近交易标题 -->
             <LinearLayout
@@ -175,6 +205,7 @@
                 android:gravity="center_vertical">
 
                 <TextView
+                    android:id="@+id/tvRecentLabel"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -188,7 +219,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:background="?attr/selectableItemBackground"
-                    android:padding="4dp"
+                    android:padding="6dp"
                     android:text="统计 ›"
                     android:textColor="@color/teal_main"
                     android:textSize="13sp" />
@@ -207,7 +238,7 @@
                 android:id="@+id/tvEmptyRecent"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="48dp"
+                android:layout_marginTop="56dp"
                 android:gravity="center"
                 android:text="还没有交易记录\n点击下方按钮添加，或在设置中开启自动抓取"
                 android:textColor="@color/text_secondary"

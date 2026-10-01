@@ -3,12 +3,15 @@ package com.mudasir.smartledger.activity
 import android.Manifest
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.textfield.TextInputEditText
 import com.mudasir.smartledger.R
 import com.mudasir.smartledger.adapter.TransactionAdapter
 import com.mudasir.smartledger.data.AppDatabase
@@ -26,10 +29,12 @@ class HomeActivity : AppCompatActivity() {
     private val db by lazy { AppDatabase.getDatabase(this) }
 
     private lateinit var adapter: TransactionAdapter
+    private var allRecords: List<TransactionRecord> = emptyList()
+    private var searchQuery: String = ""
 
     private val locationLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* 结果不重要：未授权则 AddEdit 静默跳过地点 */ }
+    ) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -55,18 +60,24 @@ class HomeActivity : AppCompatActivity() {
             startActivity(Intent(this, StatsActivity::class.java))
         }
 
+        findViewById<TextInputEditText>(R.id.etSearch).addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                searchQuery = s?.toString()?.trim().orEmpty()
+                applySearch()
+            }
+        })
+
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_home)
 
-        // 启动即调度周期备份，确保即使用户不进设置也能自动备份到本机
         com.mudasir.smartledger.util.BackupWorker.schedulePeriodic(this)
-        // 静默确认：7天未修正的 PENDING 记录自动确认并学习，闭环自进化
         com.mudasir.smartledger.util.SilentConfirmWorker.schedulePeriodic(this)
 
         observeData()
     }
 
     private fun observeData() {
-        // 加载分类父级映射，用于列表显示「大类·小类」
         lifecycleScope.launch(Dispatchers.IO) {
             val cats = db.categoryDao().getAll()
             val map = cats.filter { it.parentName != null }.associate { it.name to it.parentName!! }
@@ -76,8 +87,9 @@ class HomeActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            db.transactionDao().observeRecent(40).collectLatest { list ->
-                adapter.submitList(list)
+            db.transactionDao().observeRecent(100).collectLatest { list ->
+                allRecords = list
+                applySearch()
                 findViewById<View>(R.id.tvEmptyRecent).visibility =
                     if (list.isEmpty()) View.VISIBLE else View.GONE
                 refreshSummary()
@@ -88,6 +100,22 @@ class HomeActivity : AppCompatActivity() {
                 findViewById<android.widget.TextView>(R.id.tvPending).text = it.toString()
             }
         }
+    }
+
+    private fun applySearch() {
+        val filtered = if (searchQuery.isBlank()) {
+            allRecords
+        } else {
+            val q = searchQuery.lowercase()
+            allRecords.filter { r ->
+                r.merchant?.lowercase()?.contains(q) == true ||
+                r.categoryName.lowercase().contains(q) ||
+                r.channelName.lowercase().contains(q) ||
+                r.note?.lowercase()?.contains(q) == true ||
+                r.locationName?.lowercase()?.contains(q) == true
+            }
+        }
+        adapter.submitList(filtered.take(40))
     }
 
     private suspend fun refreshSummary() = withContext(Dispatchers.IO) {
