@@ -14,22 +14,33 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
- * 个性化消费打标系统 —— 四层自进化架构：
+ * 个性化消费打标系统 —— 五层自进化架构（类短视频推荐引擎）：
  *
- * 1) 商户记忆（merchant memory）+ 置信度评分：
- *    Laplace 平滑 confidence = (hits+1) / (hits+corrections+2)。
- *    高置信度（>=0.7）直接命中，无需其他层参与。
+ * 1) 商户记忆（merchant memory）+ 加速置信度：
+ *    Laplace 平滑 + 加速学习：3 次确认 0 纠正 → 0.92，5 次 → 0.97。
+ *    2+ 次纠正 → 置信度封顶 0.49（避免重复错误）。
+ *    高置信度（>=0.7）直接命中。
  *
- * 2) 朴素贝叶斯 + 金额区间（Naive Bayes + amount range）：
+ * 2) 商户-时段上下文（merchant × hour context）：
+ *    同一商户在不同时段可能对应不同分类
+ *    （美团@12→外卖, 美团@14→日用品）。
+ *
+ * 3) 朴素贝叶斯 + 金额区间（Naive Bayes + amount range）：
  *    四特征边际计数 + 金额均值±标准差对数增益。
  *
- * 3) 规则引擎（rule engine）：关键词 + 金额/时段推断，冷启动兜底。
+ * 4) 规则引擎（rule engine）：关键词 + 金额/时段/位置推断。
+ *    4 层优先级：地理位置 > 强商户信号 > 网购平台细分 > 渠道+金额+时段。
  *
- * 4) 冷启动决策表（cold start table）：
- *    amount × hour × weekday × channel → (category, probability) 概率矩阵。
+ * 5) 冷启动决策表（cold start table）：
+ *    day-of-month × hour × weekday × channel × amount → category。
+ *    月初房租、月末水电、心理定价(9.9/99/299)、收入时序(工资/红包/退款)。
  *    无关键词、无商户信息时仍能给出合理推断。
  *
- * 自进化机制：
+ * 自进化机制（越来越准）：
+ * - 加速学习：3 次确认即达高置信度，减少用户手动确认次数
+ * - 分类频率先验：偏好用户常用分类（类短视频个性化默认推荐）
+ * - 商户-时段上下文：同商户不同时段不同分类
+ * - 纠正惩罚：频繁被纠正的商户置信度降低，让其他层接管
  * - 自适应权重：随数据量增长，merchant/Bayes 权重提升，rules/cold 退居兜底
  * - 时间衰减：90 天半衰期，旧样本权重降低，适应用户习惯变化
  * - 静默确认：用户未修正的 PENDING 记录 7 天后自动 learn()
@@ -42,6 +53,9 @@ object PersonalTagger {
     private const val MERCHANT_MIN = 1
     private const val HIGH_CONFIDENCE = 0.7f
     private const val DECAY_HALF_LIFE_DAYS = 90.0
+    private const val MERCHANT_FAST_HITS = 3
+    private const val MERCHANT_EXPERT_HITS = 5
+    private const val MERCHANT_CORRECT_PENALTY = 2
 
     private val lock = Any()
 
@@ -62,6 +76,7 @@ object PersonalTagger {
         var prior: MutableMap<String, Int> = mutableMapOf(),
         var feat: MutableMap<String, MutableMap<String, MutableMap<String, Int>>> = mutableMapOf(),
         var merchantMap: MutableMap<String, MutableMap<String, Int>> = mutableMapOf(),
+        var merchantHourMap: MutableMap<String, MutableMap<String, MutableMap<String, Int>>> = mutableMapOf(),
         var merchantCorrect: MutableMap<String, Int> = mutableMapOf(),
         var catStats: MutableMap<String, CatStat> = mutableMapOf(),
         var lastUpdate: Long = 0
@@ -82,6 +97,8 @@ object PersonalTagger {
             if (m.feat == null) m.feat = mutableMapOf()
             @Suppress("SENSELESS_COMPARISON")
             if (m.merchantMap == null) m.merchantMap = mutableMapOf()
+            @Suppress("SENSELESS_COMPARISON")
+            if (m.merchantHourMap == null) m.merchantHourMap = mutableMapOf()
             @Suppress("SENSELESS_COMPARISON")
             if (m.merchantCorrect == null) m.merchantCorrect = mutableMapOf()
             @Suppress("SENSELESS_COMPARISON")
@@ -107,6 +124,11 @@ object PersonalTagger {
                 }
                 for ((_, cats) in m.merchantMap) {
                     cats.keys.toList().forEach { cats[it] = ((cats[it] ?: 0) * factor).toInt().coerceAtLeast(0) }
+                }
+                for ((_, hourMap) in m.merchantHourMap) {
+                    for ((_, cats) in hourMap) {
+                        cats.keys.toList().forEach { cats[it] = ((cats[it] ?: 0) * factor).toInt().coerceAtLeast(0) }
+                    }
                 }
                 for ((_, stat) in m.catStats) {
                     stat.count = (stat.count * factor).toInt().coerceAtLeast(0)
@@ -148,6 +170,13 @@ object PersonalTagger {
             return merchantHit.first
         }
 
+        // Merchant + hour context (e.g. 美团@12→外卖, 美团@14→日用品)
+        val cal = Calendar.getInstance().apply { timeInMillis = timestamp }
+        val hb = hourBand(cal.get(Calendar.HOUR_OF_DAY))
+        val merchantHourHit: String? = if (norm.isNotEmpty()) {
+            m.merchantHourMap[norm]?.get(hb)?.maxByOrNull { it.value }?.takeIf { it.value >= 2 }?.key
+        } else null
+
         // Layer 2: Bayes
         val bayesHit: String? = if (m.total >= MIN_SAMPLES && m.prior.isNotEmpty()) {
             val feats = featuresOf(type, timestamp, amount, channel)
@@ -172,6 +201,28 @@ object PersonalTagger {
         bayesHit?.let { scores[it] = (scores[it] ?: 0.0) + 0.5 * wBayes }
         ruleHit?.let { scores[it] = (scores[it] ?: 0.0) + 0.6 * wRules }
         coldHit?.let { (cat, conf) -> scores[cat] = (scores[cat] ?: 0.0) + conf * wCold }
+
+        // Merchant-hour context signal (weak but personalized)
+        merchantHourHit?.let { scores[it] = (scores[it] ?: 0.0) + 0.15 }
+
+        // === Category frequency prior — lean toward user's most consumed categories ===
+        // Like short-video recommendation: default to user's habitual content
+        if (m.total >= MIN_SAMPLES * 2 && m.prior.isNotEmpty()) {
+            val priorTotal = m.prior.values.sum()
+            val priorWeight = when {
+                merchantHit == null && ruleHit == null && coldHit == null -> 0.20
+                merchantHit == null && ruleHit == null -> 0.10
+                else -> 0.03
+            }
+            m.prior.entries
+                .sortedByDescending { it.value }
+                .take(3)
+                .forEachIndexed { i, (cat, cnt) ->
+                    val freq = cnt.toDouble() / priorTotal
+                    val boost = freq * priorWeight * (1.0 - i * 0.3)
+                    scores[cat] = (scores[cat] ?: 0.0) + boost
+                }
+        }
 
         val best = scores.maxByOrNull { it.value }
         return best?.takeIf { it.value > 0.01 }?.key ?: defaultCategory(type)
@@ -202,6 +253,10 @@ object PersonalTagger {
             val norm = normalizeMerchant(merchant)
             if (norm.isNotEmpty()) {
                 m.merchantMap.getOrPut(norm) { mutableMapOf() }
+                    .let { it[category] = (it[category] ?: 0) + 1 }
+                val hb = hourBand(Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.HOUR_OF_DAY))
+                m.merchantHourMap.getOrPut(norm) { mutableMapOf() }
+                    .getOrPut(hb) { mutableMapOf() }
                     .let { it[category] = (it[category] ?: 0) + 1 }
             }
 
@@ -239,6 +294,11 @@ object PersonalTagger {
                         val c = cats[oldCategory]
                         if (c != null && c > 0) cats[oldCategory] = c - 1
                     }
+                    val hb = hourBand(Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.HOUR_OF_DAY))
+                    m.merchantHourMap[norm]?.get(hb)?.let { cats ->
+                        val c = cats[oldCategory]
+                        if (c != null && c > 0) cats[oldCategory] = c - 1
+                    }
                     m.merchantCorrect[norm] = (m.merchantCorrect[norm] ?: 0) + 1
                 }
                 updateCatStats(m, oldCategory, amount, -1)
@@ -253,6 +313,10 @@ object PersonalTagger {
             }
             if (norm.isNotEmpty()) {
                 m.merchantMap.getOrPut(norm) { mutableMapOf() }
+                    .let { it[newCategory] = (it[newCategory] ?: 0) + 1 }
+                val hb = hourBand(Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.HOUR_OF_DAY))
+                m.merchantHourMap.getOrPut(norm) { mutableMapOf() }
+                    .getOrPut(hb) { mutableMapOf() }
                     .let { it[newCategory] = (it[newCategory] ?: 0) + 1 }
             }
             updateCatStats(m, newCategory, amount, +1)
@@ -299,7 +363,13 @@ object PersonalTagger {
         if (bestCat == null || bestCount < MERCHANT_MIN) return null
 
         val corrections = m.merchantCorrect[merchant] ?: 0
-        val confidence = (bestCount + 1).toFloat() / (totalSamples + corrections + 2).toFloat()
+        val confidence = when {
+            bestCount >= MERCHANT_EXPERT_HITS && corrections == 0 -> 0.97f
+            bestCount >= MERCHANT_FAST_HITS && corrections == 0 -> 0.92f
+            corrections >= MERCHANT_CORRECT_PENALTY ->
+                ((bestCount + 1).toFloat() / (totalSamples + corrections + 2).toFloat()).coerceAtMost(0.49f)
+            else -> (bestCount + 1).toFloat() / (totalSamples + corrections + 2).toFloat()
+        }
         return bestCat to confidence
     }
 
@@ -381,13 +451,29 @@ object PersonalTagger {
     // ===== 冷启动决策表 — 基于日常生活时间+金额精确推断 =====
 
     private fun coldStartPredict(type: String, ts: Long, amount: Double, channel: String): Pair<String, Float>? {
-        if (type != TransactionRecord.TYPE_EXPENSE) return null
         val c = Calendar.getInstance().apply { timeInMillis = ts }
         val h = c.get(Calendar.HOUR_OF_DAY)
         val m = c.get(Calendar.MINUTE)
+        val dom = c.get(Calendar.DAY_OF_MONTH)
         val isWeekend = c.get(Calendar.DAY_OF_WEEK).let { it == 1 || it == 7 }
         val ch = channel.lowercase()
         val candidates = mutableListOf<Pair<String, Float>>()
+
+        // === 收入冷启动 ===
+        if (type != TransactionRecord.TYPE_EXPENSE) {
+            when {
+                dom in 8..20 && amount >= 3000 -> return "基本工资" to 0.35f
+                dom in 8..20 && amount >= 1500 -> return "奖金提成" to 0.20f
+                amount <= 1.0 -> return "收发红包" to 0.25f
+                h in 9..18 && amount <= 500 -> return "转账退款" to 0.25f
+                h in 20..23 || h in 0..4 -> return when {
+                    amount <= 10 -> "收发红包" to 0.30f
+                    amount <= 100 -> "收发红包" to 0.20f
+                    else -> null
+                }
+            }
+            return null
+        }
 
         // 将小时转换为分钟时间戳方便精确判断
         val timeMin = h * 60 + m
@@ -507,6 +593,34 @@ object PersonalTagger {
             amount >= 500 -> { candidates.add("数码" to 0.14f); candidates.add("服饰" to 0.10f) }
         }
 
+        // === 月初规则（房租/贷款高频时段） ===
+        if (dom in 1..7) {
+            when {
+                amount >= 2500 && amount <= 8000 -> candidates.add("房租" to 0.40f)
+                amount >= 1000 && amount <= 2500 -> candidates.add("房租" to 0.22f)
+            }
+        }
+        // === 月末规则（水电/物业/信用卡还款） ===
+        if (dom in 20..28) {
+            when {
+                amount in 50.0..500.0 && (ch.contains("95598") || ch.contains("电力") || ch.contains("电费")) ->
+                    candidates.add("水电燃气" to 0.35f)
+                amount in 100.0..2000.0 && ch.contains("信用卡") ->
+                    candidates.add("其他" to 0.20f)
+                amount in 100.0..1000.0 -> candidates.add("水电燃气" to 0.12f)
+            }
+        }
+        // === 金额特征规则（心理定价 → 网购） ===
+        when {
+            amount < 0.1 -> candidates.add("收发红包" to 0.25f)
+            amount in 9.8..9.99 || amount in 19.8..19.99 || amount in 29.8..29.99 ->
+                candidates.add("日用品" to 0.15f)
+            amount in 99.0..99.99 || amount in 199.0..199.99 ->
+                candidates.add("服饰" to 0.12f)
+            amount in 299.0..299.99 || amount in 599.0..599.99 ->
+                candidates.add("服饰" to 0.10f)
+        }
+
         // 合并同类项取最大概率
         val merged = candidates.groupBy { it.first }
             .mapValues { (_, list) -> list.maxOf { it.second } }
@@ -568,6 +682,15 @@ object PersonalTagger {
             if (has("加油", "中石化", "中石油", "壳牌", "加油站", "中化石油")) return "加油停车"
             if (has("停车费", "停车场", "停车")) return "加油停车"
 
+            // 地图/导航 → 打车
+            if (has("高德", "百度地图", "腾讯地图", "导航", "a map")) return "打车"
+            // 即时配送 → 外卖
+            if (has("闪送", "达达", "跑腿", "同城急送", "顺丰同城", "美团跑腿")) return "外卖"
+            // 快递 → 其他
+            if (has("顺丰", "圆通", "中通", "申通", "韵达", "ems", "邮政快递", "京东物流", "京东快递")) return "其他"
+            // 还款/分期 → 其他
+            if (has("花呗", "借呗", "信用还", "分期还", "信用卡还款")) return "其他"
+
             if (has("肯德基", "kfc", "麦当劳", "汉堡王", "必胜客", "德克士", "华莱士", "萨莉亚", "吉野家", "真功夫")) return "下馆子"
             if (has("海底捞", "呷哺", "火锅", "烧烤", "串串", "烤肉", "日料", "韩餐", "西餐", "寿司", "刺身")) return "下馆子"
             if (has("星巴克", "瑞幸", "咖啡", "manner", "costa", "tim hortons", "seesaw")) return "零食饮料"
@@ -594,6 +717,12 @@ object PersonalTagger {
             if (has("旅行", "旅游", "酒店", "民宿", "飞猪", "途家", "airbnb", "门票", "景点", "乐园", "迪士尼", "方特")) return "旅行出游"
             if (has("健身", "健身房", "瑜伽", "游泳", "运动", "keep", "超级猩猩")) return "娱乐"
 
+            // 数字订阅服务
+            if (has("icloud", "apple music", "app store", "google play", "apple.com/bill", "apple 订阅")) return "游戏充值"
+            if (has("youtube", "netflix", "spotify", "disney", "hbo", "amazon prime")) return "游戏充值"
+            // 短视频/直播打赏
+            if (has("抖音", "douyin", "快手", "kuaishou", "直播", "打赏", "钻石", "抖币", "快币")) return "游戏充值"
+
             if (has("课程", "培训", "学费", "网课", "得到", "极客", "知识付费", "知乎", "樊登", "混沌")) return "课程培训"
             if (has("书籍", "文具", "教材", "kindle", "当当", "图书")) return "书籍文具"
 
@@ -617,6 +746,15 @@ object PersonalTagger {
             }
             if (chHas("拼多多") || mHas("拼多多")) return "日用品"
             if (chHas("苏宁") || mHas("苏宁")) return "数码"
+
+            if (chHas("得物") || mHas("得物") || mHas("poizon")) return "服饰"
+            if (chHas("小红书") || mHas("小红书")) return "美妆护肤"
+            if (chHas("唯品会") || mHas("唯品会")) return "服饰"
+            if (chHas("网易严选") || mHas("网易严选")) return "日用品"
+            if (chHas("抖音") || chHas("douyin") || mHas("抖音")) return "日用品"
+            if (chHas("快手") || mHas("快手")) return "日用品"
+            if (chHas("微店") || mHas("微店")) return "日用品"
+            if (chHas("转转") || mHas("转转") || mHas("闲鱼")) return "其他"
 
             if (has("红包")) return "收发红包"
             if (has("转账", "转给")) return "其他"
