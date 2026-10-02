@@ -118,7 +118,8 @@ class AddEditTransactionActivity : AppCompatActivity() {
         val amount = etAmount.text?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
         val channel = actvChannel.text?.toString()?.trim().orEmpty().ifEmpty { "其他" }
         val merchant = etMerchant.text?.toString()?.trim()
-        val suggested = PersonalTagger.recommend(this, type, selectedTs, amount, channel, merchant, null)
+        val place = runCatching { LocationHelper.lastPlace(this) }.getOrNull()
+        val suggested = PersonalTagger.recommend(this, type, selectedTs, amount, channel, merchant, null, place?.name)
         suggestedCategory = suggested
         actvCategory.setText(suggested, false)
     }

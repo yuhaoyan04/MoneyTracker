@@ -40,13 +40,19 @@ object TransactionParser {
     private val packageChannelMap = mapOf(
         "com.tencent.mm" to "微信支付",
         "com.eg.android.AlipayGphone" to "支付宝",
+        "com.eg.android.AlipayGphone.rc" to "支付宝",
+        "com.eg.android.AlipayGphone.lite" to "支付宝",
         "com.taobao.taobao" to "淘宝",
-        "com.taobao.idlefish" to "淘宝",
+        "com.taobao.idlefish" to "闲鱼",
         "com.jingdong.app.mall" to "京东",
         "com.jingdong.app.mall.alpha" to "京东",
         "com.jd.jrapp" to "京东",
-        "com.jdpaysdk" to "京东",
-        "com.eg.android.AlipayGphone.rc" to "支付宝",
+        "com.jdpaysdk" to "京东支付",
+        "com.sankuai.meituan" to "美团",
+        "com.sankuai.meituan.takeoutnew" to "美团",
+        "com.meituan.retail.v4" to "美团",
+        "com.sankuai.mt.pro" to "美团",
+        "com.taou.maimai" to "脉脉",
         "com.mobile.me" to "其他"
     )
 

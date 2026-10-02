@@ -38,14 +38,23 @@ class LedgerNotificationListener : NotificationListenerService() {
         "信用卡", "花呗", "借呗", "云闪付", "数字人民币", "现金", "其他", "android"
     )
 
-    // 监听这些包名的通知。null 表示来源未知，但仍尝试解析。
+    // 严格白名单：只处理这些 App 的通知，其余全部忽略
     private val watchedPackages = setOf(
-        "com.tencent.mm",           // 微信
-        "com.eg.android.AlipayGphone", // 支付宝
-        "com.taobao.taobao",        // 淘宝
-        "com.jingdong.app.mall",    // 京东
-        "com.jd.jrapp",             // 京东金融
-        "com.eg.android.AlipayGphone.rc"
+        "com.tencent.mm",                  // 微信
+        "com.eg.android.AlipayGphone",     // 支付宝
+        "com.eg.android.AlipayGphone.rc",  // 支付宝（变体）
+        "com.taobao.taobao",               // 淘宝
+        "com.taobao.idlefish",             // 闲鱼
+        "com.jingdong.app.mall",           // 京东
+        "com.jingdong.app.mall.alpha",     // 京东（变体）
+        "com.jd.jrapp",                    // 京东金融
+        "com.jdpaysdk",                    // 京东支付
+        "com.sankuai.meituan",             // 美团
+        "com.sankuai.meituan.takeoutnew",  // 美团外卖
+        "com.meituan.retail.v4",           // 美团买菜
+        "com.sankuai.mt.pro",              // 美团商家版
+        "com.taou.maimai",                 // 脉脉（企业支付）
+        "com.eg.android.AlipayGphone.lite"// 支付宝_lite
     )
 
     // 促销 / 广告黑名单 —— 命中即丢弃，不进入收件箱
@@ -125,15 +134,14 @@ class LedgerNotificationListener : NotificationListenerService() {
         // === Gate 1: 促销/广告黑名单 —— 直接丢弃 ===
         if (isPromotional(combined)) return
 
-        // === Gate 2: 双信号门 —— 支付动作 + 金额符号 必须同时满足 ===
-        val watched = pkg in watchedPackages
+        // === Gate 2: 严格白名单 —— 只处理支付/购物 App 的通知 ===
+        // 微博、新闻、银行 App 非通知源（银行走短信）等全部忽略
+        if (pkg !in watchedPackages) return
+
+        // === Gate 3: 双信号门 —— 支付动作 + 金额符号 必须同时满足 ===
         val hasAction = hasPaymentAction(combined)
         val hasAmount = hasAmountSymbol(combined)
-
-        if (!hasAction || !hasAmount) {
-            if (!watched) return
-            if (!hasAction) return
-        }
+        if (!hasAction || !hasAmount) return
 
         val parsed = TransactionParser.parse(
             text = combined,
@@ -164,16 +172,24 @@ class LedgerNotificationListener : NotificationListenerService() {
                 // 存入缓冲区供后续通知关联
                 storeCapture(rec.amount, enrichedMerchant, pkg, rec.timestamp)
                 // 个性化打标冷启动：抓取时即给一个分类建议，减少用户手动分类负担
+                // 同时获取支付时的位置信息，辅助分类推断
+                val place = runCatching {
+                    com.mudasir.smartledger.util.LocationHelper.lastPlace(applicationContext)
+                }.getOrNull()
                 val suggested = com.mudasir.smartledger.ml.PersonalTagger.recommend(
                     applicationContext,
-                    rec.type, rec.timestamp, rec.amount, rec.channelName, enrichedMerchant, rec.rawText
+                    rec.type, rec.timestamp, rec.amount, rec.channelName, enrichedMerchant, rec.rawText,
+                    place?.name
                 )
                 dao.insert(rec.copy(
                     categoryName = rec.categoryName.ifBlank { suggested },
-                    merchant = enrichedMerchant
+                    merchant = enrichedMerchant,
+                    latitude = place?.latitude ?: 0.0,
+                    longitude = place?.longitude ?: 0.0,
+                    locationName = place?.name
                 ))
-            } else if (watched && hasAction) {
-                // 兜底：监听包内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏
+            } else if (hasAction) {
+                // 兜底：白名单内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏
                 val fallbackMerchant = title.takeIf { it.isNotBlank() && !needsMerchant(title) }
                     ?: correlateMerchant(0.0, pkg, sbn.postTime)
                 dao.insert(

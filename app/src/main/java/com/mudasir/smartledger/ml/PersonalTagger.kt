@@ -132,7 +132,8 @@ object PersonalTagger {
         amount: Double,
         channel: String,
         merchant: String?,
-        rawText: String? = null
+        rawText: String? = null,
+        locationName: String? = null
     ): String {
         val m = synchronized(lock) { loadImpl(context) }
         val norm = normalizeMerchant(merchant)
@@ -153,8 +154,8 @@ object PersonalTagger {
             bayesArgmax(m, feats, amount)
         } else null
 
-        // Layer 3: Rules (keyword + amount/time)
-        val ruleHit: String? = rulePredict(type, timestamp, amount, channel, merchant, rawText)
+        // Layer 3: Rules (keyword + amount/time + location)
+        val ruleHit: String? = rulePredict(type, timestamp, amount, channel, merchant, rawText, locationName)
 
         // Layer 4: Cold start decision table
         val coldHit: Pair<String, Float>? = coldStartPredict(type, timestamp, amount, channel)
@@ -377,75 +378,133 @@ object PersonalTagger {
         return bestCat
     }
 
-    // ===== 冷启动决策表 =====
+    // ===== 冷启动决策表 — 基于日常生活时间+金额精确推断 =====
 
     private fun coldStartPredict(type: String, ts: Long, amount: Double, channel: String): Pair<String, Float>? {
         if (type != TransactionRecord.TYPE_EXPENSE) return null
         val c = Calendar.getInstance().apply { timeInMillis = ts }
         val h = c.get(Calendar.HOUR_OF_DAY)
+        val m = c.get(Calendar.MINUTE)
         val isWeekend = c.get(Calendar.DAY_OF_WEEK).let { it == 1 || it == 7 }
         val ch = channel.lowercase()
         val candidates = mutableListOf<Pair<String, Float>>()
 
-        // 通勤
-        if (h in 6..9 && !isWeekend && amount < 20) {
-            candidates.add("公交" to 0.45f)
-            candidates.add("地铁" to 0.25f)
-            candidates.add("零食饮料" to 0.12f)
-        }
-        // 午餐
-        else if (h in 11..13) {
+        // 将小时转换为分钟时间戳方便精确判断
+        val timeMin = h * 60 + m
+
+        // === 早通勤 6:30-9:30（工作日）===
+        if (timeMin in 390..570 && !isWeekend) {
             when {
-                amount < 15 -> { candidates.add("食堂" to 0.40f); candidates.add("外卖" to 0.22f) }
-                amount < 40 -> { candidates.add("外卖" to 0.35f); candidates.add("食堂" to 0.20f); candidates.add("下馆子" to 0.12f) }
-                amount < 150 -> { candidates.add("下馆子" to 0.35f); candidates.add("外卖" to 0.15f) }
-                amount < 500 -> { candidates.add("下馆子" to 0.22f); candidates.add("日用品" to 0.12f) }
+                amount <= 3 -> { candidates.add("公交" to 0.55f) }
+                amount <= 8 -> { candidates.add("公交" to 0.45f); candidates.add("地铁" to 0.25f) }
+                amount <= 15 -> { candidates.add("地铁" to 0.45f); candidates.add("公交" to 0.20f); candidates.add("早餐" to 0.15f) }
+                amount <= 30 -> { candidates.add("早餐" to 0.40f); candidates.add("地铁" to 0.15f) }
+                amount <= 60 -> { candidates.add("早餐" to 0.30f); candidates.add("外卖" to 0.10f) }
+                else -> { candidates.add("日用品" to 0.12f) }
             }
         }
-        // 晚餐
-        else if (h in 17..20) {
+        // === 早通勤 6:30-9:30（周末）===
+        else if (timeMin in 390..570 && isWeekend) {
             when {
-                amount < 15 -> candidates.add("零食饮料" to 0.35f)
-                amount < 150 -> { candidates.add("下馆子" to 0.38f); candidates.add("外卖" to 0.12f) }
-                amount < 500 -> { candidates.add("下馆子" to 0.20f); candidates.add("日用品" to 0.12f) }
+                amount <= 10 -> candidates.add("零食饮料" to 0.25f)
+                amount <= 30 -> candidates.add("早餐" to 0.30f)
+                amount <= 100 -> candidates.add("日用品" to 0.15f)
             }
         }
-        // 深夜
-        else if (h in 21..23 || h in 0..4) {
+        // === 上午工作时段 9:30-10:30 ===
+        else if (timeMin in 570..630) {
             when {
-                amount < 30 -> candidates.add("零食饮料" to 0.32f)
-                amount < 100 -> { candidates.add("游戏充值" to 0.22f); candidates.add("零食饮料" to 0.18f) }
+                amount <= 20 -> candidates.add("零食饮料" to 0.35f)
+                amount <= 100 -> candidates.add("日用品" to 0.15f)
+                else -> candidates.add("数码" to 0.10f)
             }
         }
-        // 下午
-        else if (h in 14..16) {
-            if (amount < 30) candidates.add("零食饮料" to 0.28f)
-            else if (amount < 200) candidates.add("日用品" to 0.18f)
-        }
-        // 上午工作时段
-        else if (h in 9..11) {
+        // === 午餐前 10:30-11:00 ===
+        else if (timeMin in 630..660) {
             when {
-                amount < 30 -> candidates.add("零食饮料" to 0.18f)
-                amount < 300 -> candidates.add("日用品" to 0.22f)
-                else -> candidates.add("数码" to 0.15f)
+                amount <= 15 -> candidates.add("零食饮料" to 0.25f)
+                amount <= 50 -> candidates.add("外卖" to 0.30f)
+            }
+        }
+        // === 午餐 11:00-13:30 ===
+        else if (timeMin in 660..810) {
+            when {
+                amount <= 8 -> { candidates.add("食堂" to 0.50f) }
+                amount <= 20 -> { candidates.add("食堂" to 0.30f); candidates.add("外卖" to 0.28f) }
+                amount <= 35 -> { candidates.add("外卖" to 0.38f); candidates.add("食堂" to 0.18f); candidates.add("下馆子" to 0.10f) }
+                amount <= 60 -> { candidates.add("外卖" to 0.25f); candidates.add("下馆子" to 0.28f) }
+                amount <= 150 -> { candidates.add("下馆子" to 0.35f); candidates.add("外卖" to 0.10f) }
+                amount <= 500 -> { candidates.add("下馆子" to 0.20f); candidates.add("日用品" to 0.10f) }
+                else -> { candidates.add("日用品" to 0.12f) }
+            }
+        }
+        // === 下午 13:30-17:00 ===
+        else if (timeMin in 810..1020) {
+            when {
+                amount <= 15 -> candidates.add("零食饮料" to 0.35f)
+                amount <= 40 -> { candidates.add("零食饮料" to 0.20f); candidates.add("日用品" to 0.15f) }
+                amount <= 150 -> { candidates.add("日用品" to 0.20f); candidates.add("服饰" to 0.10f) }
+                amount <= 500 -> { candidates.add("服饰" to 0.15f); candidates.add("数码" to 0.10f) }
+                else -> candidates.add("数码" to 0.12f)
+            }
+        }
+        // === 晚通勤+晚餐 17:00-20:00 ===
+        else if (timeMin in 1020..1200) {
+            // 通勤部分
+            if (!isWeekend && amount <= 15 && timeMin in 1020..1110) {
+                candidates.add("地铁" to 0.35f); candidates.add("公交" to 0.20f)
+            }
+            when {
+                amount <= 15 -> { candidates.add("零食饮料" to 0.30f); candidates.add("外卖" to 0.10f) }
+                amount <= 35 -> { candidates.add("外卖" to 0.30f); candidates.add("食堂" to 0.15f) }
+                amount <= 80 -> { candidates.add("外卖" to 0.20f); candidates.add("下馆子" to 0.30f) }
+                amount <= 200 -> { candidates.add("下馆子" to 0.35f); candidates.add("外卖" to 0.08f) }
+                amount <= 500 -> { candidates.add("下馆子" to 0.20f); candidates.add("日用品" to 0.12f) }
+                else -> { candidates.add("日用品" to 0.10f) }
+            }
+        }
+        // === 晚间 20:00-22:00 ===
+        else if (timeMin in 1200..1320) {
+            when {
+                amount <= 25 -> candidates.add("零食饮料" to 0.30f)
+                amount <= 80 -> { candidates.add("日用品" to 0.15f); candidates.add("游戏充值" to 0.12f) }
+                amount <= 300 -> { candidates.add("服饰" to 0.12f); candidates.add("数码" to 0.10f) }
+                else -> candidates.add("数码" to 0.10f)
+            }
+        }
+        // === 深夜 22:00-2:00 ===
+        else if (timeMin in 1320..1440 || timeMin in 0..120) {
+            when {
+                amount <= 25 -> candidates.add("零食饮料" to 0.32f)
+                amount <= 80 -> { candidates.add("零食饮料" to 0.20f); candidates.add("游戏充值" to 0.18f) }
+                amount <= 200 -> { candidates.add("下馆子" to 0.22f); candidates.add("游戏充值" to 0.10f) }
+                else -> { candidates.add("游戏充值" to 0.15f); candidates.add("数码" to 0.10f) }
+            }
+        }
+        // === 凌晨 2:00-6:30 ===
+        else if (timeMin in 120..390) {
+            when {
+                amount <= 50 -> candidates.add("零食饮料" to 0.20f)
+                else -> candidates.add("其他" to 0.10f)
             }
         }
 
-        // 渠道加权
-        if (ch.contains("京东") || ch.contains("jd")) {
-            candidates.add("数码" to 0.28f)
-        } else if (ch.contains("淘宝") || ch.contains("天猫")) {
-            candidates.add("日用品" to 0.22f)
-            if (amount > 100) candidates.add("服饰" to 0.14f)
+        // === 渠道加权（强信号覆盖） ===
+        when {
+            ch.contains("美团") || ch.contains("饿了么") -> candidates.add("外卖" to 0.45f)
+            ch.contains("滴滴") || ch.contains("打车") -> candidates.add("打车" to 0.45f)
+            ch.contains("京东") || ch.contains("jd") -> candidates.add("数码" to 0.30f)
+            ch.contains("淘宝") || ch.contains("天猫") -> {
+                candidates.add("日用品" to 0.22f)
+                if (amount > 100) candidates.add("服饰" to 0.14f)
+            }
         }
 
-        // 大额推断
-        if (amount >= 1000) {
-            candidates.add("房租" to 0.18f)
-            candidates.add("数码" to 0.12f)
-        } else if (amount in 200.0..1000.0) {
-            candidates.add("数码" to 0.14f)
-            candidates.add("服饰" to 0.10f)
+        // === 大额推断 ===
+        when {
+            amount >= 3000 -> { candidates.add("房租" to 0.25f); candidates.add("数码" to 0.08f) }
+            amount >= 1000 -> { candidates.add("房租" to 0.15f); candidates.add("数码" to 0.12f) }
+            amount >= 500 -> { candidates.add("数码" to 0.14f); candidates.add("服饰" to 0.10f) }
         }
 
         // 合并同类项取最大概率
@@ -457,17 +516,43 @@ object PersonalTagger {
 
     // ===== 规则引擎 =====
 
-    private fun rulePredict(type: String, ts: Long, amount: Double, channel: String, merchant: String?, rawText: String?): String? {
+    private fun rulePredict(type: String, ts: Long, amount: Double, channel: String, merchant: String?, rawText: String?, locationName: String? = null): String? {
         val c = Calendar.getInstance().apply { timeInMillis = ts }
         val h = c.get(Calendar.HOUR_OF_DAY)
-        val combined = ((merchant.orEmpty()) + " " + channel + " " + (rawText.orEmpty())).lowercase()
+        val combined = ((merchant.orEmpty()) + " " + channel + " " + (rawText.orEmpty()) + " " + (locationName.orEmpty())).lowercase()
         val ch = channel.lowercase()
         val mRaw = (merchant.orEmpty()).lowercase()
+        val loc = (locationName.orEmpty()).lowercase()
         val amt = amount
 
         fun has(vararg kw: String) = kw.any { combined.contains(it) }
         fun chHas(vararg kw: String) = kw.any { ch.contains(it) }
         fun mHas(vararg kw: String) = kw.any { mRaw.contains(it) }
+        fun locHas(vararg kw: String) = kw.any { loc.contains(it) }
+
+        // ===== TIER 0: 地理位置信号（最强优先级） =====
+        if (type != TransactionRecord.TYPE_INCOME) {
+            if (locHas("地铁", "metro", "轨道交通")) return "地铁"
+            if (locHas("公交", "巴士", "brt")) return "公交"
+            if (locHas("加油", "石化", "石油", "壳牌", "加油站")) return "加油停车"
+            if (locHas("停车", "车库", "停车场")) return "加油停车"
+            if (locHas("医院", "诊所", "门诊", "卫生", "体检")) return "挂号门诊"
+            if (locHas("药店", "药房", "大药房", "健之佳", "大参林")) return "药品"
+            if (locHas("超市", "沃尔玛", "家乐福", "永辉", "盒马", "大润发", "costco")) return "超市日用"
+            if (locHas("便利店", "711", "全家", "罗森", "便利")) return "零食饮料"
+            if (locHas("咖啡", "星巴克", "瑞幸", "manner", "tea", "茶")) return "零食饮料"
+            if (locHas("餐厅", "饭店", "美食", "酒楼", "食府", "小吃", "排档")) return "下馆子"
+            if (locHas("商场", "广场", "购物", "百货", "奥莱", "outlets")) return "服饰"
+            if (locHas("学校", "大学", "学院", "培训", "教育")) return "课程培训"
+            if (locHas("书店", "图书", "书城")) return "书籍文具"
+            if (locHas("影院", "电影", "剧院", "大麦", "演出")) return "电影演出"
+            if (locHas("酒店", "旅馆", "民宿", "宾馆")) return "旅行出游"
+            if (locHas("健身", " gym", "瑜伽", "游泳", "运动")) return "娱乐"
+            if (locHas("理发", "美容", "美甲", "美发", "沙龙")) return "日用品"
+            if (locHas("菜市场", "市场", "农贸")) return "超市日用"
+            if (locHas("银行", "atm")) return "其他"
+            if (locHas("充电", "充电桩", "新能源")) return "加油停车"
+        }
 
         if (type != TransactionRecord.TYPE_INCOME) {
 
