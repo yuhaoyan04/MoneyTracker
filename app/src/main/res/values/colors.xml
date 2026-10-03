@@ -20,6 +20,7 @@
     <!-- 收支语义色（低饱和、高级感） -->
     <color name="color_expense">#B85450</color>
     <color name="color_income">#5C8A47</color>
+    <color name="color_warning">#C99A3D</color>
 
     <!-- 卡片/分隔/背景 — 暖中性 -->
     <color name="surface_card">#FFFFFF</color>

@@ -22,6 +22,7 @@
     <!-- 收支色在深色下稍提亮 -->
     <color name="color_expense">#D67270</color>
     <color name="color_income">#8AB864</color>
+    <color name="color_warning">#D9AE56</color>
 
     <color name="ai_bg_gradient_start">#0A0908</color>
 </resources>

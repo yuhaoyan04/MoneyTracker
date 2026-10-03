@@ -38,6 +38,8 @@ import kotlin.math.sqrt
  *
  * 自进化机制（越来越准）：
  * - 加速学习：3 次确认即达高置信度，减少用户手动确认次数
+ * - 周期性支付检测：同商户+相近金额+月度间隔 → 订阅自动分类
+ *   （第 2 次出现 +0.20 弱偏移，第 3 次 +0.50 强偏移）
  * - 分类频率先验：偏好用户常用分类（类短视频个性化默认推荐）
  * - 商户-时段上下文：同商户不同时段不同分类
  * - 纠正惩罚：频繁被纠正的商户置信度降低，让其他层接管
@@ -71,6 +73,14 @@ object PersonalTagger {
         } else 0.0
     }
 
+    /** 周期性支付（订阅）记录：同商户 + 相近金额 + 约月度间隔 */
+    data class RecurringInfo(
+        var count: Int = 0,
+        var lastTs: Long = 0,
+        var amount: Double = 0.0,
+        var category: String = ""
+    )
+
     data class Model(
         var total: Int = 0,
         var prior: MutableMap<String, Int> = mutableMapOf(),
@@ -79,6 +89,7 @@ object PersonalTagger {
         var merchantHourMap: MutableMap<String, MutableMap<String, MutableMap<String, Int>>> = mutableMapOf(),
         var merchantCorrect: MutableMap<String, Int> = mutableMapOf(),
         var catStats: MutableMap<String, CatStat> = mutableMapOf(),
+        var recurringMap: MutableMap<String, MutableList<RecurringInfo>> = mutableMapOf(),
         var lastUpdate: Long = 0
     )
 
@@ -103,6 +114,8 @@ object PersonalTagger {
             if (m.merchantCorrect == null) m.merchantCorrect = mutableMapOf()
             @Suppress("SENSELESS_COMPARISON")
             if (m.catStats == null) m.catStats = mutableMapOf()
+            @Suppress("SENSELESS_COMPARISON")
+            if (m.recurringMap == null) m.recurringMap = mutableMapOf()
             m
         } catch (e: Exception) {
             Model()
@@ -205,6 +218,19 @@ object PersonalTagger {
         // Merchant-hour context signal (weak but personalized)
         merchantHourHit?.let { scores[it] = (scores[it] ?: 0.0) + 0.15 }
 
+        // === Recurring payment boost (subscription detection) ===
+        // Same merchant + similar amount + ~monthly interval → strong prior
+        if (norm.isNotEmpty() && type == TransactionRecord.TYPE_EXPENSE) {
+            val rec = findRecurring(m, norm, amount)
+            if (rec != null && rec.count >= 1) {
+                val daysSince = (timestamp - rec.lastTs) / 86400000.0
+                if (daysSince in 20.0..40.0) {
+                    val boost = if (rec.count >= 2) 0.50 else 0.20
+                    scores[rec.category] = (scores[rec.category] ?: 0.0) + boost
+                }
+            }
+        }
+
         // === Category frequency prior — lean toward user's most consumed categories ===
         // Like short-video recommendation: default to user's habitual content
         if (m.total >= MIN_SAMPLES * 2 && m.prior.isNotEmpty()) {
@@ -258,6 +284,10 @@ object PersonalTagger {
                 m.merchantHourMap.getOrPut(norm) { mutableMapOf() }
                     .getOrPut(hb) { mutableMapOf() }
                     .let { it[category] = (it[category] ?: 0) + 1 }
+                // Track recurring pattern (subscription detection)
+                if (type == TransactionRecord.TYPE_EXPENSE) {
+                    trackRecurring(m, norm, amount, timestamp, category)
+                }
             }
 
             updateCatStats(m, category, amount, +1)
@@ -326,6 +356,35 @@ object PersonalTagger {
     }
 
     // ===== 商户记忆 + 置信度 =====
+
+    private fun amountClose(a: Double, b: Double): Boolean {
+        val ref = max(abs(a), abs(b)).coerceAtLeast(1.0)
+        return abs(a - b) / ref < 0.15
+    }
+
+    private fun findRecurring(m: Model, merchant: String, amount: Double): RecurringInfo? {
+        return m.recurringMap[merchant]?.find { amountClose(it.amount, amount) }
+    }
+
+    private fun trackRecurring(m: Model, merchant: String, amount: Double, ts: Long, category: String) {
+        val list = m.recurringMap.getOrPut(merchant) { mutableListOf() }
+        val existing = list.find { amountClose(it.amount, amount) }
+        if (existing != null) {
+            val daysSince = if (existing.lastTs > 0) (ts - existing.lastTs) / 86400000.0 else -1.0
+            if (daysSince > 40.0) {
+                existing.count = 1  // gap too long, reset pattern
+            } else if (daysSince >= 20.0) {
+                existing.count++
+            }
+            // daysSince < 20 (same-day duplicate) → don't increment
+            existing.lastTs = ts
+            existing.amount = amount
+            existing.category = category
+        } else {
+            list.add(RecurringInfo(count = 1, lastTs = ts, amount = amount, category = category))
+            if (list.size > 5) list.removeAt(0)  // keep list bounded
+        }
+    }
 
     private fun normalizeMerchant(s: String?): String {
         if (s.isNullOrBlank()) return ""

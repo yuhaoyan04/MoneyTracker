@@ -39,12 +39,16 @@ class CaptureAdapter(
         private val btnConfirm: MaterialButton = view.findViewById(R.id.btnConfirm)
         private val btnEdit: MaterialButton = view.findViewById(R.id.btnEdit)
         private val btnDismiss: MaterialButton = view.findViewById(R.id.btnDismiss)
+        private val accentBar: View = view.findViewById(R.id.capAccentBar)
 
         fun bind(r: TransactionRecord) {
             val isIncome = r.type == TransactionRecord.TYPE_INCOME
+            val semanticColor = ContextCompat.getColor(itemView.context, if (isIncome) R.color.color_income else R.color.color_expense)
             tvType.text = if (isIncome) "收入" else "支出"
+            tvType.setTextColor(semanticColor)
             tvAmount.text = FormatUtil.money(r.amount)
-            tvAmount.setTextColor(ContextCompat.getColor(itemView.context, if (isIncome) R.color.color_income else R.color.color_expense))
+            tvAmount.setTextColor(semanticColor)
+            accentBar.setBackgroundColor(semanticColor)
 
             val parent = parentMap[r.categoryName]
             val catDisplay = if (!parent.isNullOrBlank() && parent != r.categoryName) {

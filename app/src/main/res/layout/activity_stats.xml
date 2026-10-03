@@ -190,19 +190,40 @@
                         android:text="收入分类" />
                 </com.google.android.material.button.MaterialButtonToggleGroup>
 
-                <com.github.mikephil.charting.charts.PieChart
-                    android:id="@+id/pieChart"
-                    android:layout_width="match_parent"
-                    android:layout_height="280dp"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginHorizontal="8dp" />
-
-                <LinearLayout
-                    android:id="@+id/llBreakdown"
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="vertical" />
+                    android:layout_marginHorizontal="16dp"
+                    android:layout_marginTop="12dp"
+                    app:cardCornerRadius="16dp"
+                    app:cardBackgroundColor="@color/surface_card"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="@color/divider">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingTop="12dp"
+                        android:paddingBottom="4dp">
+
+                        <com.github.mikephil.charting.charts.PieChart
+                            android:id="@+id/pieChart"
+                            android:layout_width="match_parent"
+                            android:layout_height="280dp"
+                            android:layout_marginHorizontal="8dp" />
+
+                        <LinearLayout
+                            android:id="@+id/llBreakdown"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:orientation="vertical"
+                            android:paddingHorizontal="16dp"
+                            android:paddingBottom="12dp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
             <!-- 趋势维度 -->
@@ -322,23 +343,34 @@
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
-                <FrameLayout
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
-                    android:layout_height="360dp"
-                    android:layout_marginHorizontal="8dp"
-                    android:layout_marginTop="4dp">
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="16dp"
+                    android:layout_marginTop="8dp"
+                    app:cardCornerRadius="16dp"
+                    app:cardBackgroundColor="@color/surface_card"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="@color/divider">
 
-                    <com.github.mikephil.charting.charts.LineChart
-                        android:id="@+id/lineChartTrend"
+                    <FrameLayout
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent" />
+                        android:layout_height="360dp"
+                        android:layout_margin="8dp">
 
-                    <com.github.mikephil.charting.charts.BarChart
-                        android:id="@+id/barChartHourly"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:visibility="gone" />
-                </FrameLayout>
+                        <com.github.mikephil.charting.charts.LineChart
+                            android:id="@+id/lineChartTrend"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <com.github.mikephil.charting.charts.BarChart
+                            android:id="@+id/barChartHourly"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:visibility="gone" />
+                    </FrameLayout>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
             <TextView

@@ -146,11 +146,29 @@ class HomeActivity : AppCompatActivity() {
         withContext(Dispatchers.Main) {
             findViewById<android.widget.TextView>(R.id.tvMonthLabel).text =
                 FormatUtil.monthLabel(now.get(Calendar.YEAR), now.get(Calendar.MONTH)) + " · 结余"
-            findViewById<android.widget.TextView>(R.id.tvBalance).text = FormatUtil.money(income - expense)
+            animateBalance(income - expense)
             findViewById<android.widget.TextView>(R.id.tvIncome).text = FormatUtil.money(income)
             findViewById<android.widget.TextView>(R.id.tvExpense).text = FormatUtil.money(expense)
             updateBudgetProgress(expense)
         }
+    }
+
+    private var currentBalanceValue = 0.0
+
+    private fun animateBalance(target: Double) {
+        val tv = findViewById<android.widget.TextView>(R.id.tvBalance)
+        if (kotlin.math.abs(target - currentBalanceValue) < 0.005) {
+            tv.text = FormatUtil.money(target)
+            return
+        }
+        val animator = android.animation.ValueAnimator.ofFloat(currentBalanceValue.toFloat(), target.toFloat())
+        animator.duration = 650
+        animator.interpolator = android.view.animation.DecelerateInterpolator()
+        animator.addUpdateListener { anim ->
+            tv.text = FormatUtil.money((anim.animatedValue as Float).toDouble())
+        }
+        animator.start()
+        currentBalanceValue = target
     }
 
     private fun updateBudgetProgress(expense: Double) {
@@ -169,7 +187,7 @@ class HomeActivity : AppCompatActivity() {
         bar.progress = pct
         val color = when {
             pct >= 90 -> ContextCompat.getColor(this, R.color.color_expense)
-            pct >= 70 -> android.graphics.Color.parseColor("#FFB300")
+            pct >= 70 -> ContextCompat.getColor(this, R.color.color_warning)
             else -> ContextCompat.getColor(this, R.color.color_income)
         }
         bar.progressTintList = android.content.res.ColorStateList.valueOf(color)
