@@ -17,7 +17,7 @@ private data class Sub(val name: String, val color: String, val parent: String, 
         CustomLedger::class, CustomEntry::class, CustomDailyRecord::class,
         TransactionRecord::class, Category::class, PaymentChannel::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -127,6 +127,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v11: AI 打标签名度（收件箱展示「AI 信心 92%」）
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE transactions ADD COLUMN aiConfidence REAL")
+            }
+        }
+
         /**
          * 幂等播种全量分类与渠道（一级大类 + 二级小类 + 支付方式）。
          * 同时用于：v7→v8、v8→v9、v9→v10 迁移，以及 onCreate（全新安装）。
@@ -231,7 +238,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_ledger_db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     // 全新安装时 onCreate 播种全量分类（迁移不会在全新库上执行）
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

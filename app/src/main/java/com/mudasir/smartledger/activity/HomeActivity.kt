@@ -81,6 +81,17 @@ class HomeActivity : AppCompatActivity() {
             true
         }
 
+        // 账本中心入口：从底部导航流进入抽屉仪表盘（电费/牛奶/自定义账本等）
+        findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar).apply {
+            inflateMenu(R.menu.home_menu)
+            setOnMenuItemClickListener { item ->
+                if (item.itemId == R.id.action_dashboard) {
+                    startActivity(Intent(this@HomeActivity, com.mudasir.smartledger.MainActivity::class.java))
+                    true
+                } else false
+            }
+        }
+
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_home)
 
         com.mudasir.smartledger.util.BackupWorker.schedulePeriodic(this)
@@ -142,6 +153,14 @@ class HomeActivity : AppCompatActivity() {
         val income = db.transactionDao().sumByType(TransactionRecord.TYPE_INCOME, start, end)
         val expense = db.transactionDao().sumByType(TransactionRecord.TYPE_EXPENSE, start, end)
         currentExpense = expense
+        // 迷你趋势：本月每日支出
+        val monthRecords = db.transactionDao().getInRange(start, end)
+        val daily = IntArray(31)
+        monthRecords.filter { it.type == TransactionRecord.TYPE_EXPENSE }.forEach {
+            val c = java.util.Calendar.getInstance().apply { timeInMillis = it.timestamp }
+            val d = c.get(java.util.Calendar.DAY_OF_MONTH)
+            if (d in 1..31) daily[d - 1] += it.amount.toInt()
+        }
         val now = java.util.Calendar.getInstance()
         withContext(Dispatchers.Main) {
             findViewById<android.widget.TextView>(R.id.tvMonthLabel).text =
@@ -150,7 +169,53 @@ class HomeActivity : AppCompatActivity() {
             findViewById<android.widget.TextView>(R.id.tvIncome).text = FormatUtil.money(income)
             findViewById<android.widget.TextView>(R.id.tvExpense).text = FormatUtil.money(expense)
             updateBudgetProgress(expense)
+            renderMiniTrend(daily, now.get(java.util.Calendar.DAY_OF_MONTH), expense)
         }
+    }
+
+    /** 余额卡内的迷你支出趋势线：极简风格（无轴/无图例/细线+渐变填充），点击跳统计页。 */
+    private fun renderMiniTrend(daily: IntArray, todayDom: Int, monthExpense: Double) {
+        val section = findViewById<View>(R.id.miniTrendSection)
+        val chart = findViewById<com.github.mikephil.charting.charts.LineChart>(R.id.miniTrendChart)
+        val days = todayDom.coerceIn(1, 31)
+        val entries = (0 until days).map { com.github.mikephil.charting.data.Entry(it.toFloat(), daily[it].toFloat()) }
+        if (entries.size < 2 || monthExpense <= 0.0) {
+            section.visibility = View.GONE
+            return
+        }
+        findViewById<TextView>(R.id.tvTrendDailyAvg).text = "日均 ${FormatUtil.money(monthExpense / days)}"
+
+        val lineColorRes = ContextCompat.getColor(this, R.color.teal_main)
+        val fillColorRes = ContextCompat.getColor(this, R.color.teal_light)
+        val dataSet = com.github.mikephil.charting.data.LineDataSet(entries, "").apply {
+            color = lineColorRes
+            lineWidth = 1.5f
+            setDrawCircles(false)
+            setDrawValues(false)
+            mode = com.github.mikephil.charting.data.LineDataSet.Mode.CUBIC_BEZIER
+            setDrawFilled(true)
+            fillColor = fillColorRes
+            fillAlpha = 90
+        }
+        chart.apply {
+            data = com.github.mikephil.charting.data.LineData(dataSet)
+            description.isEnabled = false
+            legend.isEnabled = false
+            axisLeft.isEnabled = false
+            axisRight.isEnabled = false
+            xAxis.isEnabled = false
+            axisLeft.setDrawGridLines(false)
+            xAxis.setDrawGridLines(false)
+            setViewPortOffsets(0f, 4f, 0f, 4f)
+            setTouchEnabled(false)
+            setDragEnabled(false)
+            setScaleEnabled(false)
+            invalidate()
+        }
+        section.setOnClickListener {
+            startActivity(Intent(this, StatsActivity::class.java))
+        }
+        section.visibility = View.VISIBLE
     }
 
     private var currentBalanceValue = 0.0

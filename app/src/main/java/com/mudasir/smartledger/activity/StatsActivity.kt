@@ -17,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.github.mikephil.charting.charts.BarChart
 import com.github.mikephil.charting.charts.LineChart
@@ -252,6 +253,11 @@ class StatsActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val (start, end) = FormatUtil.monthRange(year, month)
             records = db.transactionDao().getInRange(start, end)
+            // 上月数据（环比洞察用）
+            val lastCal = Calendar.getInstance().apply { set(year, month, 1) }
+            lastCal.add(Calendar.MONTH, -1)
+            val (lastStart, lastEnd) = FormatUtil.monthRange(lastCal.get(Calendar.YEAR), lastCal.get(Calendar.MONTH))
+            val lastExpense = db.transactionDao().sumByType(TransactionRecord.TYPE_EXPENSE, lastStart, lastEnd)
             val cats = db.categoryDao().getAll()
             val catByName = cats.associateBy { it.name }
             totalIncome = records.filter { it.type == TransactionRecord.TYPE_INCOME }.sumOf { it.amount }
@@ -264,16 +270,96 @@ class StatsActivity : AppCompatActivity() {
                 .map { (k, v) -> k to v.sumOf { it.amount } }.sortedByDescending { it.second }
             val pieRoots = (expenseByCat.map { it.first } + incomeByCat.map { it.first }).distinct()
             catColors = buildSemanticColors(pieRoots)
+            val insights = buildInsights(lastExpense, catByName)
             withContext(Dispatchers.Main) {
                 if (isFinishing || isDestroyed) return@withContext
                 findViewById<TextView>(R.id.tvSumIncome).text = FormatUtil.money(totalIncome)
                 findViewById<TextView>(R.id.tvSumExpense).text = FormatUtil.money(totalExpense)
                 findViewById<TextView>(R.id.tvSumBalance).text = FormatUtil.money(totalIncome - totalExpense)
                 findViewById<View>(R.id.tvEmpty).visibility = if (records.isEmpty()) View.VISIBLE else View.GONE
+                renderInsights(insights)
                 renderPie(); renderBreakdown()
             }
         }
     }
+
+    /** 本地规则洞察：环比 / 头部分类 / 日均 / 最大单笔 / 笔数。纯离线，无 AI 依赖。 */
+    private fun buildInsights(lastExpense: Double, catByName: Map<String, Category>): List<String> {
+        val expenses = records.filter { it.type == TransactionRecord.TYPE_EXPENSE }
+        if (expenses.isEmpty()) return emptyList()
+        val out = mutableListOf<String>()
+
+        // 环比
+        if (lastExpense > 0.01) {
+            val diff = totalExpense - lastExpense
+            val pct = (diff / lastExpense * 100).toInt()
+            out.add(
+                if (diff >= 0) "支出比上月增长 ${pct}%（${FormatUtil.money(diff)}）"
+                else "支出比上月节省 ${-pct}%（${FormatUtil.money(-diff)}）"
+            )
+        }
+
+        // 头部分类
+        val top = expenseByCat.firstOrNull()
+        if (top != null && totalExpense > 0) {
+            val share = (top.second / totalExpense * 100).toInt()
+            out.add("最大支出：${top.first} ${FormatUtil.money(top.second)}（占 ${share}%）")
+        }
+
+        // 日均（仅当月有意义，其他月份按 30 天算）
+        val days = if (year == Calendar.getInstance().get(Calendar.YEAR) && month == Calendar.getInstance().get(Calendar.MONTH))
+            Calendar.getInstance().get(Calendar.DAY_OF_MONTH) else 30
+        if (days > 0) out.add("日均支出 ${FormatUtil.money(totalExpense / days)}")
+
+        // 最大单笔
+        val biggest = expenses.maxByOrNull { it.amount }
+        if (biggest != null && biggest.amount > 0) {
+            val label = biggest.merchant?.takeIf { it.isNotBlank() } ?: parentOf(catByName, biggest.categoryName)
+            out.add("最大单笔：${FormatUtil.money(biggest.amount)}（$label）")
+        }
+
+        // 笔数
+        out.add("共 ${expenses.size} 笔支出 · ${records.count { it.type == TransactionRecord.TYPE_INCOME }} 笔收入")
+        return out
+    }
+
+    private fun renderInsights(insights: List<String>) {
+        val card = findViewById<View>(R.id.cardInsights)
+        val container = findViewById<LinearLayout>(R.id.llInsights)
+        if (insights.isEmpty()) {
+            card.visibility = View.GONE
+            return
+        }
+        findViewById<TextView>(R.id.tvInsightsTitle).text =
+            "${FormatUtil.monthLabel(year, month).replace("年", "年").replace("月", "月")}洞察"
+        container.removeAllViews()
+        insights.forEach { text ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 6.dp, 0, 6.dp)
+            }
+            val dot = View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(6.dp, 6.dp).apply {
+                    rightMargin = 10.dp
+                }
+                setBackgroundResource(R.drawable.bg_insight_dot)
+            }
+            val tv = TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                this.text = text
+                textSize = 13f
+                setTextColor(ContextCompat.getColor(this@StatsActivity, R.color.text_primary))
+            }
+            row.addView(dot)
+            row.addView(tv)
+            container.addView(row)
+        }
+        card.visibility = View.VISIBLE
+    }
+
+    private val Int.dp: Int
+        get() = (this * resources.displayMetrics.density).toInt()
 
     private fun buildSemanticColors(roots: List<String>): Map<String, Int> {
         val result = mutableMapOf<String, Int>()

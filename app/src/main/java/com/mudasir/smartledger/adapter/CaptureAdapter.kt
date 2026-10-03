@@ -40,6 +40,7 @@ class CaptureAdapter(
         private val btnEdit: MaterialButton = view.findViewById(R.id.btnEdit)
         private val btnDismiss: MaterialButton = view.findViewById(R.id.btnDismiss)
         private val accentBar: View = view.findViewById(R.id.capAccentBar)
+        private val tvAiConf: TextView = view.findViewById(R.id.tvCapAiConf)
 
         fun bind(r: TransactionRecord) {
             val isIncome = r.type == TransactionRecord.TYPE_INCOME
@@ -63,6 +64,14 @@ class CaptureAdapter(
                 .joinToString(" · ").ifBlank { "未知渠道" }
             tvRaw.text = r.rawText ?: "无原文"
             tvRaw.visibility = if (r.rawText.isNullOrBlank()) View.GONE else View.VISIBLE
+
+            val conf = r.aiConfidence
+            if (conf != null && conf > 0f && r.categoryName.isNotBlank()) {
+                tvAiConf.text = "AI ${"%.0f".format(conf * 100)}%"
+                tvAiConf.visibility = View.VISIBLE
+            } else {
+                tvAiConf.visibility = View.GONE
+            }
 
             btnConfirm.setOnClickListener { onConfirm(r) }
             btnEdit.setOnClickListener { onEdit(r) }

@@ -176,17 +176,18 @@ class LedgerNotificationListener : NotificationListenerService() {
                 val place = runCatching {
                     com.mudasir.smartledger.util.LocationHelper.lastPlace(applicationContext)
                 }.getOrNull()
-                val suggested = com.mudasir.smartledger.ml.PersonalTagger.recommend(
+                val suggestion = com.mudasir.smartledger.ml.PersonalTagger.recommendWithConfidence(
                     applicationContext,
                     rec.type, rec.timestamp, rec.amount, rec.channelName, enrichedMerchant, rec.rawText,
                     place?.name
                 )
                 dao.insert(rec.copy(
-                    categoryName = rec.categoryName.ifBlank { suggested },
+                    categoryName = rec.categoryName.ifBlank { suggestion.category },
                     merchant = enrichedMerchant,
                     latitude = place?.latitude ?: 0.0,
                     longitude = place?.longitude ?: 0.0,
-                    locationName = place?.name
+                    locationName = place?.name,
+                    aiConfidence = suggestion.confidence
                 ))
             } else if (hasAction) {
                 // 兜底：白名单内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏

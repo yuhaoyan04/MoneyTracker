@@ -67,6 +67,9 @@ data class TransactionRecord(
     val longitude: Double? = null,
     val locationName: String? = null,
 
+    /** v11: AI 打标时的置信度 [0,1]，用于收件箱展示「AI 信心」。 */
+    val aiConfidence: Float? = null,
+
     val createdAt: Long = System.currentTimeMillis()
 ) {
     companion object {

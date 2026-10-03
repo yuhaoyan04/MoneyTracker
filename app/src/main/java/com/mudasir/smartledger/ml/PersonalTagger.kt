@@ -160,6 +160,9 @@ object PersonalTagger {
 
     // ===== 公开 API =====
 
+    /** 带置信度的推荐结果：confidence ∈ [0,1]，可用于 UI 展示「AI 信心 92%」。 */
+    data class Recommendation(val category: String, val confidence: Float)
+
     fun recommend(
         context: Context,
         type: String,
@@ -169,7 +172,18 @@ object PersonalTagger {
         merchant: String?,
         rawText: String? = null,
         locationName: String? = null
-    ): String {
+    ): String = recommendWithConfidence(context, type, timestamp, amount, channel, merchant, rawText, locationName).category
+
+    fun recommendWithConfidence(
+        context: Context,
+        type: String,
+        timestamp: Long,
+        amount: Double,
+        channel: String,
+        merchant: String?,
+        rawText: String? = null,
+        locationName: String? = null
+    ): Recommendation {
         val m = synchronized(lock) { loadImpl(context) }
         val norm = normalizeMerchant(merchant)
 
@@ -180,7 +194,7 @@ object PersonalTagger {
 
         // High confidence → direct return
         if (merchantHit != null && merchantHit.second >= HIGH_CONFIDENCE) {
-            return merchantHit.first
+            return Recommendation(merchantHit.first, merchantHit.second)
         }
 
         // Merchant + hour context (e.g. 美团@12→外卖, 美团@14→日用品)
@@ -251,7 +265,12 @@ object PersonalTagger {
         }
 
         val best = scores.maxByOrNull { it.value }
-        return best?.takeIf { it.value > 0.01 }?.key ?: defaultCategory(type)
+        return if (best != null && best.value > 0.01) {
+            // 归一化：加权得分 0.6（商户记忆直命中阈值）映射为 100%
+            Recommendation(best.key, (best.value / 0.6).coerceIn(0.0, 1.0).toFloat())
+        } else {
+            Recommendation(defaultCategory(type), 0f)
+        }
     }
 
     fun learn(

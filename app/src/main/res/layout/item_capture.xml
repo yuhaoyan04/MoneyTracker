@@ -79,6 +79,20 @@
                     android:textStyle="bold" />
 
                 <TextView
+                    android:id="@+id/tvCapAiConf"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:paddingHorizontal="6dp"
+                    android:paddingVertical="1dp"
+                    android:background="@color/teal_light"
+                    android:text="AI 92%"
+                    android:textColor="@color/teal_dark"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+                <TextView
                     android:id="@+id/tvCapCategory"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
