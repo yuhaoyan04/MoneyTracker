@@ -35,6 +35,7 @@ class TransactionAdapter(
         private val tvSubtitle: TextView = view.findViewById(R.id.tvSubtitle)
         private val tvAmount: TextView = view.findViewById(R.id.tvAmount)
         private val tvDate: TextView = view.findViewById(R.id.tvDate)
+        private val accentBar: View = view.findViewById(R.id.accentBar)
 
         fun bind(r: TransactionRecord) {
             val title = listOfNotNull(
@@ -58,10 +59,11 @@ class TransactionAdapter(
             )
             tvSubtitle.text = if (parts.isEmpty()) "—" else parts.joinToString(" · ")
 
+            val isIncome = r.type == TransactionRecord.TYPE_INCOME
             tvAmount.text = FormatUtil.moneySigned(r.amount, r.type)
-            tvAmount.setTextColor(
-                ContextCompat.getColor(itemView.context, if (r.type == TransactionRecord.TYPE_INCOME) R.color.color_income else R.color.color_expense)
-            )
+            val color = if (isIncome) R.color.color_income else R.color.color_expense
+            tvAmount.setTextColor(ContextCompat.getColor(itemView.context, color))
+            accentBar.setBackgroundColor(ContextCompat.getColor(itemView.context, color))
             tvDate.text = FormatUtil.date(r.timestamp)
 
             itemView.setOnClickListener { onClick(r) }

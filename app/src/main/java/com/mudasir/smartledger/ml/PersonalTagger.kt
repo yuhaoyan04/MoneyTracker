@@ -329,10 +329,36 @@ object PersonalTagger {
 
     private fun normalizeMerchant(s: String?): String {
         if (s.isNullOrBlank()) return ""
-        return s.lowercase()
+        var r = s.lowercase()
             .replace(Regex("[-_](订单|支付|收款|消费|付款|到账|扣款|转账)$"), "")
             .replace(Regex("^(微信支付|支付宝|京东|淘宝|天猫)-"), "")
             .trim()
+        r = resolveAlias(r)
+        return r
+    }
+
+    private fun resolveAlias(m: String): String {
+        return when {
+            m.contains("美团") || m.contains("meituan") -> "美团"
+            m.contains("饿") && m.contains("么") || m.contains("eleme") -> "饿了么"
+            m.contains("滴滴") || m.contains("didi") -> "滴滴"
+            m.contains("星巴克") || m.contains("starbucks") -> "星巴克"
+            m.contains("瑞幸") || m.contains("luckin") -> "瑞幸"
+            m.contains("肯德基") || m.contains("kfc") -> "肯德基"
+            m.contains("麦当劳") || m.contains("mcdonald") -> "麦当劳"
+            m.contains("淘宝") || m.contains("taobao") -> "淘宝"
+            m.contains("天猫") || m.contains("tmall") -> "天猫"
+            m.contains("京东") || m.contains("jd.com") || m.contains("jdcom") -> "京东"
+            m.contains("拼多多") || m.contains("pinduoduo") -> "拼多多"
+            m.contains("抖音") || m.contains("douyin") || m.contains("tiktok") -> "抖音"
+            m.contains("快手") || m.contains("kuaishou") -> "快手"
+            m.contains("喜茶") || m.contains("heytea") -> "喜茶"
+            m.contains("蜜雪") || m.contains("mixue") -> "蜜雪冰城"
+            m.contains("高德") || m.contains("amap") -> "高德地图"
+            m.contains("百度地图") || m.contains("baidumap") -> "百度地图"
+            m.contains("顺丰") || m.contains("sfexpress") -> "顺丰"
+            else -> m
+        }
     }
 
     private fun bestMerchantWithConfidence(m: Model, merchant: String): Pair<String, Float>? {
@@ -621,6 +647,25 @@ object PersonalTagger {
                 candidates.add("服饰" to 0.10f)
         }
 
+        // === 节日/购物节规则 ===
+        val month = c.get(Calendar.MONTH)
+        when {
+            dom == 18 && month == Calendar.JUNE -> candidates.add("日用品" to 0.20f) // 618
+            dom == 11 && month == Calendar.NOVEMBER -> { candidates.add("日用品" to 0.22f); candidates.add("服饰" to 0.15f) } // 11.11
+            dom == 12 && month == Calendar.DECEMBER -> candidates.add("日用品" to 0.15f) // 12.12
+            month == Calendar.JANUARY || month == Calendar.FEBRUARY -> if (dom >= 20) candidates.add("旅行出游" to 0.12f) // 春运
+            month == Calendar.OCTOBER && dom in 1..7 -> candidates.add("旅行出游" to 0.15f) // 国庆
+            month == Calendar.SEPTEMBER && dom == 10 -> candidates.add("服饰" to 0.12f) // 教师节
+            month == Calendar.MAY && dom in 8..12 -> candidates.add("服饰" to 0.10f) // 母亲节
+        }
+
+        // === 支付方式偏移 ===
+        if (ch.contains("花呗") || ch.contains("白条") || ch.contains("信用卡")) {
+            candidates.add("日用品" to 0.12f)
+            if (amount > 200) candidates.add("服饰" to 0.10f)
+            if (amount > 1000) candidates.add("数码" to 0.10f)
+        }
+
         // 合并同类项取最大概率
         val merged = candidates.groupBy { it.first }
             .mapValues { (_, list) -> list.maxOf { it.second } }
@@ -689,7 +734,7 @@ object PersonalTagger {
             // 快递 → 其他
             if (has("顺丰", "圆通", "中通", "申通", "韵达", "ems", "邮政快递", "京东物流", "京东快递")) return "其他"
             // 还款/分期 → 其他
-            if (has("花呗", "借呗", "信用还", "分期还", "信用卡还款")) return "其他"
+            if (has("花呗还款", "借呗还款", "信用还款", "分期还款", "信用卡还款", "账单还款", "自动还款")) return "其他"
 
             if (has("肯德基", "kfc", "麦当劳", "汉堡王", "必胜客", "德克士", "华莱士", "萨莉亚", "吉野家", "真功夫")) return "下馆子"
             if (has("海底捞", "呷哺", "火锅", "烧烤", "串串", "烤肉", "日料", "韩餐", "西餐", "寿司", "刺身")) return "下馆子"

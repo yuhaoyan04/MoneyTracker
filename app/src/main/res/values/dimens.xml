@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Spacing system (4dp grid) -->
+    <dimen name="spacing_xs">4dp</dimen>
+    <dimen name="spacing_sm">8dp</dimen>
+    <dimen name="spacing_md">12dp</dimen>
+    <dimen name="spacing_lg">16dp</dimen>
+    <dimen name="spacing_xl">20dp</dimen>
+    <dimen name="spacing_2xl">24dp</dimen>
+    <dimen name="spacing_3xl">32dp</dimen>
+    <dimen name="spacing_4xl">48dp</dimen>
+
+    <!-- Card dimensions -->
+    <dimen name="card_radius">16dp</dimen>
+    <dimen name="card_radius_sm">12dp</dimen>
+    <dimen name="card_radius_lg">20dp</dimen>
+    <dimen name="card_elevation">0dp</dimen>
+    <dimen name="card_stroke">1dp</dimen>
+
+    <!-- Typography -->
+    <dimen name="text_balance">34sp</dimen>
+    <dimen name="text_title">18sp</dimen>
+    <dimen name="text_body">14sp</dimen>
+    <dimen name="text_label">12sp</dimen>
+    <dimen name="text_caption">11sp</dimen>
+
+    <!-- Component sizes -->
+    <dimen name="touch_target">48dp</dimen>
+    <dimen name="icon_size_sm">20dp</dimen>
+    <dimen name="icon_size_md">24dp</dimen>
+    <dimen name="icon_size_lg">32dp</dimen>
+    <dimen name="bottom_nav_height">64dp</dimen>
+    <dimen name="accent_bar_width">3dp</dimen>
+</resources>
