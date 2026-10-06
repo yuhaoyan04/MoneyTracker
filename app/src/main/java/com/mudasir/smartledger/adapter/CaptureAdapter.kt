@@ -41,6 +41,8 @@ class CaptureAdapter(
         private val btnDismiss: MaterialButton = view.findViewById(R.id.btnDismiss)
         private val accentBar: View = view.findViewById(R.id.capAccentBar)
         private val tvAiConf: TextView = view.findViewById(R.id.tvCapAiConf)
+        private val capLocationRow: View = view.findViewById(R.id.capLocationRow)
+        private val tvLocation: TextView = view.findViewById(R.id.tvCapLocation)
 
         fun bind(r: TransactionRecord) {
             val isIncome = r.type == TransactionRecord.TYPE_INCOME
@@ -71,6 +73,15 @@ class CaptureAdapter(
                 tvAiConf.visibility = View.VISIBLE
             } else {
                 tvAiConf.visibility = View.GONE
+            }
+
+            // 支付地点（通知/短信到达时记录的位置）
+            val loc = r.locationName?.takeIf { it.isNotBlank() }
+            if (loc != null) {
+                tvLocation.text = loc
+                capLocationRow.visibility = View.VISIBLE
+            } else {
+                capLocationRow.visibility = View.GONE
             }
 
             btnConfirm.setOnClickListener { onConfirm(r) }

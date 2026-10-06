@@ -117,6 +117,35 @@
                     android:ellipsize="end" />
             </LinearLayout>
 
+            <!-- 支付地点（通知/短信到达时记录） -->
+            <LinearLayout
+                android:id="@+id/capLocationRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_place"
+                    app:tint="@color/text_tertiary"
+                    android:contentDescription="位置" />
+
+                <TextView
+                    android:id="@+id/tvCapLocation"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:text="—"
+                    android:textColor="@color/text_tertiary"
+                    android:textSize="11sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/tvCapRaw"
                 android:layout_width="match_parent"
