@@ -228,6 +228,18 @@ class AddEditTransactionActivity : AppCompatActivity() {
                         sheet.dismiss()
                     }
                 })
+                // ＋ 自定义小类：挂到当前大类下（如 餐饮-寿司）
+                list.addView(TextView(ctx).apply {
+                    text = "＋ 自定义小类"
+                    textSize = 13f
+                    setTextColor(getColor(R.color.teal_main))
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
+                    setOnClickListener {
+                        sheet.dismiss()
+                        promptCustomChild(root, type)
+                    }
+                })
             }
         }
 
@@ -252,6 +264,45 @@ class AddEditTransactionActivity : AppCompatActivity() {
 
         sheet.setContentView(container)
         sheet.show()
+    }
+
+    /** 在指定大类下创建自定义小类：输入名称 → 归一化去重 → 存库 → 选中。 */
+    private fun promptCustomChild(root: Category, type: String) {
+        val input = android.widget.EditText(this).apply {
+            hint = "小类名称（如 寿司、小龙虾）"
+            setSingleLine()
+        }
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val wrap = LinearLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("在「${root.name}」下添加小类")
+            .setView(wrap)
+            .setPositiveButton("添加") { _, _ ->
+                val childName = input.text?.toString()?.trim().orEmpty()
+                if (childName.isBlank()) return@setPositiveButton
+                lifecycleScope.launch(Dispatchers.IO) {
+                    // 归一化去重：同大类下已有同名（忽略大小写）小类 → 直接复用
+                    val siblings = db.categoryDao().getChildren(root.name, type)
+                    val existing = siblings.find { it.name.trim().equals(childName, ignoreCase = true) }
+                    val finalName = if (existing != null) {
+                        existing.name
+                    } else {
+                        db.categoryDao().insert(
+                            Category(name = childName, type = type, isDefault = false, parentName = root.name, level = 2, color = root.color)
+                        )
+                        childName
+                    }
+                    withContext(Dispatchers.Main) {
+                        actvCategory.setText(finalName, false)
+                        Toast.makeText(this@AddEditTransactionActivity, "已添加「${root.name}-${finalName}」", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun loadForEdit(id: Long) {
@@ -298,7 +349,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
         val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
 
         lifecycleScope.launch(Dispatchers.IO) {
-            ensureCategory(category, type)
+            val resolvedCategory = ensureCategory(category, type)
             ensureChannel(channel)
 
             // 尽力获取地理位置（无权限则跳过，不阻塞）
@@ -307,18 +358,18 @@ class AddEditTransactionActivity : AppCompatActivity() {
             val existing = editingRecord
             val saved: TransactionRecord
             if (existing != null) {
+                // 已有记录（自动抓取 → 收件箱确认/编辑）：保留抓取时记录的位置（支付发生地），
+                // 不因用户几小时后在别处确认而覆盖成错误位置
                 saved = existing.copy(
-                    type = type, amount = amount, categoryName = category, channelName = channel,
+                    type = type, amount = amount, categoryName = resolvedCategory, channelName = channel,
                     paymentMethod = pm, merchant = merchant, note = note, timestamp = selectedTs,
-                    status = TransactionRecord.STATUS_CONFIRMED,
-                    latitude = place?.latitude ?: existing.latitude,
-                    longitude = place?.longitude ?: existing.longitude,
-                    locationName = place?.name ?: existing.locationName
+                    status = TransactionRecord.STATUS_CONFIRMED
                 )
                 db.transactionDao().update(saved)
             } else {
+                // 手动记账：保存时记录当前位置（用户此刻就在消费地）
                 saved = TransactionRecord(
-                    type = type, amount = amount, categoryName = category, channelName = channel,
+                    type = type, amount = amount, categoryName = resolvedCategory, channelName = channel,
                     paymentMethod = pm, merchant = merchant, note = note, timestamp = selectedTs,
                     source = TransactionRecord.SOURCE_MANUAL,
                     status = TransactionRecord.STATUS_CONFIRMED,
@@ -326,14 +377,16 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 )
                 db.transactionDao().insert(saved)
             }
+            // 待确认数量可能变化（确认了一条 PENDING），刷新常驻通知
+            com.mudasir.smartledger.util.PendingNotifier.update(this@AddEditTransactionActivity)
 
             // 个性化打标学习：确认/修正即训练
-            if (category.isNotBlank()) {
+            if (resolvedCategory.isNotBlank()) {
                 val old = suggestedCategory
-                if (old != null && old != category) {
-                    PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, category, merchant)
+                if (old != null && old != resolvedCategory) {
+                    PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, resolvedCategory, merchant)
                 } else {
-                    PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, category, merchant)
+                    PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, resolvedCategory, merchant)
                 }
             }
 
@@ -357,10 +410,47 @@ class AddEditTransactionActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun ensureCategory(name: String, type: String) {
-        if (name.isBlank()) return
-        val existing = db.categoryDao().getByType(type).any { it.name == name }
-        if (!existing) db.categoryDao().insert(Category(name = name, type = type, isDefault = false))
+    /**
+     * 确保分类存在，并做防碎片化处理：
+     * 1) 支持「父-子」格式（如 餐饮-寿司）：父类存在 → 子类挂到父类下（level=2）
+     * 2) 归一化精确匹配（trim + 忽略大小写）→ 复用已有分类
+     * 3) 唯一 contains 模糊匹配（如「寿司（外卖）」→「寿司」）→ 复用已有分类
+     * 目的：避免近似名称散落到不同类别，导致统计错分。
+     */
+    private suspend fun ensureCategory(name: String, type: String): String {
+        if (name.isBlank()) return name
+        val all = db.categoryDao().getByType(type)
+
+        // 「父-子」格式解析
+        val dashIdx = name.indexOf('-', 1)
+        if (dashIdx > 0 && dashIdx < name.length - 1) {
+            val parent = name.substring(0, dashIdx).trim()
+            val child = name.substring(dashIdx + 1).trim()
+            val parentCat = all.find { it.name.equals(parent, ignoreCase = true) }
+            if (parentCat != null && child.isNotBlank()) {
+                val existingChild = all.find { it.name.equals(child, true) && it.parentName == parentCat.name }
+                if (existingChild != null) return existingChild.name
+                db.categoryDao().insert(
+                    Category(name = child, type = type, isDefault = false, parentName = parentCat.name, level = 2, color = parentCat.color)
+                )
+                return child
+            }
+        }
+
+        // 归一化精确匹配
+        val exact = all.find { it.name.trim().equals(name.trim(), ignoreCase = true) }
+        if (exact != null) return exact.name
+
+        // 唯一 contains 模糊匹配（用户输入包含已有名，或已有名包含输入）
+        val contains = all.filter {
+            val a = it.name.trim(); val b = name.trim()
+            a.length > 1 && b.length > 1 && (a.contains(b, true) || b.contains(a, true))
+        }
+        if (contains.size == 1) return contains.first().name
+
+        // 新建根分类
+        db.categoryDao().insert(Category(name = name.trim(), type = type, isDefault = false))
+        return name.trim()
     }
 
     private suspend fun ensureChannel(name: String) {

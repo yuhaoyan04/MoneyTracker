@@ -67,6 +67,8 @@ class SilentConfirmWorker(
             }
 
             Log.i(TAG, "Silent-confirmed ${oldPending.size} pending records (learned=$learned)")
+            // 待确认数量变化 → 刷新常驻通知
+            PendingNotifier.update(applicationContext)
             Result.success()
         } catch (e: Exception) {
             Log.w(TAG, "Silent confirm failed", e)

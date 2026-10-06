@@ -68,6 +68,12 @@ interface TransactionDao {
     @Query("SELECT COUNT(*) FROM transactions WHERE isDeleted = 0 AND status = 'PENDING'")
     fun observePendingCount(): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM transactions WHERE isDeleted = 0 AND status = 'PENDING'")
+    suspend fun countPending(): Int
+
+    @Query("SELECT * FROM transactions WHERE isDeleted = 0 AND status = 'PENDING' ORDER BY timestamp DESC LIMIT 1")
+    suspend fun latestPending(): TransactionRecord?
+
     @Query("SELECT * FROM transactions WHERE isDeleted = 0 AND status = 'PENDING' AND timestamp < :cutoff ORDER BY timestamp ASC")
     suspend fun getPendingOlderThan(cutoff: Long): List<TransactionRecord>
 

@@ -43,12 +43,23 @@ class HomeActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { }
 
+    private val notifPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
 
         locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        // Android 13+ 通知权限（待确认常驻通知需要）
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         adapter = TransactionAdapter { r ->
             startActivity(Intent(this, AddEditTransactionActivity::class.java).putExtra(AddEditTransactionActivity.EXTRA_ID, r.id))

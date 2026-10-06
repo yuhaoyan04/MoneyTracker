@@ -44,11 +44,14 @@ class CaptureInboxActivity : AppCompatActivity() {
                     db.transactionDao().updateStatus(r.id, TransactionRecord.STATUS_CONFIRMED)
                     // 用户直接确认 = 认可该分类，作为正样本训练打标器；并增量备份
                     if (r.categoryName.isNotBlank()) {
-                        com.mudasir.smartledger.ml.PersonalTagger.learn(
-                            this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName, r.merchant
-                        )
+                        runCatching {
+                            com.mudasir.smartledger.ml.PersonalTagger.learn(
+                                this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName, r.merchant
+                            )
+                        }
                     }
                     runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
+                    com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
                 }
             },
             onEdit = { r ->
@@ -58,6 +61,7 @@ class CaptureInboxActivity : AppCompatActivity() {
             onDismiss = { r ->
                 lifecycleScope.launch {
                     db.transactionDao().moveToTrash(r.id)
+                    com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
                 }
             }
         )
@@ -80,12 +84,15 @@ class CaptureInboxActivity : AppCompatActivity() {
                 adapter.currentList.forEach {
                     db.transactionDao().updateStatus(it.id, TransactionRecord.STATUS_CONFIRMED)
                     if (it.categoryName.isNotBlank()) {
-                        com.mudasir.smartledger.ml.PersonalTagger.learn(
-                            this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName, it.merchant
-                        )
+                        runCatching {
+                            com.mudasir.smartledger.ml.PersonalTagger.learn(
+                                this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName, it.merchant
+                            )
+                        }
                     }
                 }
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
+                com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
             }
         }
 
@@ -117,6 +124,10 @@ class CaptureInboxActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshPermissionBanner()
+        // 静默确认/其他端操作后回来时刷新常驻通知
+        lifecycleScope.launch {
+            com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
+        }
     }
 
     private fun refreshPermissionBanner() {

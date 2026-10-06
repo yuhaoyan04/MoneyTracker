@@ -17,7 +17,7 @@ private data class Sub(val name: String, val color: String, val parent: String, 
         CustomLedger::class, CustomEntry::class, CustomDailyRecord::class,
         TransactionRecord::class, Category::class, PaymentChannel::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -134,6 +134,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v12: 丰富二级子类 —— 覆盖日常生活全场景（幂等，已有的不动）
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                seedTaxonomy(database)
+            }
+        }
+
         /**
          * 幂等播种全量分类与渠道（一级大类 + 二级小类 + 支付方式）。
          * 同时用于：v7→v8、v8→v9、v9→v10 迁移，以及 onCreate（全新安装）。
@@ -166,34 +173,82 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             }
 
-            // ---- 二级小类（EXPENSE）----
+            // ---- 二级小类（EXPENSE）—— 覆盖日常生活全场景 ----
             val expenseChildren = listOf(
+                // 餐饮
                 Sub("食堂", "#FF8A65", "餐饮", 0),
                 Sub("外卖", "#FF7043", "餐饮", 1),
                 Sub("下馆子", "#D84315", "餐饮", 2),
                 Sub("零食饮料", "#FFAB91", "餐饮", 3),
+                Sub("早餐", "#FFB74D", "餐饮", 4),
+                Sub("小吃快餐", "#FFA726", "餐饮", 5),
+                Sub("火锅烧烤", "#F4511E", "餐饮", 6),
+                Sub("咖啡茶饮", "#BF360C", "餐饮", 7),
+                Sub("甜品蛋糕", "#FFCC80", "餐饮", 8),
+                Sub("夜宵", "#FF8A80", "餐饮", 9),
+                // 交通
                 Sub("地铁", "#4FC3F7", "交通", 0),
                 Sub("公交", "#29B6F6", "交通", 1),
                 Sub("打车", "#0288D1", "交通", 2),
                 Sub("火车机票", "#01579B", "交通", 3),
                 Sub("加油停车", "#0277BD", "交通", 4),
+                Sub("共享单车", "#81D4FA", "交通", 5),
+                Sub("电动车充电", "#4DD0E1", "交通", 6),
+                Sub("高速过路费", "#039BE5", "交通", 7),
+                Sub("代驾", "#0288D1", "交通", 8),
+                // 网购
                 Sub("服饰", "#BA68C8", "网购", 0),
                 Sub("数码", "#AB47BC", "网购", 1),
                 Sub("日用品", "#8E24AA", "网购", 2),
                 Sub("美妆护肤", "#CE93D8", "网购", 3),
+                Sub("家居家装", "#7E57C2", "网购", 4),
+                Sub("母婴玩具", "#F48FB1", "网购", 5),
+                Sub("运动户外", "#26C6DA", "网购", 6),
+                Sub("图书音像", "#5C6BC0", "网购", 7),
+                Sub("二手闲置", "#9FA8DA", "网购", 8),
+                Sub("海淘代购", "#B39DDB", "网购", 9),
+                // 日用
                 Sub("超市日用", "#A5D6A7", "日用", 0),
+                Sub("生鲜果蔬", "#81C784", "日用", 1),
+                Sub("清洁洗护", "#66BB6A", "日用", 2),
+                Sub("五金维修", "#4DB6AC", "日用", 3),
+                // 娱乐
                 Sub("电影演出", "#FFB300", "娱乐", 0),
                 Sub("游戏充值", "#FFCA28", "娱乐", 1),
                 Sub("旅行出游", "#FFA000", "娱乐", 2),
+                Sub("KTV酒吧", "#FFD54F", "娱乐", 3),
+                Sub("运动健身", "#4DB6AC", "娱乐", 4),
+                Sub("兴趣爱好", "#AED581", "娱乐", 5),
+                Sub("会员订阅", "#FFB74D", "娱乐", 6),
+                Sub("直播打赏", "#FFE082", "娱乐", 7),
+                // 医疗
                 Sub("挂号门诊", "#EF5350", "医疗", 0),
                 Sub("药品", "#E53935", "医疗", 1),
+                Sub("体检疫苗", "#EF9A9A", "医疗", 2),
+                Sub("口腔眼科", "#C62828", "医疗", 3),
+                Sub("保健养生", "#FF8A65", "医疗", 4),
+                Sub("美容美发", "#AD1457", "医疗", 5),
+                // 居住
                 Sub("房租", "#90A4AE", "居住", 0),
                 Sub("水电燃气", "#78909C", "居住", 1),
                 Sub("物业宽带", "#607D8B", "居住", 2),
+                Sub("家政保洁", "#B0BEC5", "居住", 3),
+                Sub("装修维修", "#8D6E63", "居住", 4),
+                Sub("搬家", "#A1887F", "居住", 5),
+                // 通讯
                 Sub("话费", "#26A69A", "通讯", 0),
                 Sub("流量", "#80CBC4", "通讯", 1),
+                // 教育
                 Sub("课程培训", "#5C6BC0", "教育", 0),
-                Sub("书籍文具", "#3949AB", "教育", 1)
+                Sub("书籍文具", "#3949AB", "教育", 1),
+                Sub("知识付费", "#7986CB", "教育", 2),
+                Sub("考证考试", "#5E35B1", "教育", 3),
+                Sub("儿童教育", "#9575CD", "教育", 4),
+                // 其他
+                Sub("人情往来", "#FFD180", "其他", 0),
+                Sub("宠物用品", "#A1887F", "其他", 1),
+                Sub("保险费", "#90CAF9", "其他", 2),
+                Sub("捐赠公益", "#81C784", "其他", 3)
             )
             expenseChildren.forEach { (n, c, p, so) ->
                 db.execSQL(
@@ -238,7 +293,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_ledger_db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     // 全新安装时 onCreate 播种全量分类（迁移不会在全新库上执行）
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

@@ -88,6 +88,10 @@ object PersonalTagger {
         var merchantMap: MutableMap<String, MutableMap<String, Int>> = mutableMapOf(),
         var merchantHourMap: MutableMap<String, MutableMap<String, MutableMap<String, Int>>> = mutableMapOf(),
         var merchantCorrect: MutableMap<String, Int> = mutableMapOf(),
+        /** 商户级纠错记忆：商户 → 分类 → 被纠正离开该分类的次数（负样本）。 */
+        var catCorrectedAway: MutableMap<String, MutableMap<String, Int>> = mutableMapOf(),
+        /** 全局冷启动误判记忆：分类 → 该分类的冷启动建议被纠正的次数。 */
+        var coldMisfire: MutableMap<String, Int> = mutableMapOf(),
         var catStats: MutableMap<String, CatStat> = mutableMapOf(),
         var recurringMap: MutableMap<String, MutableList<RecurringInfo>> = mutableMapOf(),
         var lastUpdate: Long = 0
@@ -116,6 +120,10 @@ object PersonalTagger {
             if (m.catStats == null) m.catStats = mutableMapOf()
             @Suppress("SENSELESS_COMPARISON")
             if (m.recurringMap == null) m.recurringMap = mutableMapOf()
+            @Suppress("SENSELESS_COMPARISON")
+            if (m.catCorrectedAway == null) m.catCorrectedAway = mutableMapOf()
+            @Suppress("SENSELESS_COMPARISON")
+            if (m.coldMisfire == null) m.coldMisfire = mutableMapOf()
             m
         } catch (e: Exception) {
             Model()
@@ -245,6 +253,22 @@ object PersonalTagger {
             }
         }
 
+        // === 纠错记忆惩罚（负样本学习） ===
+        // 该商户曾被纠正离开的分类 → 施加惩罚，避免重复犯错
+        if (norm.isNotEmpty()) {
+            m.catCorrectedAway[norm]?.forEach { (cat, times) ->
+                val penalty = (0.12 * times).coerceAtMost(0.36)
+                scores[cat] = (scores[cat] ?: 0.0) - penalty
+            }
+        }
+        // 冷启动建议被纠正过的分类 → 全局降权（该规则对此用户不准）
+        m.coldMisfire.forEach { (cat, times) ->
+            if (coldHit?.first == cat) {
+                val penalty = (0.05 * times).coerceAtMost(0.15)
+                scores[cat] = (scores[cat] ?: 0.0) - penalty
+            }
+        }
+
         // === Category frequency prior — lean toward user's most consumed categories ===
         // Like short-video recommendation: default to user's habitual content
         if (m.total >= MIN_SAMPLES * 2 && m.prior.isNotEmpty()) {
@@ -349,6 +373,14 @@ object PersonalTagger {
                         if (c != null && c > 0) cats[oldCategory] = c - 1
                     }
                     m.merchantCorrect[norm] = (m.merchantCorrect[norm] ?: 0) + 1
+                    // 纠错记忆：该商户被纠正离开 oldCategory（负样本，投票时施加惩罚）
+                    m.catCorrectedAway.getOrPut(norm) { mutableMapOf() }
+                        .let { it[oldCategory] = (it[oldCategory] ?: 0) + 1 }
+                    // 若原分类来自冷启动建议（模型中无该商户历史），记录全局冷启动误判
+                    val merchantHistory = m.merchantMap[norm]?.values?.sum() ?: 0
+                    if (merchantHistory <= 1) {
+                        m.coldMisfire[oldCategory] = (m.coldMisfire[oldCategory] ?: 0) + 1
+                    }
                 }
                 updateCatStats(m, oldCategory, amount, -1)
             }

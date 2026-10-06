@@ -77,20 +77,35 @@ class BankSmsReceiver : BroadcastReceiver() {
         ) ?: return
 
         scope.launch {
-            AppDatabase.getDatabase(context.applicationContext).transactionDao().insert(
-                TransactionRecord(
-                    type = parsed.type,
-                    amount = parsed.amount,
-                    channelName = parsed.channelName,
-                    paymentMethod = parsed.paymentMethod,
-                    merchant = parsed.merchant,
-                    note = sender?.let { "来自 $it" },
-                    rawText = body,
-                    source = TransactionRecord.SOURCE_CAPTURE_SMS,
-                    status = TransactionRecord.STATUS_PENDING,
-                    timestamp = timestamp
+            // 后台协程绝不抛异常 —— 任何失败只记日志，保住前台体验
+            runCatching {
+                // 短信到达即记录当时位置（支付发生地），而不是等到收件箱确认时
+                val place = com.mudasir.smartledger.util.LocationHelper.lastPlace(context.applicationContext)
+                val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
+                dao.insert(
+                    TransactionRecord(
+                        type = parsed.type,
+                        amount = parsed.amount,
+                        channelName = parsed.channelName,
+                        paymentMethod = parsed.paymentMethod,
+                        merchant = parsed.merchant,
+                        note = sender?.let { "来自 $it" },
+                        rawText = body,
+                        source = TransactionRecord.SOURCE_CAPTURE_SMS,
+                        status = TransactionRecord.STATUS_PENDING,
+                        timestamp = timestamp,
+                        latitude = place?.latitude,
+                        longitude = place?.longitude,
+                        locationName = place?.name,
+                        // 短信无 AI 建议入口，此处同步给打标建议 + 置信度
+                        categoryName = com.mudasir.smartledger.ml.PersonalTagger.recommend(
+                            context.applicationContext, parsed.type, timestamp, parsed.amount,
+                            parsed.channelName, parsed.merchant, body, place?.name
+                        )
+                    )
                 )
-            )
+                com.mudasir.smartledger.util.PendingNotifier.update(context.applicationContext)
+            }.onFailure { android.util.Log.w("BankSmsReceiver", "sms capture failed", it) }
         }
     }
 }

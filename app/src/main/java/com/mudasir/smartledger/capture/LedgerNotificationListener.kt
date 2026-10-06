@@ -151,6 +151,8 @@ class LedgerNotificationListener : NotificationListenerService() {
         )
 
         scope.launch {
+            // 后台协程绝不抛异常 —— 任何失败只记日志，保住前台体验
+            runCatching {
             val dao = AppDatabase.getDatabase(this@LedgerNotificationListener).transactionDao()
             if (parsed != null) {
                 if (isDuplicate(parsed)) {
@@ -189,6 +191,8 @@ class LedgerNotificationListener : NotificationListenerService() {
                     locationName = place?.name,
                     aiConfidence = suggestion.confidence
                 ))
+                // 有新的待确认交易 → 刷新常驻通知
+                com.mudasir.smartledger.util.PendingNotifier.update(applicationContext)
             } else if (hasAction) {
                 // 兜底：白名单内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏
                 val fallbackMerchant = title.takeIf { it.isNotBlank() && !needsMerchant(title) }
@@ -207,6 +211,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                     )
                 )
             }
+            }.onFailure { android.util.Log.w("LedgerListener", "capture failed", it) }
         }
     }
 
