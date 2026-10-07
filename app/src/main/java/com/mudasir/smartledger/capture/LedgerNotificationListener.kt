@@ -118,6 +118,14 @@ class LedgerNotificationListener : NotificationListenerService() {
         }
     }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        // 服务重连（开机/重新授权）→ 自愈常驻待确认通知
+        scope.launch {
+            runCatching { com.mudasir.smartledger.util.PendingNotifier.update(applicationContext) }
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         val pkg = sbn?.packageName ?: return
         val notification = sbn.notification ?: return
@@ -173,10 +181,10 @@ class LedgerNotificationListener : NotificationListenerService() {
                 }
                 // 存入缓冲区供后续通知关联
                 storeCapture(rec.amount, enrichedMerchant, pkg, rec.timestamp)
-                // 个性化打标冷启动：抓取时即给一个分类建议，减少用户手动分类负担
-                // 同时获取支付时的位置信息，辅助分类推断
+                // 支付时刻定位：主动请求一次新鲜定位（等待最多 8s，超时回退 lastKnown）
+                // 需要后台定位权限，见设置 → 自动抓取 → 支付时记录位置
                 val place = runCatching {
-                    com.mudasir.smartledger.util.LocationHelper.lastPlace(applicationContext)
+                    com.mudasir.smartledger.util.LocationHelper.freshPlace(applicationContext)
                 }.getOrNull()
                 val suggestion = com.mudasir.smartledger.ml.PersonalTagger.recommendWithConfidence(
                     applicationContext,

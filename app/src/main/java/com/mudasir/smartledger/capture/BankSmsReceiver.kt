@@ -79,8 +79,8 @@ class BankSmsReceiver : BroadcastReceiver() {
         scope.launch {
             // 后台协程绝不抛异常 —— 任何失败只记日志，保住前台体验
             runCatching {
-                // 短信到达即记录当时位置（支付发生地），而不是等到收件箱确认时
-                val place = com.mudasir.smartledger.util.LocationHelper.lastPlace(context.applicationContext)
+                // 短信到达即记录支付时刻位置（主动新鲜定位，等待最多 8s）
+                val place = com.mudasir.smartledger.util.LocationHelper.freshPlace(context.applicationContext)
                 val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
                 dao.insert(
                     TransactionRecord(

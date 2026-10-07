@@ -40,19 +40,48 @@ class HomeActivity : AppCompatActivity() {
     private var currentExpense: Double = 0.0
 
     private val locationLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        // 前台定位（粗略/精确任一）已授 → 引导后台定位（支付发生在后台，必需）
+        if (grants.values.any { it }) maybeRequestBackgroundLocation()
+    }
+
+    private val bgLocationLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
 
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { }
+    ) {
+        refreshPendingNotification()
+    }
+
+    /** 后台定位只主动引导一次，避免反复打扰；之后可在设置 → 自动抓取中开启。 */
+    private fun maybeRequestBackgroundLocation() {
+        if (android.os.Build.VERSION.SDK_INT < 29) return
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) return
+        val prefs = getSharedPreferences("perm_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("bg_loc_asked", false)) return
+        prefs.edit().putBoolean("bg_loc_asked", true).apply()
+        bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    }
+
+    private fun refreshPendingNotification() {
+        lifecycleScope.launch {
+            runCatching { com.mudasir.smartledger.util.PendingNotifier.update(this@HomeActivity) }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
 
-        locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        locationLauncher.launch(
+            arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
+        )
         // Android 13+ 通知权限（待确认常驻通知需要）
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -60,6 +89,8 @@ class HomeActivity : AppCompatActivity() {
         ) {
             notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        // 自愈：启动时若有待确认交易，确保常驻通知存在
+        refreshPendingNotification()
 
         adapter = TransactionAdapter { r ->
             startActivity(Intent(this, AddEditTransactionActivity::class.java).putExtra(AddEditTransactionActivity.EXTRA_ID, r.id))
@@ -132,8 +163,16 @@ class HomeActivity : AppCompatActivity() {
         lifecycleScope.launch {
             db.transactionDao().observePendingCount().collectLatest {
                 findViewById<android.widget.TextView>(R.id.tvPending).text = it.toString()
+                // 待确认数量变化 → 常驻通知自动同步（显示/更新/消失）
+                runCatching { com.mudasir.smartledger.util.PendingNotifier.update(this@HomeActivity) }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 自愈：回到首页时同步常驻通知（重启/系统清除后重发）
+        refreshPendingNotification()
     }
 
     private fun applySearch() {

@@ -37,6 +37,18 @@ class SettingsActivity : AppCompatActivity() {
         refreshPermissionStatus()
     }
 
+    private val notifPermLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        refreshPermissionStatus()
+        // 权限变化 → 同步常驻通知
+        lifecycleScope.launch {
+            runCatching { com.mudasir.smartledger.util.PendingNotifier.update(this@SettingsActivity) }
+        }
+    }
+
+    private val bgLocationLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        refreshPermissionStatus()
+    }
+
     private val csvExportLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
@@ -157,6 +169,72 @@ class SettingsActivity : AppCompatActivity() {
         tvSms.text = if (smsOk) "已授权" else "未授权"
         tvSms.setTextColor(getColorCompat(if (smsOk) R.color.color_income else R.color.color_expense))
         btnSms.visibility = if (smsOk) View.GONE else View.VISIBLE
+
+        refreshNotifPermStatus()
+        refreshBgLocStatus()
+    }
+
+    /** 通知栏提醒（Android 13+ POST_NOTIFICATIONS）。 */
+    private fun refreshNotifPermStatus() {
+        val tv = findViewById<TextView>(R.id.tvNotifPermStatus)
+        val btn = findViewById<View>(R.id.btnNotifPerm)
+        val granted = android.os.Build.VERSION.SDK_INT < 33 ||
+            androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        tv.text = if (granted) "已开启" else "未开启"
+        tv.setTextColor(getColorCompat(if (granted) R.color.color_income else R.color.color_expense))
+        btn.visibility = if (granted) View.GONE else View.VISIBLE
+        btn.setOnClickListener {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                val prefs = getSharedPreferences("perm_prefs", android.content.Context.MODE_PRIVATE)
+                val asked = prefs.getBoolean("notif_perm_asked", false)
+                val canDialog = !asked || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                if (canDialog) {
+                    prefs.edit().putBoolean("notif_perm_asked", true).apply()
+                    notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    startActivity(Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", packageName, null)
+                    ))
+                }
+            }
+        }
+    }
+
+    /** 支付时记录位置（后台定位，Android 10+）。 */
+    private fun refreshBgLocStatus() {
+        val tv = findViewById<TextView>(R.id.tvBgLocStatus)
+        val btn = findViewById<View>(R.id.btnBgLoc)
+        val fgOk = androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        val bgOk = com.mudasir.smartledger.util.LocationHelper.hasBackgroundPermission(this)
+        when {
+            fgOk && bgOk -> {
+                tv.text = "已开启"
+                tv.setTextColor(getColorCompat(R.color.color_income))
+                btn.visibility = View.GONE
+            }
+            else -> {
+                tv.text = if (fgOk) "需允许「始终允许」" else "未开启"
+                tv.setTextColor(getColorCompat(R.color.color_expense))
+                btn.visibility = View.VISIBLE
+            }
+        }
+        btn.setOnClickListener {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                // Android 11+：后台定位只能在系统设置里选「始终允许」
+                startActivity(Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", packageName, null)
+                ))
+                Toast.makeText(this, "请在 权限 → 位置 中选择「始终允许」", Toast.LENGTH_LONG).show()
+            } else {
+                bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            }
+        }
     }
 
     private fun getColorCompat(resId: Int): Int = androidx.core.content.ContextCompat.getColor(this, resId)

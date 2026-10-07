@@ -29,6 +29,10 @@ class CaptureInboxActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { refreshPermissionBanner() }
 
+    private val notifPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { refreshNotificationPermBanner() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_capture_inbox)
@@ -124,9 +128,38 @@ class CaptureInboxActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshPermissionBanner()
+        refreshNotificationPermBanner()
         // 静默确认/其他端操作后回来时刷新常驻通知
         lifecycleScope.launch {
             com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
+        }
+    }
+
+    /** Android 13+ 通知权限：未授权时显示引导横幅；永久拒绝则跳转系统设置。 */
+    private fun refreshNotificationPermBanner() {
+        val banner = findViewById<View>(R.id.notifPermBanner)
+        if (android.os.Build.VERSION.SDK_INT < 33) {
+            banner.visibility = View.GONE
+            return
+        }
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        banner.visibility = if (granted) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.btnNotifPerm).setOnClickListener {
+            val prefs = getSharedPreferences("perm_prefs", android.content.Context.MODE_PRIVATE)
+            val asked = prefs.getBoolean("notif_perm_asked", false)
+            val canDialog = !asked || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+            if (canDialog) {
+                prefs.edit().putBoolean("notif_perm_asked", true).apply()
+                notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                // 永久拒绝 → 引导到应用设置
+                startActivity(android.content.Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.fromParts("package", packageName, null)
+                ))
+            }
         }
     }
 
