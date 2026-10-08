@@ -31,4 +31,15 @@ object BottomNavHelper {
             true
         }
     }
+
+    /**
+     * 选中态同步：Activity 以 REORDER_TO_FRONT 复用时 onCreate 不执行，
+     * nav 的选中项停留在「上次离开本页时用户点击的目标 tab」，造成图标与页面错位。
+     * 各 Tab 页 onResume 调用此方法即可校正（触发 listener 但 itemId == currentId，不会跳转）。
+     */
+    fun sync(bottomNav: BottomNavigationView, currentId: Int) {
+        if (bottomNav.selectedItemId != currentId) {
+            bottomNav.selectedItemId = currentId
+        }
+    }
 }

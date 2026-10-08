@@ -1,6 +1,7 @@
 package com.mudasir.smartledger.activity
 
 import android.content.res.Configuration
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -85,21 +86,34 @@ class StatsActivity : AppCompatActivity() {
     private var trendLoaded = false
     private var suppressAgg = false
 
-    // 语义化色板：大类 → 基色
+    // 语义化色板：低饱和高级暖色系（饼图/柱状图/明细共用）
     private val rootColorMap = mapOf(
-        "餐饮" to "#FF7043", "交通" to "#29B6F6", "网购" to "#AB47BC",
-        "日用" to "#66BB6A", "娱乐" to "#FFCA28", "医疗" to "#EF5350",
-        "居住" to "#78909C", "通讯" to "#26A69A", "教育" to "#5C6BC0",
-        "其他" to "#90A4AE",
-        "工资" to "#66BB6A", "理财" to "#26A69A", "红包" to "#EF5350",
-        "退款" to "#29B6F6", "其他收入" to "#90A4AE"
+        "餐饮" to "#C15F3C", "交通" to "#6B8CAE", "网购" to "#9C6B8F",
+        "日用" to "#94A374", "娱乐" to "#CE9B4E", "医疗" to "#C07A8A",
+        "居住" to "#8C9BAB", "通讯" to "#55917F", "教育" to "#6D7BB5",
+        "其他" to "#A8A29A",
+        "工资" to "#7B9E6B", "理财" to "#55917F", "红包" to "#C07A8A",
+        "退款" to "#6B8CAE", "其他收入" to "#A8A29A"
     )
     private val fallbackPalette = intArrayOf(
-        Color.parseColor("#FF7043"), Color.parseColor("#29B6F6"), Color.parseColor("#AB47BC"),
-        Color.parseColor("#66BB6A"), Color.parseColor("#FFCA28"), Color.parseColor("#EF5350"),
-        Color.parseColor("#78909C"), Color.parseColor("#26A69A"), Color.parseColor("#5C6BC0"),
-        Color.parseColor("#90A4AE")
+        Color.parseColor("#C15F3C"), Color.parseColor("#6B8CAE"), Color.parseColor("#9C6B8F"),
+        Color.parseColor("#94A374"), Color.parseColor("#CE9B4E"), Color.parseColor("#C07A8A"),
+        Color.parseColor("#8C9BAB"), Color.parseColor("#55917F"), Color.parseColor("#6D7BB5"),
+        Color.parseColor("#A8A29A"), Color.parseColor("#B08968"), Color.parseColor("#7F9BA6")
     )
+
+    /** 趋势图/柱状图点击气泡：显示「标签 ¥金额」。 */
+    private class TrendMarkerView(context: Context, val labelOf: (Int) -> String) :
+        com.github.mikephil.charting.components.MarkerView(context, R.layout.marker_trend) {
+        private val tv = findViewById<TextView>(R.id.tvMarker)
+        override fun refreshContent(e: com.github.mikephil.charting.data.Entry?, highlight: com.github.mikephil.charting.highlight.Highlight?) {
+            val idx = e?.x?.toInt() ?: 0
+            tv.text = "${labelOf(idx)}  ${FormatUtil.money((e?.y ?: 0f).toDouble())}"
+            super.refreshContent(e, highlight)
+        }
+        override fun getOffset(): com.github.mikephil.charting.utils.MPPointF =
+            com.github.mikephil.charting.utils.MPPointF.getInstance(-(width / 2f), -height - 14f)
+    }
 
     // 趋势图主题色
     private val trendLineColor = Color.parseColor("#FF5252")
@@ -182,6 +196,7 @@ class StatsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        BottomNavHelper.sync(findViewById(R.id.bottomNav), R.id.nav_tab_stats)
         load()
         if (trendLoaded && sectionTrend.visibility == View.VISIBLE) {
             loadTrend()
@@ -633,6 +648,9 @@ class StatsActivity : AppCompatActivity() {
                 if (isManyPoints) setVisibleXRangeMaximum(60f)
                 setNoDataText("暂无数据")
                 setNoDataTextColor(tc)
+                // 点击/拖动显示金额气泡
+                marker = TrendMarkerView(this@StatsActivity) { idx -> labels.getOrElse(idx) { "" } }
+                setHighlightPerDragEnabled(true)
 
                 xAxis.apply {
                     position = XAxis.XAxisPosition.BOTTOM
@@ -741,6 +759,8 @@ class StatsActivity : AppCompatActivity() {
                 setBackgroundColor(Color.TRANSPARENT)
                 setNoDataText("暂无数据")
                 setNoDataTextColor(tc)
+                // 点击柱子显示金额气泡
+                marker = TrendMarkerView(this@StatsActivity) { idx -> "$idx:00" }
 
                 xAxis.apply {
                     position = XAxis.XAxisPosition.BOTTOM

@@ -194,8 +194,8 @@ class LedgerNotificationListener : NotificationListenerService() {
                 dao.insert(rec.copy(
                     categoryName = rec.categoryName.ifBlank { suggestion.category },
                     merchant = enrichedMerchant,
-                    latitude = place?.latitude ?: 0.0,
-                    longitude = place?.longitude ?: 0.0,
+                    latitude = place?.latitude,
+                    longitude = place?.longitude,
                     locationName = place?.name,
                     aiConfidence = suggestion.confidence
                 ))

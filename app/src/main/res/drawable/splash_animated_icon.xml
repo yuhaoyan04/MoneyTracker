@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动动画：¥ 五笔依次书写（斜线 → 竖线 → 双横杠） -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_splash_yen">
+    <target
+        android:name="stroke_left"
+        android:animation="@anim/splash_stroke_left" />
+    <target
+        android:name="stroke_right"
+        android:animation="@anim/splash_stroke_right" />
+    <target
+        android:name="stroke_stem"
+        android:animation="@anim/splash_stroke_stem" />
+    <target
+        android:name="stroke_bar1"
+        android:animation="@anim/splash_stroke_bar1" />
+    <target
+        android:name="stroke_bar2"
+        android:animation="@anim/splash_stroke_bar2" />
+</animated-vector>

@@ -1,40 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 极简 ¥ 记账符号 —— 暖陶土色，五笔圆头线条 -->
+<!-- 启动动画用的静态 ¥（与 ic_launcher_foreground 相同，供 AVD 引用） -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 左斜线 -->
     <path
         android:name="stroke_left"
         android:pathData="M40,32 L54,55"
         android:strokeColor="#C15F3C"
         android:strokeWidth="7"
         android:strokeLineCap="round" />
-    <!-- 右斜线 -->
     <path
         android:name="stroke_right"
         android:pathData="M68,32 L54,55"
         android:strokeColor="#C15F3C"
         android:strokeWidth="7"
         android:strokeLineCap="round" />
-    <!-- 竖线 -->
     <path
         android:name="stroke_stem"
         android:pathData="M54,50 L54,78"
         android:strokeColor="#C15F3C"
         android:strokeWidth="7"
         android:strokeLineCap="round" />
-    <!-- 上横杠 -->
     <path
         android:name="stroke_bar1"
         android:pathData="M42,61 L66,61"
         android:strokeColor="#C15F3C"
         android:strokeWidth="7"
         android:strokeLineCap="round" />
-    <!-- 下横杠 -->
     <path
         android:name="stroke_bar2"
         android:pathData="M42,72 L66,72"

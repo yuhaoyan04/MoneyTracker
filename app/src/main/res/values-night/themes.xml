@@ -55,7 +55,7 @@
 
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_bg</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_animated_icon</item>
         <item name="postSplashScreenTheme">@style/Theme.SmartLedger</item>
     </style>
 </resources>

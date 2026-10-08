@@ -87,6 +87,9 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.mudasir.smartledger.util.BottomNavHelper.sync(
+            findViewById(R.id.bottomNav), R.id.nav_tab_settings
+        )
         refreshPermissionStatus()
         refreshAiStatus()
         refreshBackupStatus()

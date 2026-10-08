@@ -110,6 +110,10 @@ interface TransactionDao {
     @Query("UPDATE transactions SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: Long, status: String)
 
+    /** 确认待处理记录（仅 PENDING → CONFIRMED）。返回受影响行数：0 = 已确认过/不存在，调用方应跳过学习等副作用。 */
+    @Query("UPDATE transactions SET status = 'CONFIRMED' WHERE id = :id AND status = 'PENDING' AND isDeleted = 0")
+    suspend fun confirmPending(id: Long): Int
+
     @Query("UPDATE transactions SET merchant = :merchant WHERE isDeleted = 0 AND status = 'PENDING' AND amount = :amount AND timestamp >= :cutoff")
     suspend fun updatePendingMerchant(merchant: String, amount: Double, cutoff: Long)
 

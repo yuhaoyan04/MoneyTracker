@@ -75,8 +75,11 @@ class CaptureAdapter(
                 tvAiConf.visibility = View.GONE
             }
 
-            // 支付地点（通知/短信到达时记录的位置）
+            // 支付地点（通知/短信到达时记录的位置；无名时回退显示坐标）
             val loc = r.locationName?.takeIf { it.isNotBlank() }
+                ?: if (r.latitude != null && r.latitude != 0.0 && r.longitude != null && r.longitude != 0.0)
+                    String.format(java.util.Locale.getDefault(), "%.4f, %.4f", r.latitude, r.longitude)
+                else null
             if (loc != null) {
                 tvLocation.text = loc
                 capLocationRow.visibility = View.VISIBLE

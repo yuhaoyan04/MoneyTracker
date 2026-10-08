@@ -390,7 +390,15 @@ class AddEditTransactionActivity : AppCompatActivity() {
 
     private fun loadForEdit(id: Long) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val r = db.transactionDao().getById(id) ?: return@launch
+            val r = db.transactionDao().getById(id)
+            if (r == null) {
+                // 记录已不存在（被清理）：绝不能落成"新建"，否则产生重复
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@AddEditTransactionActivity, "该记录已被删除", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+                return@launch
+            }
             editingRecord = r
             selectedTs = r.timestamp
             expenseSelected = r.type == TransactionRecord.TYPE_EXPENSE
@@ -410,9 +418,13 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 tvPaymentValue.setTextColor(getColor(if (r.paymentMethod.isNullOrBlank()) R.color.text_secondary else R.color.text_primary))
                 etNote.setText(r.note.orEmpty())
                 tvDate.text = FormatUtil.date(r.timestamp)
-                // 支付发生地（抓取时记录）
-                if (!r.locationName.isNullOrBlank()) {
-                    findViewById<TextView>(R.id.tvLocationValue).text = r.locationName
+                // 支付发生地（抓取时记录；无名时回退显示坐标）
+                val locName = r.locationName?.takeIf { it.isNotBlank() }
+                    ?: if (r.latitude != null && r.latitude != 0.0 && r.longitude != null && r.longitude != 0.0)
+                        String.format(java.util.Locale.getDefault(), "%.4f, %.4f", r.latitude, r.longitude)
+                    else null
+                if (locName != null) {
+                    findViewById<TextView>(R.id.tvLocationValue).text = locName
                     findViewById<View>(R.id.cardLocation).visibility = View.VISIBLE
                 }
             }
@@ -428,7 +440,11 @@ class AddEditTransactionActivity : AppCompatActivity() {
         }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
     }
 
+    /** 防重入：连点保存只生效一次，避免重复插入。 */
+    private var saving = false
+
     private fun save() {
+        if (saving) return
         val amount = etAmount.text?.toString()?.trim()?.toDoubleOrNull()
         if (amount == null || amount <= 0.0) {
             Toast.makeText(this, "请输入金额", Toast.LENGTH_SHORT).show()
@@ -438,6 +454,12 @@ class AddEditTransactionActivity : AppCompatActivity() {
             Toast.makeText(this, "请选择分类", Toast.LENGTH_SHORT).show()
             return
         }
+        // 从收件箱编辑进入但记录尚未加载完成（或已被删）→ 阻止保存成新记录
+        if ((editingId > 0 || pendingId > 0) && editingRecord == null) {
+            Toast.makeText(this, "记录加载中，请稍候", Toast.LENGTH_SHORT).show()
+            return
+        }
+        saving = true
         val channel = selectedChannel.ifBlank { "其他" }
         val pm = selectedPayment
         val note = etNote.text?.toString()?.trim()?.takeIf { it.isNotBlank() }

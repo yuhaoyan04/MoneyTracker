@@ -44,17 +44,20 @@ class CaptureInboxActivity : AppCompatActivity() {
 
         adapter = CaptureAdapter(
             onConfirm = { r ->
+                // 乐观移除，避免连点导致重复处理
+                val current = adapter.currentList.filter { it.id != r.id }
+                adapter.submitList(current)
                 lifecycleScope.launch {
-                    db.transactionDao().updateStatus(r.id, TransactionRecord.STATUS_CONFIRMED)
-                    // 用户直接确认 = 认可该分类，作为正样本训练打标器；并增量备份
-                    if (r.categoryName.isNotBlank()) {
+                    // 数据库级幂等：仅 PENDING→CONFIRMED 生效；重复点击返回 0，跳过学习
+                    val changed = db.transactionDao().confirmPending(r.id)
+                    if (changed > 0 && r.categoryName.isNotBlank()) {
                         runCatching {
                             com.mudasir.smartledger.ml.PersonalTagger.learn(
                                 this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName, r.merchant
                             )
                         }
+                        runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
                     }
-                    runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
                     com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
                 }
             },
@@ -63,6 +66,9 @@ class CaptureInboxActivity : AppCompatActivity() {
                     .putExtra(AddEditTransactionActivity.EXTRA_PENDING_ID, r.id))
             },
             onDismiss = { r ->
+                // 乐观移除
+                val current = adapter.currentList.filter { it.id != r.id }
+                adapter.submitList(current)
                 lifecycleScope.launch {
                     db.transactionDao().moveToTrash(r.id)
                     com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
@@ -85,9 +91,10 @@ class CaptureInboxActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.btnConfirmAll).setOnClickListener {
             lifecycleScope.launch {
-                adapter.currentList.forEach {
-                    db.transactionDao().updateStatus(it.id, TransactionRecord.STATUS_CONFIRMED)
-                    if (it.categoryName.isNotBlank()) {
+                adapter.currentList.toList().forEach {
+                    // 幂等确认：只有第一次生效
+                    val changed = db.transactionDao().confirmPending(it.id)
+                    if (changed > 0 && it.categoryName.isNotBlank()) {
                         runCatching {
                             com.mudasir.smartledger.ml.PersonalTagger.learn(
                                 this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName, it.merchant
@@ -127,6 +134,9 @@ class CaptureInboxActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.mudasir.smartledger.util.BottomNavHelper.sync(
+            findViewById(R.id.bottomNav), R.id.nav_tab_inbox
+        )
         refreshPermissionBanner()
         refreshNotificationPermBanner()
         // 静默确认/其他端操作后回来时刷新常驻通知

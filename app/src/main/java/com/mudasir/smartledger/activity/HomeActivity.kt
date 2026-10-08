@@ -123,17 +123,6 @@ class HomeActivity : AppCompatActivity() {
             true
         }
 
-        // 账本中心入口：从底部导航流进入抽屉仪表盘（电费/牛奶/自定义账本等）
-        findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar).apply {
-            inflateMenu(R.menu.home_menu)
-            setOnMenuItemClickListener { item ->
-                if (item.itemId == R.id.action_dashboard) {
-                    startActivity(Intent(this@HomeActivity, com.mudasir.smartledger.MainActivity::class.java))
-                    true
-                } else false
-            }
-        }
-
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_home)
 
         com.mudasir.smartledger.util.BackupWorker.schedulePeriodic(this)
@@ -171,6 +160,10 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 底部导航选中态校正（REORDER_TO_FRONT 复用时 onCreate 不执行）
+        com.mudasir.smartledger.util.BottomNavHelper.sync(
+            findViewById(R.id.bottomNav), R.id.nav_tab_home
+        )
         // 自愈：回到首页时同步常驻通知（重启/系统清除后重发）
         refreshPendingNotification()
     }

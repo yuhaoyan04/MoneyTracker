@@ -44,7 +44,10 @@ object LocationHelper {
             ?: return lastPlace(context)
         val fresh = withTimeoutOrNull(timeoutMs) { awaitFreshLocation(lm) }
         val loc = fresh ?: lastKnown(lm) ?: return null
-        return Place(loc.latitude, loc.longitude, reverseGeocode(context, loc.latitude, loc.longitude))
+        // 逆地理编码失败（如无 GMS 的国产 ROM）时用坐标兜底，保证位置信息始终可见
+        val name = reverseGeocode(context, loc.latitude, loc.longitude)
+            ?: String.format(Locale.getDefault(), "%.4f, %.4f", loc.latitude, loc.longitude)
+        return Place(loc.latitude, loc.longitude, name)
     }
 
     /** 等待一次新鲜定位：同时监听 NETWORK + GPS，谁先返回用谁。 */
