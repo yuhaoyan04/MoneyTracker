@@ -392,7 +392,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val r = db.transactionDao().getById(id)
             if (r == null) {
-                // 记录已不存在（被清理）：绝不能落成"新建"，否则产生重复
+                // 记录已不存在（被清理）：不能落成"新建"，直接退出
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@AddEditTransactionActivity, "该记录已被删除", Toast.LENGTH_SHORT).show()
                     finish()
@@ -466,57 +466,77 @@ class AddEditTransactionActivity : AppCompatActivity() {
         val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val resolvedCategory = ensureCategory(selectedCategory, type)
-            ensureChannel(channel)
+            try {
+                val resolvedCategory = ensureCategory(selectedCategory, type)
+                ensureChannel(channel)
 
-            // 手动新记账：保存时记录当前位置（用户此刻就在消费地）
-            val place = if (editingRecord == null) {
-                runCatching { LocationHelper.lastPlace(this@AddEditTransactionActivity) }.getOrNull()
-            } else null
+                // 手动新记账：保存时记录当前位置（用户此刻就在消费地）
+                val place = if (editingRecord == null) {
+                    runCatching { LocationHelper.lastPlace(this@AddEditTransactionActivity) }.getOrNull()
+                } else null
 
-            val existing = editingRecord
-            val saved: TransactionRecord
-            if (existing != null) {
-                // 已有记录（自动抓取 → 收件箱确认/编辑）：保留抓取时记录的位置（支付发生地）
-                // 与商户名（来自通知解析），不因确认时环境不同而覆盖
-                saved = existing.copy(
-                    type = type, amount = amount, categoryName = resolvedCategory, channelName = channel,
-                    paymentMethod = pm, note = note, timestamp = selectedTs,
-                    status = TransactionRecord.STATUS_CONFIRMED
-                )
-                db.transactionDao().update(saved)
-            } else {
-                saved = TransactionRecord(
-                    type = type, amount = amount, categoryName = resolvedCategory, channelName = channel,
-                    paymentMethod = pm, merchant = null, note = note, timestamp = selectedTs,
-                    source = TransactionRecord.SOURCE_MANUAL,
-                    status = TransactionRecord.STATUS_CONFIRMED,
-                    latitude = place?.latitude, longitude = place?.longitude, locationName = place?.name
-                )
-                db.transactionDao().insert(saved)
-            }
-            // 待确认数量可能变化（确认了一条 PENDING），刷新常驻通知
-            com.mudasir.smartledger.util.PendingNotifier.update(this@AddEditTransactionActivity)
-
-            // 个性化打标学习：确认/修正即训练
-            if (resolvedCategory.isNotBlank()) {
-                val old = suggestedCategory
-                if (old != null && old != resolvedCategory) {
-                    PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, resolvedCategory, existing?.merchant)
+                val existing = editingRecord
+                val saved: TransactionRecord
+                if (existing != null) {
+                    // 已有记录（自动抓取 → 收件箱确认/编辑）：
+                    // - 保留抓取时记录的位置（支付发生地），绝不覆盖
+                    // - 若抓取时未取到位置（如当时未授权），补记当前位置（对标「记一笔」）
+                    val needsLoc = existing.locationName.isNullOrBlank() &&
+                        (existing.latitude == null || existing.latitude == 0.0)
+                    val fillPlace = if (needsLoc) {
+                        runCatching { LocationHelper.lastPlace(this@AddEditTransactionActivity) }.getOrNull()
+                    } else null
+                    saved = existing.copy(
+                        type = type, amount = amount, categoryName = resolvedCategory, channelName = channel,
+                        paymentMethod = pm, note = note, timestamp = selectedTs,
+                        status = TransactionRecord.STATUS_CONFIRMED,
+                        latitude = if (needsLoc) fillPlace?.latitude else existing.latitude,
+                        longitude = if (needsLoc) fillPlace?.longitude else existing.longitude,
+                        locationName = if (needsLoc) fillPlace?.name else existing.locationName
+                    )
+                    db.transactionDao().update(saved)
                 } else {
-                    PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, resolvedCategory, existing?.merchant)
+                    saved = TransactionRecord(
+                        type = type, amount = amount, categoryName = resolvedCategory, channelName = channel,
+                        paymentMethod = pm, merchant = null, note = note, timestamp = selectedTs,
+                        source = TransactionRecord.SOURCE_MANUAL,
+                        status = TransactionRecord.STATUS_CONFIRMED,
+                        latitude = place?.latitude, longitude = place?.longitude, locationName = place?.name
+                    )
+                    db.transactionDao().insert(saved)
                 }
-            }
+                // 待确认数量可能变化（确认了一条 PENDING），刷新常驻通知
+                com.mudasir.smartledger.util.PendingNotifier.update(this@AddEditTransactionActivity)
 
-            // 自动备份（增量触发）
-            runCatching { AutoBackupManager.backup(this@AddEditTransactionActivity) }
+                // 个性化打标学习：确认/修正即训练
+                if (resolvedCategory.isNotBlank()) {
+                    val old = suggestedCategory
+                    if (old != null && old != resolvedCategory) {
+                        PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, resolvedCategory, existing?.merchant)
+                    } else {
+                        PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, resolvedCategory, existing?.merchant)
+                    }
+                }
 
-            if (place?.name != null) {
+                // 自动备份（增量触发）
+                runCatching { AutoBackupManager.backup(this@AddEditTransactionActivity) }
+
+                if (place?.name != null || (saved.locationName?.isNotBlank() == true)) {
+                    withContext(Dispatchers.Main) {
+                        val shown = saved.locationName ?: place?.name
+                        Toast.makeText(this@AddEditTransactionActivity, "已记录地点：$shown", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (t: Throwable) {
+                // 后台异常不静默：提示用户并记录（数据可能未保存）
+                android.util.Log.w("AddEdit", "save failed", t)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@AddEditTransactionActivity, "已记录地点：${place.name}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AddEditTransactionActivity, "保存失败，请重试", Toast.LENGTH_SHORT).show()
                 }
+            } finally {
+                // 对标「记一笔」：无论成功失败，保存即退出本页回到上一级
+                withContext(Dispatchers.Main) { finish() }
             }
-            withContext(Dispatchers.Main) { finish() }
         }
     }
 

@@ -48,9 +48,30 @@ class CaptureInboxActivity : AppCompatActivity() {
                 val current = adapter.currentList.filter { it.id != r.id }
                 adapter.submitList(current)
                 lifecycleScope.launch {
-                    // 数据库级幂等：仅 PENDING→CONFIRMED 生效；重复点击返回 0，跳过学习
-                    val changed = db.transactionDao().confirmPending(r.id)
-                    if (changed > 0 && r.categoryName.isNotBlank()) {
+                    // 对标「记一笔」：记录无位置时补记当前位置（确认时人通常就在附近；
+                    // 已有抓取时位置则保留，绝不覆盖）
+                    val fresh = db.transactionDao().getById(r.id)
+                    var confirmed = false
+                    if (fresh != null && fresh.status == TransactionRecord.STATUS_PENDING) {
+                        val updated = if (fresh.locationName.isNullOrBlank() &&
+                            (fresh.latitude == null || fresh.latitude == 0.0)
+                        ) {
+                            val place = runCatching {
+                                com.mudasir.smartledger.util.LocationHelper.lastPlace(this@CaptureInboxActivity)
+                            }.getOrNull()
+                            fresh.copy(
+                                status = TransactionRecord.STATUS_CONFIRMED,
+                                latitude = place?.latitude,
+                                longitude = place?.longitude,
+                                locationName = place?.name
+                            )
+                        } else {
+                            fresh.copy(status = TransactionRecord.STATUS_CONFIRMED)
+                        }
+                        db.transactionDao().update(updated)
+                        confirmed = true
+                    }
+                    if (confirmed && r.categoryName.isNotBlank()) {
                         runCatching {
                             com.mudasir.smartledger.ml.PersonalTagger.learn(
                                 this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName, r.merchant
@@ -59,6 +80,8 @@ class CaptureInboxActivity : AppCompatActivity() {
                         runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
                     }
                     com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
+                    // 对标「记一笔」：全部处理完毕自动退回上一级页面
+                    maybeFinishWhenEmpty()
                 }
             },
             onEdit = { r ->
@@ -72,6 +95,7 @@ class CaptureInboxActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     db.transactionDao().moveToTrash(r.id)
                     com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
+                    maybeFinishWhenEmpty()
                 }
             }
         )
@@ -104,6 +128,8 @@ class CaptureInboxActivity : AppCompatActivity() {
                 }
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
                 com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
+                // 全部处理完自动退回上一级
+                maybeFinishWhenEmpty()
             }
         }
 
@@ -129,6 +155,14 @@ class CaptureInboxActivity : AppCompatActivity() {
                 findViewById<View>(R.id.btnConfirmAll).visibility =
                     if (list.isEmpty()) View.GONE else View.VISIBLE
             }
+        }
+    }
+
+    /** 收件箱清空时自动退回上一级（对标「记一笔」保存即退出）。 */
+    private suspend fun maybeFinishWhenEmpty() {
+        val remaining = db.transactionDao().countPending()
+        if (remaining == 0 && !isFinishing && !isDestroyed) {
+            withContext(Dispatchers.Main) { finish() }
         }
     }
 

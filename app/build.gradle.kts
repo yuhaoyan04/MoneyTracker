@@ -14,8 +14,8 @@ android {
         applicationId = "com.mudasir.smartledger"
         minSdk = 24
         targetSdk = 36
-        versionCode = 35
-        versionName = "2.20.1"
+        versionCode = 36
+        versionName = "2.21.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

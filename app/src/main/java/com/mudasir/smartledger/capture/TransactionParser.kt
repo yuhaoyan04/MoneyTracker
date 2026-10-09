@@ -52,6 +52,11 @@ object TransactionParser {
         "com.sankuai.meituan.takeoutnew" to "美团",
         "com.meituan.retail.v4" to "美团",
         "com.sankuai.mt.pro" to "美团",
+        "com.ele.android" to "饿了么",
+        "com.sdu.didi.psnger" to "滴滴",
+        "com.xunmeng.pinduoduo" to "拼多多",
+        "com.unionpay" to "云闪付",
+        "com.MobileTicket" to "12306",
         "com.taou.maimai" to "脉脉",
         "com.mobile.me" to "其他"
     )

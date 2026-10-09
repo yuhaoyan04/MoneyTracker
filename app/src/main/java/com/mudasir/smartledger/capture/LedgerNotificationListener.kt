@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 class LedgerNotificationListener : NotificationListenerService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val recentHashes = LinkedHashMap<Long, String>()
+    private val recentHashes = LinkedHashMap<Long, Pair<String, String>>()
 
     // 商户关联缓冲区：记录最近解析的通知（含商户名），用于跨 App 商户补全
     private data class RecentCapture(
@@ -43,6 +43,7 @@ class LedgerNotificationListener : NotificationListenerService() {
         "com.tencent.mm",                  // 微信
         "com.eg.android.AlipayGphone",     // 支付宝
         "com.eg.android.AlipayGphone.rc",  // 支付宝（变体）
+        "com.eg.android.AlipayGphone.lite",// 支付宝_lite
         "com.taobao.taobao",               // 淘宝
         "com.taobao.idlefish",             // 闲鱼
         "com.jingdong.app.mall",           // 京东
@@ -53,14 +54,22 @@ class LedgerNotificationListener : NotificationListenerService() {
         "com.sankuai.meituan.takeoutnew",  // 美团外卖
         "com.meituan.retail.v4",           // 美团买菜
         "com.sankuai.mt.pro",              // 美团商家版
-        "com.taou.maimai",                 // 脉脉（企业支付）
-        "com.eg.android.AlipayGphone.lite"// 支付宝_lite
+        "com.ele.android",                 // 饿了么
+        "com.sdu.didi.psnger",             // 滴滴出行
+        "com.xunmeng.pinduoduo",           // 拼多多
+        "com.unionpay",                    // 云闪付
+        "com.MobileTicket",                // 铁路12306
+        "com.taou.maimai"                  // 脉脉（企业支付）
     )
 
-    // 促销 / 广告黑名单 —— 命中即丢弃，不进入收件箱
+    // 完成表述词 —— 命中说明这是真实支付通知（支付成功/已支付/已扣款…），
+    // 即使文本同时含「优惠券/立减」等营销词也不得丢弃
+    private val completionWords = listOf("成功", "已", "完成", "到账", "入账", "凭证")
+
+    // 促销 / 广告黑名单 —— 仅当通知缺少「完成表述」时生效（防止营销伪装支付）
     private val promotionalBlacklist = listOf(
         "广告", "促销", "优惠", "立减", "满减", "折扣", "领取", "福利", "活动",
-        "邀请", "推广", "积分", "签到", "优惠券", "红包雨", "抽奖", "推荐",
+        "邀请", "推广", "积分", "签到", "优惠券", "红包", "抽奖", "推荐",
         "降价", "新品", "限时", "抢购", "薪资", "月薪", "好友", "拼团", "砍价",
         "免费", "赠送", "中奖", "补贴", "新人专享", "热卖", "爆款", "种草",
         "好友拼", "帮砍", "直播间", "开播", "预告", "更新", "评论", "点赞",
@@ -135,21 +144,32 @@ class LedgerNotificationListener : NotificationListenerService() {
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
         val sub = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString().orEmpty()
         val big = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty()
+        // MessagingStyle 通知（微信服务号消息常用）：文本藏在 EXTRA_MESSAGES 里
+        val msgText = runCatching {
+            @Suppress("DEPRECATION")
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+                ?.mapNotNull { (it as? Notification.MessagingStyle.Message)?.text?.toString() }
+                ?.joinToString(" ")
+                .orEmpty()
+        }.getOrDefault("")
 
-        val combined = listOf(title, sub, text, big).filter { it.isNotBlank() }.joinToString(" | ")
+        val combined = listOf(title, sub, text, big, msgText).filter { it.isNotBlank() }.joinToString(" | ")
         if (combined.isBlank()) return
 
-        // === Gate 1: 促销/广告黑名单 —— 直接丢弃 ===
-        if (isPromotional(combined)) return
-
-        // === Gate 2: 严格白名单 —— 只处理支付/购物 App 的通知 ===
+        // === Gate 1: 严格白名单 —— 只处理支付/购物 App 的通知 ===
         // 微博、新闻、银行 App 非通知源（银行走短信）等全部忽略
         if (pkg !in watchedPackages) return
 
-        // === Gate 3: 双信号门 —— 支付动作 + 金额符号 必须同时满足 ===
+        // === Gate 2: 双信号门 —— 支付动作 + 金额符号 必须同时满足 ===
         val hasAction = hasPaymentAction(combined)
         val hasAmount = hasAmountSymbol(combined)
         if (!hasAction || !hasAmount) return
+
+        // === Gate 3: 促销过滤 —— 仅当缺少「完成表述」时应用 ===
+        // 真实支付通知常含「已优惠/立减/满减/红包抵扣」等营销词（如「支付成功，已优惠3元」），
+        // 不能仅凭营销词丢弃；只有缺少「成功/已/完成/凭证」等完成词时才判为营销
+        val hasCompletion = completionWords.any { combined.contains(it) }
+        if (!hasCompletion && isPromotional(combined)) return
 
         val parsed = TransactionParser.parse(
             text = combined,
@@ -163,7 +183,7 @@ class LedgerNotificationListener : NotificationListenerService() {
             runCatching {
             val dao = AppDatabase.getDatabase(this@LedgerNotificationListener).transactionDao()
             if (parsed != null) {
-                if (isDuplicate(parsed)) {
+                if (isDuplicate(parsed, pkg)) {
                     // 跨 App 去重：同一笔交易被多个 App 通知。
                     // 若本次通知带有商户名，尝试补全已入库记录的空商户。
                     if (!needsMerchant(parsed.merchant)) {
@@ -223,19 +243,23 @@ class LedgerNotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun isDuplicate(parsed: ParsedTransaction): Boolean {
+    /**
+     * 去重策略：
+     * - 跨 App（微信+银行等同时通知同一笔）→ 3 分钟窗口内去重
+     * - 同 App 短窗口（≤20s，同一通知被系统重发/更新）→ 去重
+     * - 同 App 长窗口（同分钟同金额的真实重复消费，如连买两瓶水）→ 保留
+     */
+    private fun isDuplicate(parsed: ParsedTransaction, pkg: String): Boolean {
         val now = System.currentTimeMillis()
-        // 跨应用去重：同一笔交易可能同时被微信和银行App通知，
-        // 按 type + amount + 分钟桶匹配，忽略渠道差异
         val hash = "${parsed.type}|${parsed.amount}|${parsed.timestamp / 60000}"
-        // 清理 3 分钟以上的旧记录（扩大窗口以覆盖跨应用延迟）
         val cutoff = now - 180_000
-        val it = recentHashes.entries.iterator()
-        while (it.hasNext()) {
-            if (it.next().key < cutoff) it.remove() else break
+        recentHashes.entries.removeAll { it.key < cutoff }
+        val dupFromOtherApp = recentHashes.entries.any { it.value.first == hash && it.value.second != pkg }
+        val dupSameAppRecent = recentHashes.entries.any {
+            it.key >= now - 20_000 && it.value.first == hash && it.value.second == pkg
         }
-        return if (recentHashes.values.contains(hash)) true
-        else { recentHashes[now] = hash; false }
+        return if (dupFromOtherApp || dupSameAppRecent) true
+        else { recentHashes[now] = hash to pkg; false }
     }
 
     private fun ParsedTransaction.toRecord() = TransactionRecord(
