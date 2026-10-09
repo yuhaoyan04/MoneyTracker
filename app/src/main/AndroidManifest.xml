@@ -166,6 +166,20 @@
             </intent-filter>
         </service>
 
+        <!-- 自动抓取：付款码/扫一扫支付（前台支付无通知，需读支付成功结果页） -->
+        <service
+            android:name=".capture.PaymentAccessibilityService"
+            android:exported="false"
+            android:label="付款码自动记账"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/payment_accessibility_config" />
+        </service>
+
         <!-- 自动抓取：银行交易短信 -->
         <receiver
             android:name=".capture.BankSmsReceiver"

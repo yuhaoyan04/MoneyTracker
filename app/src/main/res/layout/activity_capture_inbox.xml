@@ -91,6 +91,14 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:text="授予短信权限" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnEnableAcc"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="开启付款码抓取" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

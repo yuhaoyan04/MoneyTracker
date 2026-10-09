@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">MoneyTracker</string>
+    <string name="acc_pay_capture_desc">监控微信/支付宝的「支付成功」结果页，自动记录付款码、扫一扫支付的金额、时间与地点（通知监听无法覆盖这类前台支付）。数据仅保存在本机，绝不上传。</string>
 </resources>

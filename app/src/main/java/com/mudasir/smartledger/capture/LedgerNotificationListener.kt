@@ -193,6 +193,8 @@ class LedgerNotificationListener : NotificationListenerService() {
                     return@launch
                 }
                 val rec = parsed.toRecord()
+                // 跨通道去重：无障碍服务可能已从「支付成功结果页」抓到同一笔（付款码场景）
+                if (RecentCaptureRegistry.isDuplicate(rec.type, rec.amount)) return@launch
                 // 商户关联：若当前通知缺少商户，从 60s 窗口内其他 App 的通知补全
                 val enrichedMerchant = if (needsMerchant(rec.merchant)) {
                     correlateMerchant(rec.amount, pkg, rec.timestamp) ?: rec.merchant

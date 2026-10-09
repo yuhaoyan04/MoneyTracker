@@ -107,6 +107,9 @@ object LocationHelper {
 
     private fun reverseGeocode(context: Context, lat: Double, lng: Double): String? {
         return try {
+            // 前置检查：无地理编码服务的设备（多数国产无 GMS ROM）直接跳过，
+            // 避免阻塞到网络超时（曾导致记一笔页面卡死 ANR）
+            if (!Geocoder.isPresent()) return null
             val geo = Geocoder(context, Locale.getDefault())
             @Suppress("DEPRECATION")
             val list = geo.getFromLocation(lat, lng, 5)

@@ -79,6 +79,7 @@ data class TransactionRecord(
         const val SOURCE_MANUAL = "MANUAL"
         const val SOURCE_CAPTURE_NOTIFICATION = "CAPTURE_NOTIFICATION"
         const val SOURCE_CAPTURE_SMS = "CAPTURE_SMS"
+        const val SOURCE_CAPTURE_ACCESSIBILITY = "CAPTURE_ACCESSIBILITY"
 
         const val STATUS_PENDING = "PENDING"
         const val STATUS_CONFIRMED = "CONFIRMED"

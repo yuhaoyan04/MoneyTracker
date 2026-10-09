@@ -27,4 +27,19 @@ object PermissionHelper {
         return context.checkSelfPermission(android.Manifest.permission.RECEIVE_SMS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
     }
+
+    /** 付款码抓取（无障碍服务）是否已启用。 */
+    fun isAccessibilityServiceEnabled(context: Context): Boolean {
+        val flat = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        val target = ComponentName(context, "com.mudasir.smartledger.capture.PaymentAccessibilityService").flattenToString()
+        return flat.split(':').any { it.equals(target, ignoreCase = true) }
+    }
+
+    fun openAccessibilitySettings(context: Context) {
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure {
+            context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
 }

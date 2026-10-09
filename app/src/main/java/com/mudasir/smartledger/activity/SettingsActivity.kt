@@ -175,6 +175,21 @@ class SettingsActivity : AppCompatActivity() {
 
         refreshNotifPermStatus()
         refreshBgLocStatus()
+        refreshAccStatus()
+    }
+
+    /** 付款码抓取（无障碍服务）。 */
+    private fun refreshAccStatus() {
+        val tv = findViewById<TextView>(R.id.tvAccStatus)
+        val btn = findViewById<View>(R.id.btnAcc)
+        val enabled = PermissionHelper.isAccessibilityServiceEnabled(this)
+        tv.text = if (enabled) "已开启" else "未开启"
+        tv.setTextColor(getColorCompat(if (enabled) R.color.color_income else R.color.color_expense))
+        btn.visibility = if (enabled) View.GONE else View.VISIBLE
+        btn.setOnClickListener {
+            PermissionHelper.openAccessibilitySettings(this)
+            Toast.makeText(this, "在系统「已下载的服务」中开启「付款码自动记账」", Toast.LENGTH_LONG).show()
+        }
     }
 
     /** 通知栏提醒（Android 13+ POST_NOTIFICATIONS）。 */

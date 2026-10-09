@@ -56,9 +56,12 @@ class CaptureInboxActivity : AppCompatActivity() {
                         val updated = if (fresh.locationName.isNullOrBlank() &&
                             (fresh.latitude == null || fresh.latitude == 0.0)
                         ) {
-                            val place = runCatching {
-                                com.mudasir.smartledger.util.LocationHelper.lastPlace(this@CaptureInboxActivity)
-                            }.getOrNull()
+                            // 反地理编码是网络请求，在 IO 线程执行，避免主线程卡死
+                            val place = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    com.mudasir.smartledger.util.LocationHelper.lastPlace(this@CaptureInboxActivity)
+                                }.getOrNull()
+                            }
                             fresh.copy(
                                 status = TransactionRecord.STATUS_CONFIRMED,
                                 latitude = place?.latitude,
@@ -111,6 +114,10 @@ class CaptureInboxActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnEnableSms).setOnClickListener {
             smsPermLauncher.launch(Manifest.permission.RECEIVE_SMS)
+        }
+        findViewById<View>(R.id.btnEnableAcc).setOnClickListener {
+            PermissionHelper.openAccessibilitySettings(this)
+            android.widget.Toast.makeText(this, "在「已下载的服务」中开启「付款码自动记账」", android.widget.Toast.LENGTH_LONG).show()
         }
 
         findViewById<View>(R.id.btnConfirmAll).setOnClickListener {
@@ -210,12 +217,14 @@ class CaptureInboxActivity : AppCompatActivity() {
     private fun refreshPermissionBanner() {
         val notifOk = PermissionHelper.isNotificationListenerEnabled(this)
         val smsOk = PermissionHelper.hasSmsPermission(this)
+        val accOk = PermissionHelper.isAccessibilityServiceEnabled(this)
         val banner = findViewById<View>(R.id.permBanner)
-        banner.visibility = if (notifOk && smsOk) View.GONE else View.VISIBLE
+        banner.visibility = if (notifOk && smsOk && accOk) View.GONE else View.VISIBLE
         findViewById<View>(R.id.btnEnableNotif).visibility = if (notifOk) View.GONE else View.VISIBLE
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btnEnableSms).apply {
             visibility = if (smsOk) View.GONE else View.VISIBLE
             text = if (smsOk) "短信已授权" else "授予短信权限"
         }
+        findViewById<View>(R.id.btnEnableAcc).visibility = if (accOk) View.GONE else View.VISIBLE
     }
 }

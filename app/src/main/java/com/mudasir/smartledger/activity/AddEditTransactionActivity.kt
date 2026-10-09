@@ -98,18 +98,28 @@ class AddEditTransactionActivity : AppCompatActivity() {
         }
     }
 
-    /** 手动新记账时，用打标器给个默认分类建议。 */
+    /** 手动新记账时，用打标器给个默认分类建议。位置反查是网络请求，必须异步，绝不能阻塞主线程。 */
     private fun maybePrefillSuggestion() {
         if (editingId > 0 || pendingId > 0) return
         if (selectedCategory.isNotBlank()) return
         val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
         val amount = etAmount.text?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
-        val place = runCatching { LocationHelper.lastPlace(this) }.getOrNull()
-        val suggested = PersonalTagger.recommend(this, type, selectedTs, amount, selectedChannel, null, etNote.text?.toString(), place?.name)
-        suggestedCategory = suggested
-        selectedCategory = suggested
-        tvCategoryValue.text = suggested
-        tvCategoryValue.setTextColor(getColor(R.color.text_primary))
+        lifecycleScope.launch(Dispatchers.IO) {
+            val place = runCatching { LocationHelper.lastPlace(this@AddEditTransactionActivity) }.getOrNull()
+            val suggested = PersonalTagger.recommend(
+                this@AddEditTransactionActivity, type, selectedTs, amount, selectedChannel,
+                null, etNote.text?.toString(), place?.name
+            )
+            withContext(Dispatchers.Main) {
+                // 期间用户可能已手动选择分类/记录已加载
+                if (selectedCategory.isBlank() && editingId == 0L && pendingId == 0L) {
+                    suggestedCategory = suggested
+                    selectedCategory = suggested
+                    tvCategoryValue.text = suggested
+                    tvCategoryValue.setTextColor(getColor(R.color.text_primary))
+                }
+            }
+        }
     }
 
     // ===== 分类（多级面板 + 自定义小类） =====
