@@ -87,6 +87,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        PermissionHelper.requestNotificationListenerRebind(this)
         com.mudasir.smartledger.util.BottomNavHelper.sync(
             findViewById(R.id.bottomNav), R.id.nav_tab_settings
         )

@@ -240,6 +240,8 @@ class LedgerNotificationListener : NotificationListenerService() {
                         timestamp = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
                     )
                 )
+                // 解析失败的兜底记录同样需要提醒用户核对，不能只静默写入收件箱。
+                com.mudasir.smartledger.util.PendingNotifier.update(applicationContext)
             }
             }.onFailure { android.util.Log.w("LedgerListener", "capture failed", it) }
         }

@@ -132,11 +132,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) { Toast.makeText(this@AddEditTransactionActivity, "暂无分类", Toast.LENGTH_SHORT).show() }
                 return@launch
             }
-            val childrenByRoot = mutableMapOf<String, List<Category>>()
-            for (root in roots) {
-                childrenByRoot[root.name] = db.categoryDao().getChildren(root.name, type)
-            }
-            withContext(Dispatchers.Main) { showCategorySheet(roots, childrenByRoot, type) }
+            withContext(Dispatchers.Main) { showRootCategorySheet(roots, type) }
         }
     }
 
@@ -146,11 +142,8 @@ class AddEditTransactionActivity : AppCompatActivity() {
         tvCategoryValue.setTextColor(getColor(R.color.text_primary))
     }
 
-    private fun showCategorySheet(
-        roots: List<Category>,
-        childrenByRoot: Map<String, List<Category>>,
-        type: String
-    ) {
+    /** 第一步只展示大类，避免所有小类堆在一个需要长距离滚动的列表里。 */
+    private fun showRootCategorySheet(roots: List<Category>, type: String) {
         val sheet = BottomSheetDialog(this)
         val ctx = sheet.context
         val container = LinearLayout(ctx).apply {
@@ -159,7 +152,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
         }
 
         container.addView(TextView(ctx).apply {
-            text = "选择分类"
+            text = "先选择大类"
             textSize = 16f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(getColor(R.color.text_primary))
@@ -168,83 +161,86 @@ class AddEditTransactionActivity : AppCompatActivity() {
             }
         })
 
-        val scroll = android.widget.ScrollView(ctx).apply { isFillViewport = true }
-        val list = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = android.widget.ScrollView(ctx)
+        val list = android.widget.GridLayout(ctx).apply {
+            columnCount = 2
+            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+        }
 
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
 
         for (root in roots) {
-            val children = childrenByRoot[root.name].orEmpty()
-
             list.addView(TextView(ctx).apply {
                 text = root.name
-                textSize = 12f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(getColor(R.color.teal_main))
-                letterSpacing = 0.08f
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(16)
-                    bottomMargin = dp(4)
+                textSize = 16f
+                setTextColor(getColor(R.color.text_primary))
+                setPadding(dp(12), dp(14), dp(12), dp(14))
+                background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
+                layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT
+                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(2), dp(2), dp(2), dp(2))
+                }
+                setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_chevron_right, 0)
+                setOnClickListener {
+                    sheet.dismiss()
+                    lifecycleScope.launch {
+                        val children = withContext(Dispatchers.IO) { db.categoryDao().getChildren(root.name, type) }
+                        showChildCategorySheet(root, children, type)
+                    }
                 }
             })
-
-            if (children.isEmpty()) {
-                list.addView(TextView(ctx).apply {
-                    text = root.name
-                    textSize = 15f
-                    setTextColor(getColor(R.color.text_primary))
-                    setPadding(dp(4), dp(10), dp(4), dp(10))
-                    background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
-                    setOnClickListener {
-                        applyCategory(root.name)
-                        sheet.dismiss()
-                    }
-                })
-            } else {
-                for (child in children) {
-                    list.addView(TextView(ctx).apply {
-                        text = child.name
-                        textSize = 15f
-                        setTextColor(
-                            if (child.name == selectedCategory) getColor(R.color.teal_main)
-                            else getColor(R.color.text_primary)
-                        )
-                        setPadding(dp(8), dp(10), dp(8), dp(10))
-                        background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
-                        setOnClickListener {
-                            applyCategory(child.name)
-                            sheet.dismiss()
-                        }
-                    })
-                }
-                list.addView(TextView(ctx).apply {
-                    text = "用「${root.name}」"
-                    textSize = 13f
-                    setTextColor(getColor(R.color.text_secondary))
-                    setPadding(dp(8), dp(8), dp(8), dp(8))
-                    setOnClickListener {
-                        applyCategory(root.name)
-                        sheet.dismiss()
-                    }
-                })
-                // ＋ 自定义小类：挂到当前大类下（如 餐饮-寿司）
-                list.addView(TextView(ctx).apply {
-                    text = "＋ 自定义小类"
-                    textSize = 13f
-                    setTextColor(getColor(R.color.teal_main))
-                    setPadding(dp(8), dp(8), dp(8), dp(8))
-                    background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
-                    setOnClickListener {
-                        sheet.dismiss()
-                        promptCustomChild(root, type)
-                    }
-                })
-            }
         }
 
         scroll.addView(list)
         container.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        sheet.setContentView(container)
+        sheet.show()
+    }
+
+    /** 第二步只展示所选大类的小类，并保留直接使用大类和自定义入口。 */
+    private fun showChildCategorySheet(root: Category, children: List<Category>, type: String) {
+        val sheet = BottomSheetDialog(this)
+        val ctx = sheet.context
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val container = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(24), dp(28), dp(40))
+        }
+        container.addView(TextView(ctx).apply {
+            text = "${root.name} · 选择小类"
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(getColor(R.color.text_primary))
+            setPadding(0, 0, 0, dp(12))
+        })
+        val choices = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        fun addChoice(label: String, color: Int, action: () -> Unit) {
+            choices.addView(TextView(ctx).apply {
+                text = label
+                textSize = 15f
+                setTextColor(color)
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
+                setOnClickListener { action(); sheet.dismiss() }
+            })
+        }
+        children.forEach { child ->
+            addChoice(child.name, getColor(if (child.name == selectedCategory) R.color.teal_main else R.color.text_primary)) {
+                applyCategory(child.name)
+            }
+        }
+        addChoice("直接使用「${root.name}」", getColor(R.color.text_secondary)) { applyCategory(root.name) }
+        addChoice("＋ 自定义小类", getColor(R.color.teal_main)) { promptCustomChild(root, type) }
+        container.addView(android.widget.ScrollView(ctx).apply {
+            addView(choices)
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (resources.displayMetrics.heightPixels * 0.62f).toInt()
+        ))
         sheet.setContentView(container)
         sheet.show()
     }

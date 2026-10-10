@@ -6,6 +6,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.content.Context
+import android.util.Log
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
 import kotlinx.coroutines.CoroutineScope
@@ -28,51 +30,49 @@ import kotlinx.coroutines.launch
  */
 class PaymentAccessibilityService : AccessibilityService() {
 
-    companion object {
-        private const val WECHAT = "com.tencent.mm"
-        private const val ALIPAY = "com.eg.android.AlipayGphone"
-    }
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var serviceJob = SupervisorJob()
+    private var scope = CoroutineScope(serviceJob + Dispatchers.IO)
     private val handler = Handler(Looper.getMainLooper())
     private var lastEventAt = 0L
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        if (!serviceJob.isActive) {
+            serviceJob = SupervisorJob()
+            scope = CoroutineScope(serviceJob + Dispatchers.IO)
+        }
+        getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE).edit()
+            .putLong(KEY_CONNECTED_AT, System.currentTimeMillis()).apply()
+        Log.i(TAG, "payment capture accessibility service connected")
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
-        // 只处理窗口切换（进入支付结果页是 Activity 切换）；内容变化（滚动聊天/账单）不处理
-        if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
         if (pkg != WECHAT && pkg != ALIPAY) return
 
         val now = System.currentTimeMillis()
-        if (now - lastEventAt < 600) return  // 事件节流
+        if (now - lastEventAt < 350) return  // 内容变化事件很多，统一去抖
         lastEventAt = now
+        // AccessibilityEvent 由系统复用，延迟任务不能持有 event 本体。
+        val eventTexts = e.text.map(CharSequence::toString)
 
-        // 延迟 400ms 等页面内容就绪（切换瞬间 root 可能仍是旧窗口）
-        handler.postDelayed({
-            runCatching { inspect(pkg) }
-        }, 400)
+        // Compose/小程序页面常分阶段渲染；多个时间点轻量重试，任一次抓到后由注册表去重。
+        listOf(150L, 600L, 1_300L).forEach { delay ->
+            handler.postDelayed({ runCatching { inspect(pkg, eventTexts) } }, delay)
+        }
     }
 
-    private fun inspect(pkg: String) {
-        val root = rootInActiveWindow ?: return
-        if (root.packageName?.toString() != pkg) return
-
+    private fun inspect(pkg: String, eventTexts: List<String>) {
         val texts = mutableListOf<String>()
-        collectTexts(root, texts, 0)
+        texts.addAll(eventTexts)
+        val root = rootInActiveWindow
+        if (root?.packageName?.toString() == pkg) collectTexts(root, texts, 0)
         if (texts.isEmpty()) return
         val combined = texts.joinToString(" ")
-
-        val isRefund = combined.contains("退款成功") || combined.contains("已退款")
-        val isPayment = combined.contains("支付成功") || combined.contains("付款成功") ||
-            combined.contains("交易成功") || combined.contains("转账成功")
-        if (!isPayment && !isRefund) return
-
-        // 结果页特征：必有「完成/返回商家」按钮；聊天/账单页没有，防止翻旧消息误抓
-        if (!combined.contains("完成") && !combined.contains("返回商家")) return
-
-        val amount = extractAmount(combined) ?: return
-        val type = if (isRefund) TransactionRecord.TYPE_INCOME else TransactionRecord.TYPE_EXPENSE
+        val parsed = PaymentPageParser.parse(combined) ?: return
+        val amount = parsed.amount
+        val type = if (parsed.isRefund) TransactionRecord.TYPE_INCOME else TransactionRecord.TYPE_EXPENSE
         val channel = if (pkg == WECHAT) "微信支付" else "支付宝"
 
         // 跨通道去重（与通知监听：结果页 + 服务号通知 = 同一笔）
@@ -109,12 +109,6 @@ class PaymentAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** 取页面第一个 ¥ 金额（结果页的主金额）。 */
-    private fun extractAmount(text: String): Double? {
-        val m = Regex("[¥￥]\\s*([0-9]+(?:\\.[0-9]{1,2})?)").find(text) ?: return null
-        return m.groupValues[1].toDoubleOrNull()?.takeIf { it > 0 }
-    }
-
     private fun collectTexts(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {
         if (depth > 30 || out.size > 200) return
         node.text?.let { if (it.isNotBlank()) out.add(it.toString()) }
@@ -127,7 +121,21 @@ class PaymentAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: Intent?): Boolean {
-        scope.cancel()
+        // 系统可能因省电/内存暂时解绑后复用同一实例；不要在这里永久取消写库协程。
         return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    companion object {
+        private const val WECHAT = "com.tencent.mm"
+        private const val ALIPAY = "com.eg.android.AlipayGphone"
+        private const val TAG = "PayAccSvc"
+        private const val STATE_PREFS = "capture_service_state"
+        private const val KEY_CONNECTED_AT = "accessibility_connected_at"
     }
 }

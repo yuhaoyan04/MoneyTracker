@@ -169,8 +169,10 @@
         <!-- 自动抓取：付款码/扫一扫支付（前台支付无通知，需读支付成功结果页） -->
         <service
             android:name=".capture.PaymentAccessibilityService"
+            android:enabled="true"
             android:exported="false"
             android:label="付款码自动记账"
+            android:stopWithTask="false"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

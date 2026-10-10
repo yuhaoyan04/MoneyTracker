@@ -17,7 +17,7 @@ private data class Sub(val name: String, val color: String, val parent: String, 
         CustomLedger::class, CustomEntry::class, CustomDailyRecord::class,
         TransactionRecord::class, Category::class, PaymentChannel::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -141,6 +141,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v13: 补齐日常分类，并把少数旧子类归入更准确的新大类。
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                seedTaxonomy(database)
+                database.execSQL("UPDATE categories SET parentName='服饰美容' WHERE type='EXPENSE' AND name IN ('服饰','美妆护肤')")
+                database.execSQL("UPDATE categories SET parentName='家庭育儿' WHERE type='EXPENSE' AND name='母婴玩具'")
+                database.execSQL("UPDATE categories SET parentName='宠物' WHERE type='EXPENSE' AND name='宠物用品'")
+                database.execSQL("UPDATE categories SET parentName='金融保险' WHERE type='EXPENSE' AND name='保险费'")
+                database.execSQL("UPDATE categories SET sortOrder=15 WHERE type='EXPENSE' AND level=1 AND name='其他'")
+                database.execSQL("UPDATE categories SET sortOrder=8 WHERE type='INCOME' AND level=1 AND name='其他收入'")
+            }
+        }
+
         /**
          * 幂等播种全量分类与渠道（一级大类 + 二级小类 + 支付方式）。
          * 同时用于：v7→v8、v8→v9、v9→v10 迁移，以及 onCreate（全新安装）。
@@ -153,7 +166,10 @@ abstract class AppDatabase : RoomDatabase() {
             val expenseRoots = listOf(
                 "餐饮" to "#FF7043", "交通" to "#29B6F6", "网购" to "#AB47BC",
                 "日用" to "#66BB6A", "娱乐" to "#FFCA28", "医疗" to "#EF5350",
-                "居住" to "#78909C", "通讯" to "#26A69A", "教育" to "#5C6BC0", "其他" to "#90A4AE"
+                "居住" to "#78909C", "通讯" to "#26A69A", "教育" to "#5C6BC0",
+                "服饰美容" to "#EC407A", "家庭育儿" to "#AB47BC", "宠物" to "#8D6E63",
+                "人情社交" to "#FF8A65", "金融保险" to "#42A5F5", "工作商务" to "#5C6BC0",
+                "其他" to "#90A4AE"
             )
             expenseRoots.forEachIndexed { i, (n, c) ->
                 db.execSQL(
@@ -164,7 +180,8 @@ abstract class AppDatabase : RoomDatabase() {
             // ---- 一级大类（INCOME）----
             val incomeRoots = listOf(
                 "工资" to "#66BB6A", "理财" to "#26A69A", "红包" to "#EF5350",
-                "退款" to "#29B6F6", "其他收入" to "#90A4AE"
+                "退款" to "#29B6F6", "兼职" to "#7E57C2", "经营" to "#FF7043",
+                "报销" to "#42A5F5", "资产处置" to "#78909C", "其他收入" to "#90A4AE"
             )
             incomeRoots.forEachIndexed { i, (n, c) ->
                 db.execSQL(
@@ -197,21 +214,22 @@ abstract class AppDatabase : RoomDatabase() {
                 Sub("高速过路费", "#039BE5", "交通", 7),
                 Sub("代驾", "#0288D1", "交通", 8),
                 // 网购
-                Sub("服饰", "#BA68C8", "网购", 0),
                 Sub("数码", "#AB47BC", "网购", 1),
                 Sub("日用品", "#8E24AA", "网购", 2),
-                Sub("美妆护肤", "#CE93D8", "网购", 3),
                 Sub("家居家装", "#7E57C2", "网购", 4),
-                Sub("母婴玩具", "#F48FB1", "网购", 5),
                 Sub("运动户外", "#26C6DA", "网购", 6),
                 Sub("图书音像", "#5C6BC0", "网购", 7),
                 Sub("二手闲置", "#9FA8DA", "网购", 8),
                 Sub("海淘代购", "#B39DDB", "网购", 9),
+                Sub("综合购物", "#AB47BC", "网购", 10),
                 // 日用
                 Sub("超市日用", "#A5D6A7", "日用", 0),
                 Sub("生鲜果蔬", "#81C784", "日用", 1),
                 Sub("清洁洗护", "#66BB6A", "日用", 2),
                 Sub("五金维修", "#4DB6AC", "日用", 3),
+                Sub("厨房用品", "#81C784", "日用", 4),
+                Sub("纸品耗材", "#A5D6A7", "日用", 5),
+                Sub("洗衣洗鞋", "#4DB6AC", "日用", 6),
                 // 娱乐
                 Sub("电影演出", "#FFB300", "娱乐", 0),
                 Sub("游戏充值", "#FFCA28", "娱乐", 1),
@@ -235,20 +253,61 @@ abstract class AppDatabase : RoomDatabase() {
                 Sub("家政保洁", "#B0BEC5", "居住", 3),
                 Sub("装修维修", "#8D6E63", "居住", 4),
                 Sub("搬家", "#A1887F", "居住", 5),
+                Sub("房贷", "#78909C", "居住", 6),
+                Sub("家具家电", "#8D6E63", "居住", 7),
+                Sub("酒店住宿", "#90A4AE", "居住", 8),
                 // 通讯
                 Sub("话费", "#26A69A", "通讯", 0),
                 Sub("流量", "#80CBC4", "通讯", 1),
+                Sub("宽带", "#4DB6AC", "通讯", 2),
+                Sub("手机配件", "#26A69A", "通讯", 3),
                 // 教育
                 Sub("课程培训", "#5C6BC0", "教育", 0),
                 Sub("书籍文具", "#3949AB", "教育", 1),
                 Sub("知识付费", "#7986CB", "教育", 2),
                 Sub("考证考试", "#5E35B1", "教育", 3),
                 Sub("儿童教育", "#9575CD", "教育", 4),
+                Sub("学费", "#5C6BC0", "教育", 5),
+                Sub("留学游学", "#7986CB", "教育", 6),
+                // 服饰美容
+                Sub("服饰", "#EC407A", "服饰美容", 0),
+                Sub("鞋帽箱包", "#D81B60", "服饰美容", 1),
+                Sub("美妆护肤", "#F06292", "服饰美容", 2),
+                Sub("理发造型", "#AD1457", "服饰美容", 3),
+                Sub("美容美甲", "#C2185B", "服饰美容", 4),
+                Sub("洗衣护理", "#F48FB1", "服饰美容", 5),
+                // 家庭育儿
+                Sub("母婴玩具", "#AB47BC", "家庭育儿", 0),
+                Sub("奶粉尿裤", "#BA68C8", "家庭育儿", 1),
+                Sub("儿童医疗", "#9575CD", "家庭育儿", 2),
+                Sub("老人赡养", "#7E57C2", "家庭育儿", 3),
+                Sub("家庭共同支出", "#CE93D8", "家庭育儿", 4),
+                // 宠物
+                Sub("宠物用品", "#8D6E63", "宠物", 0),
+                Sub("宠物食品", "#A1887F", "宠物", 1),
+                Sub("宠物医疗", "#795548", "宠物", 2),
+                Sub("洗护寄养", "#BCAAA4", "宠物", 3),
+                // 人情社交
+                Sub("红包礼金", "#FF7043", "人情社交", 0),
+                Sub("请客聚会", "#FF8A65", "人情社交", 1),
+                Sub("礼物", "#FFAB91", "人情社交", 2),
+                Sub("孝敬长辈", "#FFB74D", "人情社交", 3),
+                // 金融保险
+                Sub("保险费", "#42A5F5", "金融保险", 0),
+                Sub("贷款利息", "#1E88E5", "金融保险", 1),
+                Sub("手续费", "#64B5F6", "金融保险", 2),
+                Sub("税费", "#1976D2", "金融保险", 3),
+                Sub("投资亏损", "#EF5350", "金融保险", 4),
+                // 工作商务
+                Sub("办公用品", "#5C6BC0", "工作商务", 0),
+                Sub("商务差旅", "#3949AB", "工作商务", 1),
+                Sub("客户招待", "#7986CB", "工作商务", 2),
+                Sub("软件服务", "#3F51B5", "工作商务", 3),
                 // 其他
-                Sub("人情往来", "#FFD180", "其他", 0),
-                Sub("宠物用品", "#A1887F", "其他", 1),
-                Sub("保险费", "#90CAF9", "其他", 2),
-                Sub("捐赠公益", "#81C784", "其他", 3)
+                Sub("捐赠公益", "#81C784", "其他", 0),
+                Sub("丢失赔偿", "#90A4AE", "其他", 1),
+                Sub("罚款违约", "#78909C", "其他", 2),
+                Sub("无法归类", "#B0BEC5", "其他", 3)
             )
             expenseChildren.forEach { (n, c, p, so) ->
                 db.execSQL(
@@ -263,8 +322,19 @@ abstract class AppDatabase : RoomDatabase() {
                 Sub("奖金提成", "#43A047", "工资", 1),
                 Sub("利息分红", "#26A69A", "理财", 0),
                 Sub("基金股票", "#00897B", "理财", 1),
+                Sub("房租收入", "#26A69A", "理财", 2),
                 Sub("收发红包", "#EF5350", "红包", 0),
-                Sub("转账退款", "#29B6F6", "退款", 0)
+                Sub("转账退款", "#29B6F6", "退款", 0),
+                Sub("购物退款", "#4FC3F7", "退款", 1),
+                Sub("兼职劳务", "#7E57C2", "兼职", 0),
+                Sub("稿费佣金", "#9575CD", "兼职", 1),
+                Sub("经营收入", "#FF7043", "经营", 0),
+                Sub("销售货款", "#FF8A65", "经营", 1),
+                Sub("差旅报销", "#42A5F5", "报销", 0),
+                Sub("费用报销", "#64B5F6", "报销", 1),
+                Sub("二手出售", "#78909C", "资产处置", 0),
+                Sub("资产转让", "#90A4AE", "资产处置", 1),
+                Sub("其他进账", "#B0BEC5", "其他收入", 0)
             )
             incomeChildren.forEach { (n, c, p, so) ->
                 db.execSQL(
@@ -293,7 +363,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_ledger_db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     // 全新安装时 onCreate 播种全量分类（迁移不会在全新库上执行）
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
