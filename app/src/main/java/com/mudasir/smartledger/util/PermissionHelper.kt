@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
+import android.view.accessibility.AccessibilityManager
 
 object PermissionHelper {
 
@@ -40,9 +41,34 @@ object PermissionHelper {
 
     /** 付款码抓取（无障碍服务）是否已启用。 */
     fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        val flat = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
         val target = ComponentName(context, com.mudasir.smartledger.capture.PaymentAccessibilityService::class.java)
+        val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+        val enabledByManager = runCatching {
+            manager?.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                ?.any { ComponentName.unflattenFromString(it.id) == target }
+        }.getOrNull() == true
+        if (enabledByManager) return true
+        val flat = Settings.Secure.getString(
+            context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
         return flat.split(':').any { ComponentName.unflattenFromString(it) == target }
+    }
+
+    fun openAppDetails(context: Context) {
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(android.net.Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+
+    fun openBatteryOptimizationSettings(context: Context) {
+        runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.onFailure { openAppDetails(context) }
     }
 
     fun openAccessibilitySettings(context: Context) {

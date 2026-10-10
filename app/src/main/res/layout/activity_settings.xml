@@ -239,10 +239,27 @@
                         android:text="去开启" />
 
                     <TextView
+                        android:id="@+id/tvAccHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="服务必须同时满足“系统已授权”和“已实际连接”。"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCaptureRepair"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="授权后自动抓取微信、支付宝、京东、淘宝及银行 App 的支付通知与短信，进入收件箱核对即可记账。「付款码抓取」用于微信/支付宝前台付款（这类支付没有通知）。开启「支付时记录位置」后，每笔消费会记下支付发生地点。「通知栏提醒」会在有待确认款项时常驻显示数量。"
+                        android:text="服务诊断与后台保护" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="自动抓取采用三路兜底：微信/支付宝支付结果页、支付及银行 App 通知、银行短信。系统或支付 App 可能隐藏敏感页面内容，因此建议同时开启三项授权。开启「支付时记录位置」后，每笔消费会记下支付发生地点。"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>

@@ -22,8 +22,11 @@ object TransactionParser {
     private val amountPatterns = listOf(
         Regex("[¥￥]\\s*([0-9][0-9,]*\\.?[0-9]{0,2})"),
         Regex("([0-9][0-9,]*\\.?[0-9]{2})\\s*元"),
+        Regex("(?:人民币|CNY|RMB)\\s*([0-9][0-9,]*\\.?[0-9]{0,2})", RegexOption.IGNORE_CASE),
+        Regex("([0-9][0-9,]*\\.?[0-9]{0,2})\\s*(?:人民币|CNY|RMB)", RegexOption.IGNORE_CASE),
         Regex("金额[:：\\s]*([0-9][0-9,]*\\.?[0-9]{0,2})"),
-        Regex("实付[:：\\s]*([0-9][0-9,]*\\.?[0-9]{0,2})")
+        Regex("实付[:：\\s]*([0-9][0-9,]*\\.?[0-9]{0,2})"),
+        Regex("(?:消费|支出|入账|到账|扣款|支付|转账)[:：\\s]*([0-9][0-9,]*\\.?[0-9]{0,2})")
     )
 
     // ---- 收支方向关键词 ----
@@ -56,12 +59,18 @@ object TransactionParser {
         "com.sdu.didi.psnger" to "滴滴",
         "com.xunmeng.pinduoduo" to "拼多多",
         "com.unionpay" to "云闪付",
+        "com.huawei.wallet" to "华为支付",
         "com.MobileTicket" to "12306",
         "com.taou.maimai" to "脉脉",
         "com.mobile.me" to "其他"
     )
 
-    private val bankKeywords = listOf("银行", "信用社", "储蓄", "招商", "工商", "建设", "农业", "中国", "交通", "邮储", "民生", "浦发", "兴业", "光大", "华夏", "平安", "中信", "广发")
+    private val bankKeywords = listOf(
+        "银行", "信用社", "农信", "农商", "储蓄", "招商", "工商", "建设", "农业",
+        "中国银行", "交通", "邮储", "民生", "浦发", "兴业", "光大", "华夏", "平安",
+        "中信", "广发", "浙商", "渤海", "恒丰", "徽商", "银联", "云闪付",
+        "数字人民币", "华为支付", "Huawei Pay"
+    )
 
     /** 主入口：解析一段文本。channelHint 用于 SMS 的渠道推断。 */
     fun parse(

@@ -19,6 +19,7 @@
     <!-- 银行交易短信抓取 -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
     <!-- 支付地点抓取（粗略/精确定位） -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -170,7 +171,7 @@
         <service
             android:name=".capture.PaymentAccessibilityService"
             android:enabled="true"
-            android:exported="false"
+            android:exported="true"
             android:label="付款码自动记账"
             android:stopWithTask="false"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
@@ -185,7 +186,8 @@
         <!-- 自动抓取：银行交易短信 -->
         <receiver
             android:name=".capture.BankSmsReceiver"
-            android:exported="true">
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
             <intent-filter android:priority="999">
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>

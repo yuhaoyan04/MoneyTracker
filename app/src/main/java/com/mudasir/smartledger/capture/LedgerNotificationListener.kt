@@ -8,6 +8,7 @@ import com.mudasir.smartledger.data.TransactionRecord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
@@ -38,7 +39,8 @@ class LedgerNotificationListener : NotificationListenerService() {
         "信用卡", "花呗", "借呗", "云闪付", "数字人民币", "现金", "其他", "android"
     )
 
-    // 严格白名单：只处理这些 App 的通知，其余全部忽略
+    // 常用支付/购物 App 白名单。银行 App 由 FinancialNotificationPolicy 根据
+    // 包名和系统提供的应用名动态识别，以兼容不同银行和华为钱包。
     private val watchedPackages = setOf(
         "com.tencent.mm",                  // 微信
         "com.eg.android.AlipayGphone",     // 支付宝
@@ -88,7 +90,7 @@ class LedgerNotificationListener : NotificationListenerService() {
 
     // 金额符号 —— 双信号之二
     private fun hasAmountSymbol(text: String): Boolean =
-        text.contains("¥") || text.contains("￥") || text.contains("元")
+        FinancialNotificationPolicy.hasTransactionAmount(text)
 
     private fun isPromotional(text: String): Boolean {
         val lower = text.lowercase()
@@ -129,10 +131,27 @@ class LedgerNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        com.mudasir.smartledger.util.CaptureServiceState
+            .setNotificationConnected(applicationContext, true)
         // 服务重连（开机/重新授权）→ 自愈常驻待确认通知
         scope.launch {
             runCatching { com.mudasir.smartledger.util.PendingNotifier.update(applicationContext) }
         }
+    }
+
+    override fun onListenerDisconnected() {
+        com.mudasir.smartledger.util.CaptureServiceState
+            .setNotificationConnected(applicationContext, false)
+        // 授权仍存在时，Android 7+ 允许请求系统重新绑定通知监听服务。
+        com.mudasir.smartledger.util.PermissionHelper.requestNotificationListenerRebind(applicationContext)
+        super.onListenerDisconnected()
+    }
+
+    override fun onDestroy() {
+        com.mudasir.smartledger.util.CaptureServiceState
+            .setNotificationConnected(applicationContext, false)
+        scope.cancel()
+        super.onDestroy()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -156,9 +175,19 @@ class LedgerNotificationListener : NotificationListenerService() {
         val combined = listOf(title, sub, text, big, msgText).filter { it.isNotBlank() }.joinToString(" | ")
         if (combined.isBlank()) return
 
-        // === Gate 1: 严格白名单 —— 只处理支付/购物 App 的通知 ===
-        // 微博、新闻、银行 App 非通知源（银行走短信）等全部忽略
-        if (pkg !in watchedPackages) return
+        // === Gate 1: 支付白名单或可信金融来源 ===
+        // 银行不仅走短信：银行 App / 云闪付 / 华为钱包的结构化交易通知也应抓取。
+        val appLabel = runCatching {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+        }.getOrNull()
+        val financialSource = FinancialNotificationPolicy.isFinancialSource(pkg, appLabel)
+        val acceptedSource = pkg in watchedPackages || financialSource
+        if (!acceptedSource) return
+        val sourceChannelHint = when {
+            pkg.contains("huawei.wallet", ignoreCase = true) -> "华为支付"
+            financialSource && pkg !in watchedPackages -> "银行卡"
+            else -> null
+        }
 
         // === Gate 2: 双信号门 —— 支付动作 + 金额符号 必须同时满足 ===
         val hasAction = hasPaymentAction(combined)
@@ -175,6 +204,7 @@ class LedgerNotificationListener : NotificationListenerService() {
             text = combined,
             source = TransactionRecord.SOURCE_CAPTURE_NOTIFICATION,
             packageName = pkg,
+            channelHint = sourceChannelHint,
             timestamp = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
         )
 
@@ -231,7 +261,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                     TransactionRecord(
                         type = TransactionRecord.TYPE_EXPENSE,
                         amount = 0.0,
-                        channelName = TransactionParser.channelForPackage(pkg) ?: "其他",
+                        channelName = sourceChannelHint ?: TransactionParser.channelForPackage(pkg) ?: "其他",
                         merchant = fallbackMerchant,
                         rawText = combined,
                         source = TransactionRecord.SOURCE_CAPTURE_NOTIFICATION,

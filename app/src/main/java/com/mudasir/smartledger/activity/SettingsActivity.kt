@@ -71,6 +71,9 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnSms).setOnClickListener {
             smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
         }
+        findViewById<View>(R.id.btnCaptureRepair).setOnClickListener {
+            showCaptureRepairDialog()
+        }
 
         findViewById<View>(R.id.btnBackupNow).setOnClickListener { doBackup() }
         findViewById<View>(R.id.btnRestore).setOnClickListener { doRestore() }
@@ -83,6 +86,9 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.tvVersion).text = "v${BuildConfig.VERSION_NAME}"
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_settings)
+        if (intent.getBooleanExtra(EXTRA_SHOW_CAPTURE_REPAIR, false)) {
+            window.decorView.post { showCaptureRepairDialog() }
+        }
     }
 
     override fun onResume() {
@@ -92,6 +98,10 @@ class SettingsActivity : AppCompatActivity() {
             findViewById(R.id.bottomNav), R.id.nav_tab_settings
         )
         refreshPermissionStatus()
+        // 从系统设置返回或冷启动时，系统绑定回调可能稍晚于 Activity 恢复。
+        window.decorView.postDelayed({
+            if (!isFinishing && !isDestroyed) refreshPermissionStatus()
+        }, 900L)
         refreshAiStatus()
         refreshBackupStatus()
         BackupWorker.schedulePeriodic(this)
@@ -164,9 +174,18 @@ class SettingsActivity : AppCompatActivity() {
         val smsOk = PermissionHelper.hasSmsPermission(this)
         val tvNotif = findViewById<TextView>(R.id.tvNotifStatus)
         val btnNotif = findViewById<View>(R.id.btnNotif)
-        tvNotif.text = if (notifOk) "已开启" else "未开启"
-        tvNotif.setTextColor(getColorCompat(if (notifOk) R.color.color_income else R.color.color_expense))
-        btnNotif.visibility = if (notifOk) View.GONE else View.VISIBLE
+        val notifConnected = com.mudasir.smartledger.util.CaptureServiceState.isNotificationConnected()
+        tvNotif.text = when {
+            !notifOk -> "未授权"
+            notifConnected -> "已连接"
+            else -> "已授权·连接中"
+        }
+        tvNotif.setTextColor(getColorCompat(when {
+            notifConnected -> R.color.color_income
+            notifOk -> R.color.color_warning
+            else -> R.color.color_expense
+        }))
+        btnNotif.visibility = if (notifOk && notifConnected) View.GONE else View.VISIBLE
 
         val tvSms = findViewById<TextView>(R.id.tvSmsStatus)
         val btnSms = findViewById<View>(R.id.btnSms)
@@ -182,15 +201,53 @@ class SettingsActivity : AppCompatActivity() {
     /** 付款码抓取（无障碍服务）。 */
     private fun refreshAccStatus() {
         val tv = findViewById<TextView>(R.id.tvAccStatus)
-        val btn = findViewById<View>(R.id.btnAcc)
+        val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnAcc)
+        val hint = findViewById<TextView>(R.id.tvAccHint)
         val enabled = PermissionHelper.isAccessibilityServiceEnabled(this)
-        tv.text = if (enabled) "已开启" else "未开启"
-        tv.setTextColor(getColorCompat(if (enabled) R.color.color_income else R.color.color_expense))
-        btn.visibility = if (enabled) View.GONE else View.VISIBLE
-        btn.setOnClickListener {
-            PermissionHelper.openAccessibilitySettings(this)
-            Toast.makeText(this, "在系统「已下载的服务」中开启「付款码自动记账」", Toast.LENGTH_LONG).show()
+        val connected = com.mudasir.smartledger.util.CaptureServiceState.isAccessibilityConnected()
+        tv.text = when {
+            !enabled -> "未授权"
+            connected -> "已连接"
+            else -> "已授权·未连接"
         }
+        tv.setTextColor(getColorCompat(when {
+            connected -> R.color.color_income
+            enabled -> R.color.color_warning
+            else -> R.color.color_expense
+        }))
+        hint.text = when {
+            connected -> "运行正常：系统已绑定付款码监听服务。"
+            enabled -> "授权条目存在，但服务尚未绑定。请点“修复连接”检查受限设置和后台保护。"
+            android.os.Build.VERSION.SDK_INT >= 33 -> "侧载安装需先在“应用信息”右上角允许受限制的设置，再开启无障碍服务。"
+            else -> "请在系统无障碍服务列表中开启“付款码自动记账”。"
+        }
+        btn.text = if (enabled) "修复连接" else "检查并开启"
+        btn.visibility = if (connected) View.GONE else View.VISIBLE
+        btn.setOnClickListener {
+            showCaptureRepairDialog()
+        }
+    }
+
+    private fun showCaptureRepairDialog() {
+        val huawei = android.os.Build.MANUFACTURER.contains("huawei", ignoreCase = true) ||
+            android.os.Build.BRAND.contains("huawei", ignoreCase = true) ||
+            android.os.Build.BRAND.contains("honor", ignoreCase = true)
+        val vendorTip = if (huawei) {
+            "\n\n检测到华为/荣耀设备：还需在“应用启动管理”关闭自动管理，并允许自动启动、关联启动和后台活动。"
+        } else {
+            "\n\n若服务过一段时间被关闭，请同时取消电池优化并允许应用后台运行。"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("自动抓取修复")
+            .setMessage(
+                "1. Android 13 及以上侧载安装：先到应用信息右上角菜单，选择“允许受限制的设置”。\n" +
+                    "2. 再进入无障碍，开启“付款码自动记账”。\n" +
+                    "3. 通知使用权和短信权限分别负责支付通知与银行卡短信。" + vendorTip
+            )
+            .setPositiveButton("进入无障碍") { _, _ -> PermissionHelper.openAccessibilitySettings(this) }
+            .setNeutralButton("应用信息") { _, _ -> PermissionHelper.openAppDetails(this) }
+            .setNegativeButton("电池优化") { _, _ -> PermissionHelper.openBatteryOptimizationSettings(this) }
+            .show()
     }
 
     /** 通知栏提醒（Android 13+ POST_NOTIFICATIONS）。 */
@@ -257,6 +314,10 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun getColorCompat(resId: Int): Int = androidx.core.content.ContextCompat.getColor(this, resId)
+
+    companion object {
+        const val EXTRA_SHOW_CAPTURE_REPAIR = "show_capture_repair"
+    }
 
     private fun exportCsv(uri: Uri) {
         lifecycleScope.launch(Dispatchers.IO) {

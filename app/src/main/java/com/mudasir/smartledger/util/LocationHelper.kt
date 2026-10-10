@@ -39,7 +39,8 @@ object LocationHelper {
      * 否则系统直接抛 SecurityException（回退链路会拿到 null）。
      */
     suspend fun freshPlace(context: Context, timeoutMs: Long = 8000L): Place? {
-        if (!hasPermission(context)) return null
+        // 本方法只由后台抓取组件调用；没有后台定位授权时不要触发系统拒绝或异常。
+        if (!hasPermission(context) || !hasBackgroundPermission(context)) return null
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             ?: return lastPlace(context)
         val fresh = withTimeoutOrNull(timeoutMs) { awaitFreshLocation(lm) }
@@ -51,6 +52,7 @@ object LocationHelper {
     }
 
     /** 等待一次新鲜定位：同时监听 NETWORK + GPS，谁先返回用谁。 */
+    @SuppressLint("MissingPermission")
     private suspend fun awaitFreshLocation(lm: LocationManager): Location? =
         suspendCancellableCoroutine { cont ->
             val main = Handler(Looper.getMainLooper())

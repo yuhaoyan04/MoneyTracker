@@ -6,7 +6,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.content.Context
 import android.util.Log
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
@@ -41,8 +40,8 @@ class PaymentAccessibilityService : AccessibilityService() {
             serviceJob = SupervisorJob()
             scope = CoroutineScope(serviceJob + Dispatchers.IO)
         }
-        getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE).edit()
-            .putLong(KEY_CONNECTED_AT, System.currentTimeMillis()).apply()
+        com.mudasir.smartledger.util.CaptureServiceState
+            .setAccessibilityConnected(applicationContext, true)
         Log.i(TAG, "payment capture accessibility service connected")
     }
 
@@ -118,14 +117,20 @@ class PaymentAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() {
+        Log.w(TAG, "payment capture accessibility service interrupted")
+    }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        com.mudasir.smartledger.util.CaptureServiceState
+            .setAccessibilityConnected(applicationContext, false)
         // 系统可能因省电/内存暂时解绑后复用同一实例；不要在这里永久取消写库协程。
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        com.mudasir.smartledger.util.CaptureServiceState
+            .setAccessibilityConnected(applicationContext, false)
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
         super.onDestroy()
@@ -135,7 +140,5 @@ class PaymentAccessibilityService : AccessibilityService() {
         private const val WECHAT = "com.tencent.mm"
         private const val ALIPAY = "com.eg.android.AlipayGphone"
         private const val TAG = "PayAccSvc"
-        private const val STATE_PREFS = "capture_service_state"
-        private const val KEY_CONNECTED_AT = "accessibility_connected_at"
     }
 }
