@@ -4,26 +4,14 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.service.notification.NotificationListenerService
-import android.view.accessibility.AccessibilityManager
 
 object PermissionHelper {
 
     /** 通知使用权是否已授予本应用的 NotificationListenerService。 */
     fun isNotificationListenerEnabled(context: Context): Boolean {
-        val component = ComponentName(context, com.mudasir.smartledger.capture.LedgerNotificationListener::class.java)
         val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: return false
-        return flat.split(':').any { ComponentName.unflattenFromString(it) == component }
-    }
-
-    /** 授权存在但系统未绑定时主动请求重连（Android 7+）。 */
-    fun requestNotificationListenerRebind(context: Context) {
-        if (!isNotificationListenerEnabled(context)) return
-        runCatching {
-            NotificationListenerService.requestRebind(
-                ComponentName(context, com.mudasir.smartledger.capture.LedgerNotificationListener::class.java)
-            )
-        }
+        val target = ComponentName(context, "com.mudasir.smartledger.capture.LedgerNotificationListener").flattenToString()
+        return flat.split(":").any { it == target }
     }
 
     fun openNotificationListenerSettings(context: Context) {
@@ -39,44 +27,4 @@ object PermissionHelper {
             android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
-    /** 付款码抓取（无障碍服务）是否已启用。 */
-    fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        val target = ComponentName(context, com.mudasir.smartledger.capture.PaymentAccessibilityService::class.java)
-        val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
-        val enabledByManager = runCatching {
-            manager?.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-                ?.any { ComponentName.unflattenFromString(it.id) == target }
-        }.getOrNull() == true
-        if (enabledByManager) return true
-        val flat = Settings.Secure.getString(
-            context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-        return flat.split(':').any { ComponentName.unflattenFromString(it) == target }
-    }
-
-    fun openAppDetails(context: Context) {
-        context.startActivity(
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                .setData(android.net.Uri.fromParts("package", context.packageName, null))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-    }
-
-    fun openBatteryOptimizationSettings(context: Context) {
-        runCatching {
-            context.startActivity(
-                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        }.onFailure { openAppDetails(context) }
-    }
-
-    fun openAccessibilitySettings(context: Context) {
-        runCatching {
-            // Android 公共 API 只保证无障碍服务列表入口；各厂商详情页深链均为私有实现。
-            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure {
-            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-    }
 }

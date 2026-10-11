@@ -115,11 +115,6 @@ class CaptureInboxActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnEnableSms).setOnClickListener {
             smsPermLauncher.launch(Manifest.permission.RECEIVE_SMS)
         }
-        findViewById<View>(R.id.btnEnableAcc).setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java)
-                .putExtra(SettingsActivity.EXTRA_SHOW_CAPTURE_REPAIR, true))
-        }
-
         findViewById<View>(R.id.btnConfirmAll).setOnClickListener {
             lifecycleScope.launch {
                 adapter.currentList.toList().forEach {
@@ -175,14 +170,10 @@ class CaptureInboxActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        PermissionHelper.requestNotificationListenerRebind(this)
         com.mudasir.smartledger.util.BottomNavHelper.sync(
             findViewById(R.id.bottomNav), R.id.nav_tab_inbox
         )
         refreshPermissionBanner()
-        window.decorView.postDelayed({
-            if (!isFinishing && !isDestroyed) refreshPermissionBanner()
-        }, 900L)
         refreshNotificationPermBanner()
         // 静默确认/其他端操作后回来时刷新常驻通知
         lifecycleScope.launch {
@@ -219,22 +210,14 @@ class CaptureInboxActivity : AppCompatActivity() {
     }
 
     private fun refreshPermissionBanner() {
-        val notifAuthorized = PermissionHelper.isNotificationListenerEnabled(this)
-        val notifOk = notifAuthorized &&
-            com.mudasir.smartledger.util.CaptureServiceState.isNotificationConnected()
+        val notifOk = PermissionHelper.isNotificationListenerEnabled(this)
         val smsOk = PermissionHelper.hasSmsPermission(this)
-        val accOk = PermissionHelper.isAccessibilityServiceEnabled(this) &&
-            com.mudasir.smartledger.util.CaptureServiceState.isAccessibilityConnected()
         val banner = findViewById<View>(R.id.permBanner)
-        banner.visibility = if (notifOk && smsOk && accOk) View.GONE else View.VISIBLE
-        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnEnableNotif).apply {
-            visibility = if (notifOk) View.GONE else View.VISIBLE
-            text = if (notifAuthorized) "修复通知监听连接" else "授予通知使用权"
-        }
+        banner.visibility = if (notifOk && smsOk) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.btnEnableNotif).visibility = if (notifOk) View.GONE else View.VISIBLE
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btnEnableSms).apply {
             visibility = if (smsOk) View.GONE else View.VISIBLE
             text = if (smsOk) "短信已授权" else "授予短信权限"
         }
-        findViewById<View>(R.id.btnEnableAcc).visibility = if (accOk) View.GONE else View.VISIBLE
     }
 }

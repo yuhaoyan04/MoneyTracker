@@ -55,12 +55,6 @@ class SettingsActivity : AppCompatActivity() {
         uri?.let { exportCsv(it) }
     }
 
-    private val restoreFileLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let { restoreSelectedFile(it) }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -77,9 +71,6 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnSms).setOnClickListener {
             smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
         }
-        findViewById<View>(R.id.btnCaptureRepair).setOnClickListener {
-            showCaptureRepairDialog()
-        }
 
         findViewById<View>(R.id.btnBackupNow).setOnClickListener { doBackup() }
         findViewById<View>(R.id.btnRestore).setOnClickListener { doRestore() }
@@ -92,28 +83,14 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.tvVersion).text = "v${BuildConfig.VERSION_NAME}"
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_settings)
-        if (intent.getBooleanExtra(EXTRA_SHOW_CAPTURE_REPAIR, false)) {
-            window.decorView.post { showCaptureRepairDialog() }
-        }
     }
 
     override fun onResume() {
         super.onResume()
-        PermissionHelper.requestNotificationListenerRebind(this)
         com.mudasir.smartledger.util.BottomNavHelper.sync(
             findViewById(R.id.bottomNav), R.id.nav_tab_settings
         )
         refreshPermissionStatus()
-        // 发送本应用无障碍事件做端到端握手；正常绑定后服务会立即回写“已连接”。
-        window.decorView.postDelayed({
-            window.decorView.sendAccessibilityEvent(
-                android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            )
-        }, 250L)
-        // 从系统设置返回或冷启动时，系统绑定回调可能稍晚于 Activity 恢复。
-        window.decorView.postDelayed({
-            if (!isFinishing && !isDestroyed) refreshPermissionStatus()
-        }, 900L)
         refreshAiStatus()
         refreshBackupStatus()
         BackupWorker.schedulePeriodic(this)
@@ -148,75 +125,21 @@ class SettingsActivity : AppCompatActivity() {
     private fun doRestore() {
         AlertDialog.Builder(this)
             .setTitle("从备份恢复")
-            .setMessage("重装后 Android 可能不允许应用直接读取旧的 Downloads 文件。可先自动查找；找不到时请选择 moneytracker_backup.json 或旧版 ZIP。恢复会合并记录，不覆盖当前新账。")
-            .setPositiveButton("选择备份文件") { _, _ ->
-                restoreFileLauncher.launch(arrayOf(
-                    "application/json",
-                    "application/zip",
-                    "application/x-zip-compressed",
-                    "application/octet-stream",
-                    "text/*"
-                ))
+            .setMessage("将把 Download/MoneyTracker 中的备份覆盖写入当前账本（保留历史清理状态）。继续？")
+            .setPositiveButton("恢复") { _, _ ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val n = AutoBackupManager.restore(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@SettingsActivity,
+                            if (n >= 0) "已恢复 $n 条记录" else "未找到备份或恢复失败",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
-            .setNeutralButton("自动查找") { _, _ -> restoreAutomatically() }
             .setNegativeButton("取消", null)
             .show()
-    }
-
-    private fun restoreAutomatically() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val n = AutoBackupManager.restore(this@SettingsActivity)
-            withContext(Dispatchers.Main) {
-                Toast.makeText(
-                    this@SettingsActivity,
-                    if (n >= 0) "已合并恢复 $n 条历史记录" else "未找到可读取的自动备份，请使用“选择备份文件”",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-    }
-
-    private fun restoreSelectedFile(uri: Uri) {
-        runCatching {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        lifecycleScope.launch(Dispatchers.IO) {
-            val outcome = runCatching {
-                val isZip = contentResolver.openInputStream(uri)?.use { input ->
-                    val first = input.read()
-                    val second = input.read()
-                    first == 'P'.code && second == 'K'.code
-                } == true
-                if (isZip) {
-                    val oldResult = com.mudasir.smartledger.util.BackupManager.restoreFromZip(
-                        this@SettingsActivity, uri, db
-                    ) { false }
-                    AutoBackupManager.RestoreOutcome(
-                        imported = oldResult.transactionsImported,
-                        skipped = oldResult.transactionsSkipped + oldResult.expenseSkipped,
-                        source = "旧版 ZIP"
-                    )
-                } else {
-                    AutoBackupManager.restoreFromUri(this@SettingsActivity, uri)
-                }
-            }
-            withContext(Dispatchers.Main) {
-                outcome.onSuccess { result ->
-                    refreshBackupStatus()
-                    Toast.makeText(
-                        this@SettingsActivity,
-                        "${result.source}：导入 ${result.imported} 条，跳过重复 ${result.skipped} 条",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }.onFailure {
-                    Toast.makeText(
-                        this@SettingsActivity,
-                        "恢复失败：文件不是兼容的 SmartLedger JSON/ZIP，或已损坏",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
     }
 
     private fun confirmClear(type: String, label: String) {
@@ -240,18 +163,9 @@ class SettingsActivity : AppCompatActivity() {
         val smsOk = PermissionHelper.hasSmsPermission(this)
         val tvNotif = findViewById<TextView>(R.id.tvNotifStatus)
         val btnNotif = findViewById<View>(R.id.btnNotif)
-        val notifConnected = com.mudasir.smartledger.util.CaptureServiceState.isNotificationConnected()
-        tvNotif.text = when {
-            !notifOk -> "未授权"
-            notifConnected -> "已连接"
-            else -> "已授权·连接中"
-        }
-        tvNotif.setTextColor(getColorCompat(when {
-            notifConnected -> R.color.color_income
-            notifOk -> R.color.color_warning
-            else -> R.color.color_expense
-        }))
-        btnNotif.visibility = if (notifOk && notifConnected) View.GONE else View.VISIBLE
+        tvNotif.text = if (notifOk) "已开启" else "未开启"
+        tvNotif.setTextColor(getColorCompat(if (notifOk) R.color.color_income else R.color.color_expense))
+        btnNotif.visibility = if (notifOk) View.GONE else View.VISIBLE
 
         val tvSms = findViewById<TextView>(R.id.tvSmsStatus)
         val btnSms = findViewById<View>(R.id.btnSms)
@@ -261,59 +175,6 @@ class SettingsActivity : AppCompatActivity() {
 
         refreshNotifPermStatus()
         refreshBgLocStatus()
-        refreshAccStatus()
-    }
-
-    /** 付款码抓取（无障碍服务）。 */
-    private fun refreshAccStatus() {
-        val tv = findViewById<TextView>(R.id.tvAccStatus)
-        val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnAcc)
-        val hint = findViewById<TextView>(R.id.tvAccHint)
-        val enabled = PermissionHelper.isAccessibilityServiceEnabled(this)
-        val connected = com.mudasir.smartledger.util.CaptureServiceState.isAccessibilityConnected()
-        tv.text = when {
-            !enabled -> "未授权"
-            connected -> "已连接"
-            else -> "已授权·未连接"
-        }
-        tv.setTextColor(getColorCompat(when {
-            connected -> R.color.color_income
-            enabled -> R.color.color_warning
-            else -> R.color.color_expense
-        }))
-        hint.text = when {
-            connected -> "运行正常：系统已绑定付款码监听服务。"
-            enabled -> "授权条目存在，但服务尚未绑定。请点“修复连接”检查受限设置和后台保护。"
-            android.os.Build.VERSION.SDK_INT >= 33 -> "侧载安装需先在“应用信息”右上角允许受限制的设置，再开启无障碍服务。"
-            else -> "请在系统无障碍服务列表中开启“付款码自动记账”。"
-        }
-        btn.text = if (enabled) "修复连接" else "检查并开启"
-        btn.visibility = if (connected) View.GONE else View.VISIBLE
-        btn.setOnClickListener {
-            showCaptureRepairDialog()
-        }
-    }
-
-    private fun showCaptureRepairDialog() {
-        val huawei = android.os.Build.MANUFACTURER.contains("huawei", ignoreCase = true) ||
-            android.os.Build.BRAND.contains("huawei", ignoreCase = true) ||
-            android.os.Build.BRAND.contains("honor", ignoreCase = true)
-        val vendorTip = if (huawei) {
-            "\n\n检测到华为/荣耀设备：还需在“应用启动管理”关闭自动管理，并允许自动启动、关联启动和后台活动。"
-        } else {
-            "\n\n若服务过一段时间被关闭，请同时取消电池优化并允许应用后台运行。"
-        }
-        AlertDialog.Builder(this)
-            .setTitle("自动抓取修复")
-            .setMessage(
-                "1. Android 13 及以上侧载安装：先到应用信息右上角菜单，选择“允许受限制的设置”。\n" +
-                    "2. 再进入无障碍，开启“付款码自动记账”。\n" +
-                    "3. 通知使用权和短信权限分别负责支付通知与银行卡短信。" + vendorTip
-            )
-            .setPositiveButton("进入无障碍") { _, _ -> PermissionHelper.openAccessibilitySettings(this) }
-            .setNeutralButton("应用信息") { _, _ -> PermissionHelper.openAppDetails(this) }
-            .setNegativeButton("电池优化") { _, _ -> PermissionHelper.openBatteryOptimizationSettings(this) }
-            .show()
     }
 
     /** 通知栏提醒（Android 13+ POST_NOTIFICATIONS）。 */
@@ -380,10 +241,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun getColorCompat(resId: Int): Int = androidx.core.content.ContextCompat.getColor(this, resId)
-
-    companion object {
-        const val EXTRA_SHOW_CAPTURE_REPAIR = "show_capture_repair"
-    }
 
     private fun exportCsv(uri: Uri) {
         lifecycleScope.launch(Dispatchers.IO) {
