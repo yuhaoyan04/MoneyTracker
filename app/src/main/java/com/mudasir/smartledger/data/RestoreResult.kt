@@ -1,6 +1,8 @@
 package com.mudasir.smartledger.data
 
 data class RestoreResult(
+    var transactionsImported: Int = 0,
+    var transactionsSkipped: Int = 0,
     var expenseAdded: Int = 0,
     var elecAdded: Int = 0,
     var milkAdded: Int = 0,

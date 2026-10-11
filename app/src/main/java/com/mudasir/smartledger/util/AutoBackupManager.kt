@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.Category
@@ -36,6 +37,19 @@ object AutoBackupManager {
         val channels: List<PaymentChannel>
     )
 
+    data class RestoreOutcome(
+        val imported: Int,
+        val skipped: Int,
+        val source: String
+    )
+
+    private data class SnapshotPayload(
+        val exportedAt: Long = 0,
+        val transactions: List<TransactionRecord>? = emptyList(),
+        val categories: List<Category>? = emptyList(),
+        val channels: List<PaymentChannel>? = emptyList()
+    )
+
     fun backup(context: Context): Boolean {
         val db = AppDatabase.getDatabase(context)
         val snap = Snapshot(
@@ -51,18 +65,77 @@ object AutoBackupManager {
 
     fun restore(context: Context): Int {
         val json = readFromPublic(context) ?: readFromPrivate(context) ?: return -1
-        return try {
-            val type = object : TypeToken<Snapshot>() {}.type
-            val snap = Gson().fromJson(json, type) as? Snapshot ?: return -1
-            val db = AppDatabase.getDatabase(context)
-            kotlinx.coroutines.runBlocking {
-                if (snap.transactions.isNotEmpty()) db.transactionDao().insertAll(snap.transactions)
-                if (snap.categories.isNotEmpty()) snap.categories.forEach { db.categoryDao().insert(it) }
-                if (snap.channels.isNotEmpty()) snap.channels.forEach { db.channelDao().insert(it) }
-            }
-            snap.transactions.size
-        } catch (e: Exception) { -1 }
+        return runCatching { restoreJson(context, json, "自动备份").imported }.getOrDefault(-1)
     }
+
+    /** 通过系统文件选择器取得 URI 后恢复，解决重装后无法直接查询旧 Downloads JSON。 */
+    fun restoreFromUri(context: Context, uri: Uri): RestoreOutcome {
+        val json = context.contentResolver.openInputStream(uri)?.use {
+            it.readBytes().toString(Charsets.UTF_8)
+        } ?: throw IllegalArgumentException("无法读取所选文件")
+        val outcome = restoreJson(context, json, "所选文件")
+        // 保存一份到当前安装实例的私有外部目录，后续可直接自动恢复。
+        writeToPrivate(context, json)
+        return outcome
+    }
+
+    private fun restoreJson(context: Context, json: String, source: String): RestoreOutcome {
+        val root = JsonParser.parseString(json).asJsonObject
+        val db = AppDatabase.getDatabase(context)
+        if (root.has("transactions")) {
+            val snap = Gson().fromJson(root, SnapshotPayload::class.java)
+            val incoming = snap.transactions.orEmpty()
+            var imported = 0
+            var skipped = 0
+            kotlinx.coroutines.runBlocking {
+                db.runInTransaction {
+                    kotlinx.coroutines.runBlocking {
+                        val existingKeys = db.transactionDao().getAllForBackup()
+                            .mapTo(mutableSetOf()) { transactionKey(it) }
+                        incoming.forEach { record ->
+                            if (existingKeys.add(transactionKey(record))) {
+                                // 不复用旧主键，防止覆盖重装后已经新记的账。
+                                db.transactionDao().insert(record.copy(id = 0))
+                                imported++
+                            } else skipped++
+                        }
+
+                        val existingCategories = db.categoryDao().getAll()
+                            .mapTo(mutableSetOf()) { "${it.type}|${it.name}" }
+                        snap.categories.orEmpty().forEach { category ->
+                            if (existingCategories.add("${category.type}|${category.name}")) {
+                                db.categoryDao().insert(category.copy(id = 0))
+                            }
+                        }
+                        val existingChannels = db.channelDao().getAll()
+                            .mapTo(mutableSetOf()) { it.name }
+                        snap.channels.orEmpty().forEach { channel ->
+                            if (existingChannels.add(channel.name)) {
+                                db.channelDao().insert(channel.copy(id = 0))
+                            }
+                        }
+                    }
+                }
+            }
+            return RestoreOutcome(imported, skipped, source)
+        }
+
+        // 兼容用户从旧 ZIP 中单独解出的 ledger_data.json。
+        if (root.has("expenses")) {
+            val expenseType = object : TypeToken<List<com.mudasir.smartledger.data.Expense>>() {}.type
+            val expenses: List<com.mudasir.smartledger.data.Expense> =
+                Gson().fromJson(root.get("expenses"), expenseType) ?: emptyList()
+            val result = kotlinx.coroutines.runBlocking {
+                LegacyTransactionImporter.importExpenses(db, expenses)
+            }
+            return RestoreOutcome(result.imported, result.skipped, "旧版账本 JSON")
+        }
+        throw IllegalArgumentException("不是可识别的 SmartLedger 备份")
+    }
+
+    private fun transactionKey(record: TransactionRecord): String =
+        "${record.type}|${java.lang.Double.doubleToLongBits(record.amount)}|${record.timestamp}|" +
+            "${record.merchant.orEmpty()}|${record.note.orEmpty()}|${record.source}"
 
     fun lastBackupInfo(context: Context): String {
         val f = privateFile(context)

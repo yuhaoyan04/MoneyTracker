@@ -489,6 +489,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
         val summaryBuilder = StringBuilder()
 
+        if (res.transactionsImported > 0) summaryBuilder.append("• Current ledger: ${res.transactionsImported} Records\n")
         if (res.elecAdded > 0) summaryBuilder.append("• Electricity: ${res.elecAdded} Records\n")
         if (res.milkAdded > 0) summaryBuilder.append("• Milk: ${res.milkAdded} Records\n")
         if (res.expenseAdded > 0) summaryBuilder.append("• Expenses: ${res.expenseAdded} Records\n")
@@ -499,7 +500,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             }
         }
 
-        val totalSkipped = res.elecSkipped + res.milkSkipped + res.expenseSkipped + res.customSkipped
+        val totalSkipped = res.transactionsSkipped + res.elecSkipped + res.milkSkipped + res.expenseSkipped + res.customSkipped
 
         if (summaryBuilder.isEmpty()) {
             if (totalSkipped > 0) {

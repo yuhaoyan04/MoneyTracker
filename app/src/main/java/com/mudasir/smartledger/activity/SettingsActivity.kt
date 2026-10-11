@@ -55,6 +55,12 @@ class SettingsActivity : AppCompatActivity() {
         uri?.let { exportCsv(it) }
     }
 
+    private val restoreFileLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { restoreSelectedFile(it) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -98,6 +104,12 @@ class SettingsActivity : AppCompatActivity() {
             findViewById(R.id.bottomNav), R.id.nav_tab_settings
         )
         refreshPermissionStatus()
+        // 发送本应用无障碍事件做端到端握手；正常绑定后服务会立即回写“已连接”。
+        window.decorView.postDelayed({
+            window.decorView.sendAccessibilityEvent(
+                android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            )
+        }, 250L)
         // 从系统设置返回或冷启动时，系统绑定回调可能稍晚于 Activity 恢复。
         window.decorView.postDelayed({
             if (!isFinishing && !isDestroyed) refreshPermissionStatus()
@@ -136,21 +148,75 @@ class SettingsActivity : AppCompatActivity() {
     private fun doRestore() {
         AlertDialog.Builder(this)
             .setTitle("从备份恢复")
-            .setMessage("将把 Download/MoneyTracker 中的备份覆盖写入当前账本（保留历史清理状态）。继续？")
-            .setPositiveButton("恢复") { _, _ ->
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val n = AutoBackupManager.restore(this@SettingsActivity)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            this@SettingsActivity,
-                            if (n >= 0) "已恢复 $n 条记录" else "未找到备份或恢复失败",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+            .setMessage("重装后 Android 可能不允许应用直接读取旧的 Downloads 文件。可先自动查找；找不到时请选择 moneytracker_backup.json 或旧版 ZIP。恢复会合并记录，不覆盖当前新账。")
+            .setPositiveButton("选择备份文件") { _, _ ->
+                restoreFileLauncher.launch(arrayOf(
+                    "application/json",
+                    "application/zip",
+                    "application/x-zip-compressed",
+                    "application/octet-stream",
+                    "text/*"
+                ))
             }
+            .setNeutralButton("自动查找") { _, _ -> restoreAutomatically() }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    private fun restoreAutomatically() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val n = AutoBackupManager.restore(this@SettingsActivity)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@SettingsActivity,
+                    if (n >= 0) "已合并恢复 $n 条历史记录" else "未找到可读取的自动备份，请使用“选择备份文件”",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun restoreSelectedFile(uri: Uri) {
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val outcome = runCatching {
+                val isZip = contentResolver.openInputStream(uri)?.use { input ->
+                    val first = input.read()
+                    val second = input.read()
+                    first == 'P'.code && second == 'K'.code
+                } == true
+                if (isZip) {
+                    val oldResult = com.mudasir.smartledger.util.BackupManager.restoreFromZip(
+                        this@SettingsActivity, uri, db
+                    ) { false }
+                    AutoBackupManager.RestoreOutcome(
+                        imported = oldResult.transactionsImported,
+                        skipped = oldResult.transactionsSkipped + oldResult.expenseSkipped,
+                        source = "旧版 ZIP"
+                    )
+                } else {
+                    AutoBackupManager.restoreFromUri(this@SettingsActivity, uri)
+                }
+            }
+            withContext(Dispatchers.Main) {
+                outcome.onSuccess { result ->
+                    refreshBackupStatus()
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        "${result.source}：导入 ${result.imported} 条，跳过重复 ${result.skipped} 条",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }.onFailure {
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        "恢复失败：文件不是兼容的 SmartLedger JSON/ZIP，或已损坏",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun confirmClear(type: String, label: String) {

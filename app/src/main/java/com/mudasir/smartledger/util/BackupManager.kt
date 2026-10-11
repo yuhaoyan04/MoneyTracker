@@ -452,6 +452,12 @@ object BackupManager {
         db.customLedgerDao().deleteExpiredDailyRecords(fifteenDaysAgo)
         db.customLedgerDao().autoCleanExpiredLedgers(fifteenDaysAgo)
 
+        // 旧 ZIP 写入 legacy expenses 表后，同步到新版首页使用的统一交易表。
+        LegacyTransactionImporter.importExisting(db).also {
+            result.transactionsImported += it.imported
+            result.transactionsSkipped += it.skipped
+        }
+
         return@withContext result
     }
 

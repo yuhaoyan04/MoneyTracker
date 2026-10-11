@@ -4,13 +4,27 @@ import android.app.Application
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlin.system.exitProcess
 
 class SmartLedgerApp : Application() {
 
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         installCrashHandler()
+        // 旧版本已有的支出仍保留在 expenses 表；幂等合并到新版统一收支表。
+        appScope.launch {
+            runCatching {
+                com.mudasir.smartledger.util.LegacyTransactionImporter.importExisting(
+                    com.mudasir.smartledger.data.AppDatabase.getDatabase(this@SmartLedgerApp)
+                )
+            }.onFailure { Log.w("SmartLedger", "legacy transaction import failed", it) }
+        }
     }
 
     /**

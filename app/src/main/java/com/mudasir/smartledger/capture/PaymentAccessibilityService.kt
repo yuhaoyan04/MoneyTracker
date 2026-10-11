@@ -34,6 +34,13 @@ class PaymentAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastEventAt = 0L
 
+    override fun onCreate() {
+        super.onCreate()
+        // 服务实例只能由系统创建；到达这里即说明绑定链路已经启动。
+        com.mudasir.smartledger.util.CaptureServiceState
+            .setAccessibilityConnected(applicationContext, true)
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         if (!serviceJob.isActive) {
@@ -48,6 +55,12 @@ class PaymentAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
         val pkg = e.packageName?.toString() ?: return
+        // 设置页会发出本应用事件作为端到端握手，只标记连接，不读取任何页面内容。
+        if (pkg == packageName) {
+            com.mudasir.smartledger.util.CaptureServiceState
+                .setAccessibilityConnected(applicationContext, true)
+            return
+        }
         if (pkg != WECHAT && pkg != ALIPAY) return
 
         val now = System.currentTimeMillis()
@@ -125,7 +138,16 @@ class PaymentAccessibilityService : AccessibilityService() {
         com.mudasir.smartledger.util.CaptureServiceState
             .setAccessibilityConnected(applicationContext, false)
         // 系统可能因省电/内存暂时解绑后复用同一实例；不要在这里永久取消写库协程。
-        return super.onUnbind(intent)
+        // 返回 true，让系统在复用同一实例时调用 onRebind，而不是留下“已授权未连接”。
+        super.onUnbind(intent)
+        return true
+    }
+
+    override fun onRebind(intent: Intent?) {
+        super.onRebind(intent)
+        com.mudasir.smartledger.util.CaptureServiceState
+            .setAccessibilityConnected(applicationContext, true)
+        Log.i(TAG, "payment capture accessibility service rebound")
     }
 
     override fun onDestroy() {
