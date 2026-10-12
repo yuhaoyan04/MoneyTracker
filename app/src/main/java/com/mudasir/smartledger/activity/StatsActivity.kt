@@ -654,6 +654,26 @@ class StatsActivity : AppCompatActivity() {
                         sub.alpha = 0.92f
                         llBreakdown.addView(sub)
                     }
+
+                    // 下钻入口：该大类的子类占比饼图 + 完整交易清单
+                    val btn = com.google.android.material.button.MaterialButton(
+                        this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle
+                    ).apply {
+                        text = "查看「$name」子类占比与全部明细 →"
+                        textSize = 13f
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { setMargins(26.dp, 8.dp, 4.dp, 8.dp) }
+                        setOnClickListener {
+                            CategoryDetailActivity.start(
+                                this@StatsActivity, name,
+                                if (pieModeExpense) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME,
+                                year, month
+                            )
+                        }
+                    }
+                    llBreakdown.addView(btn)
                 }
             }
         }

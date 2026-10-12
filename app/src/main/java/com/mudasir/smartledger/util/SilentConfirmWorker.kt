@@ -32,6 +32,12 @@ class SilentConfirmWorker(
         private const val WORK_NAME = "smartledger_silent_confirm"
         private const val SILENT_CONFIRM_DAYS = 7L
 
+        /**
+         * 静默确认的置信度门槛：低于此值的预测不自动学习，
+         * 避免把不可靠的打标当作正样本强化错误（它们留在收件箱等待用户裁决）。
+         */
+        private const val MIN_CONFIDENCE = 0.5f
+
         fun schedulePeriodic(context: Context) {
             val req = PeriodicWorkRequestBuilder<SilentConfirmWorker>(24, TimeUnit.HOURS)
                 .setInitialDelay(10, TimeUnit.MINUTES)
@@ -50,7 +56,11 @@ class SilentConfirmWorker(
             if (oldPending.isEmpty()) return Result.success()
 
             var learned = 0
+            var held = 0
             for (record in oldPending) {
+                // 置信度门槛：低置信度预测不参与静默学习（自进化的数据质量防线）
+                val conf = record.aiConfidence
+                if (conf != null && conf < MIN_CONFIDENCE) { held++; continue }
                 dao.updateStatus(record.id, TransactionRecord.STATUS_CONFIRMED)
                 if (record.categoryName.isNotBlank()) {
                     PersonalTagger.learn(
@@ -66,7 +76,7 @@ class SilentConfirmWorker(
                 }
             }
 
-            Log.i(TAG, "Silent-confirmed ${oldPending.size} pending records (learned=$learned)")
+            Log.i(TAG, "Silent-confirmed ${oldPending.size - held} pending (learned=$learned, held=$held low-confidence)")
             // 待确认数量变化 → 刷新常驻通知
             PendingNotifier.update(applicationContext)
             Result.success()
