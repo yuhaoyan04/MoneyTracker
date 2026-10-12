@@ -127,10 +127,12 @@ object PersonalTagger {
     }
 
     /**
-     * 纠正模型中的数字类型：泛型擦除下 Gson 可能把 JSON 整数反序列化为
-     * Double 存进 Int 结构（或旧版本写入遗留），装箱运算时抛
-     * ClassCastException: Double cannot be cast to Integer。
-     * 加载与保存前都强制纠正一遍，从根源杜绝。
+     * 纠正模型中的数字与对象容器：
+     * 1) Int 结构里的 Double（泛型擦除/遗留写入）→ 转为 Int
+     * 2) Int 结构里的非数字污染（字符串/对象）→ 剔除
+     * 3) recurringMap 元素被解析为 LinkedTreeMap（应为 RecurringInfo）→ 重建
+     * 4) catStats 值被解析为 LinkedTreeMap（应为 CatStat）→ 重建
+     * 加载与保存前都强制执行，从根源杜绝 ClassCastException。
      */
     internal fun coerceModelNumbers(m: Model) {
         fun coerce(map: MutableMap<String, Int>) {
@@ -139,10 +141,10 @@ object PersonalTagger {
             val it = raw.entries.iterator()
             while (it.hasNext()) {
                 val e = it.next()
-                val v = e.value
-                if (v is Number && v !is Int) {
-                    it.remove()
-                    raw[e.key] = v.toInt()
+                when (val v = e.value) {
+                    is Int -> {}
+                    is Number -> { it.remove(); raw[e.key] = v.toInt() }
+                    else -> it.remove()
                 }
             }
         }
@@ -152,8 +154,45 @@ object PersonalTagger {
         m.merchantMap.values.forEach { coerce(it) }
         m.merchantHourMap.values.forEach { hour -> hour.values.forEach { coerce(it) } }
         m.catCorrectedAway.values.forEach { coerce(it) }
-        // RecurringInfo.count / CatStat.count 为强类型 Int 字段：
-        // lenientGson 的 Int 反序列化器已在读取时兜底（"3.0" -> 3），无需此处处理
+
+        // recurringMap 元素重建：LinkedTreeMap（泛型擦除产物）→ RecurringInfo
+        m.recurringMap.entries.toList().forEach { (merchant, rawList) ->
+            @Suppress("UNCHECKED_CAST")
+            val raw = rawList as MutableList<Any?>
+            val rebuilt = mutableListOf<RecurringInfo>()
+            raw.forEach { item ->
+                val info = item as? RecurringInfo
+                if (info != null) { rebuilt.add(info); return@forEach }
+                if (item is Map<*, *>) {
+                    val amount = (item["amount"] as? Number)?.toDouble() ?: 0.0
+                    val category = item["category"] as? String ?: ""
+                    if (amount > 0.0 && category.isNotBlank()) {
+                        rebuilt.add(
+                            RecurringInfo(
+                                count = (item["count"] as? Number)?.toInt() ?: 0,
+                                lastTs = (item["lastTs"] as? Number)?.toLong() ?: 0L,
+                                amount = amount,
+                                category = category
+                            )
+                        )
+                    }
+                }
+            }
+            if (rebuilt.isEmpty()) m.recurringMap.remove(merchant) else m.recurringMap[merchant] = rebuilt
+        }
+
+        // catStats 值重建：LinkedTreeMap → CatStat
+        m.catStats.entries.toList().forEach { (cat, rawStat) ->
+            val stat = rawStat as? CatStat
+            if (stat != null) { m.catStats[cat] = stat; return@forEach }
+            if (rawStat is Map<*, *>) {
+                m.catStats[cat] = CatStat(
+                    count = (rawStat["count"] as? Number)?.toInt() ?: 0,
+                    sumAmount = (rawStat["sumAmount"] as? Number)?.toDouble() ?: 0.0,
+                    sumSqAmount = (rawStat["sumSqAmount"] as? Number)?.toDouble() ?: 0.0
+                )
+            } else m.catStats.remove(cat)
+        }
     }
 
     private fun loadImpl(context: Context): Model {

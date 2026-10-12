@@ -81,6 +81,11 @@ class StatsActivity : AppCompatActivity() {
     private var catColors: Map<String, Int> = emptyMap()
     private var pieModeExpense: Boolean = true
 
+    /** 大类 → 小类明细（金额降序），下钻展开用。 */
+    private var subByRootExpense: Map<String, List<Pair<String, Double>>> = emptyMap()
+    private var subByRootIncome: Map<String, List<Pair<String, Double>>> = emptyMap()
+    private var expandedRoot: String? = null
+
     private var currentTimeRange: TimeRange = TimeRange.MONTH
     private var currentDataAgg: DataAgg = DataAgg.DAY
     private var trendLoaded = false
@@ -161,6 +166,7 @@ class StatsActivity : AppCompatActivity() {
         findViewById<MaterialButtonToggleGroup>(R.id.togglePie).addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             pieModeExpense = checkedId == R.id.btnPieExpense
+            expandedRoot = null  // 切换收支维度后展开态失效
             renderPie(); renderBreakdown()
         }
 
@@ -285,6 +291,8 @@ class StatsActivity : AppCompatActivity() {
                 .map { (k, v) -> k to v.sumOf { it.amount } }.sortedByDescending { it.second }
             val pieRoots = (expenseByCat.map { it.first } + incomeByCat.map { it.first }).distinct()
             catColors = buildSemanticColors(pieRoots)
+            subByRootExpense = buildSubBreakdown(records.filter { it.type == TransactionRecord.TYPE_EXPENSE }, catByName)
+            subByRootIncome = buildSubBreakdown(records.filter { it.type == TransactionRecord.TYPE_INCOME }, catByName)
             val insights = buildInsights(lastExpense, catByName)
             withContext(Dispatchers.Main) {
                 if (isFinishing || isDestroyed) return@withContext
@@ -375,6 +383,25 @@ class StatsActivity : AppCompatActivity() {
 
     private val Int.dp: Int
         get() = (this * resources.displayMetrics.density).toInt()
+
+    /** 大类 → 小类金额聚合：有父类归入父类，一级大类直接消费记为「（未细分）」。 */
+    private fun buildSubBreakdown(
+        records: List<TransactionRecord>,
+        catByName: Map<String, Category>
+    ): Map<String, List<Pair<String, Double>>> {
+        val agg = linkedMapOf<String, LinkedHashMap<String, Double>>()
+        records.forEach { r ->
+            if (r.amount <= 0) return@forEach
+            val cat = catByName[r.categoryName]
+            val parent = cat?.parentName ?: r.categoryName
+            val child = if (cat?.parentName != null) r.categoryName else "（未细分）"
+            val bucket = agg.getOrPut(parent) { linkedMapOf() }
+            bucket[child] = (bucket[child] ?: 0.0) + r.amount
+        }
+        return agg.mapValues { (_, m) ->
+            m.entries.sortedByDescending { it.value }.map { it.key to it.value }
+        }
+    }
 
     private fun buildSemanticColors(roots: List<String>): Map<String, Int> {
         val result = mutableMapOf<String, Int>()
@@ -562,21 +589,73 @@ class StatsActivity : AppCompatActivity() {
     private fun renderBreakdown() {
         llBreakdown.removeAllViews()
         val data = if (pieModeExpense) expenseByCat else incomeByCat
+        val subData = if (pieModeExpense) subByRootExpense else subByRootIncome
         val total = if (pieModeExpense) totalExpense else totalIncome
         if (data.isEmpty()) { llBreakdown.visibility = View.GONE; return }
         llBreakdown.visibility = View.VISIBLE
+
         data.forEachIndexed { i, (name, amt) ->
             val v = LayoutInflater.from(this).inflate(R.layout.item_category_breakdown, llBreakdown, false)
             val pct = if (total > 0) (amt / total * 100).toInt() else 0
-            v.findViewById<TextView>(R.id.tvName).text = name
+            val color = catColors[name] ?: fallbackPalette[i % fallbackPalette.size]
+            val expanded = expandedRoot == name
+
+            v.findViewById<TextView>(R.id.tvName).text = (if (expanded) "▾ " else "▸ ") + name
             v.findViewById<TextView>(R.id.tvAmount).text = FormatUtil.money(amt)
             v.findViewById<TextView>(R.id.tvPercent).text = "$pct%"
-            val color = catColors[name] ?: fallbackPalette[i % fallbackPalette.size]
             v.findViewById<View>(R.id.vDot).background?.mutate()?.setTint(color)
             val bar = v.findViewById<ProgressBar>(R.id.progress)
             bar.max = 100; bar.progress = pct
             bar.progressTintList = android.content.res.ColorStateList.valueOf(color)
+
+            // 点击大类行：展开/收起小类明细
+            v.isClickable = true
+            v.isFocusable = true
+            v.background = obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground))
+                .use { it.getDrawable(0) }
+            v.setOnClickListener {
+                expandedRoot = if (expanded) null else name
+                renderBreakdown()
+            }
             llBreakdown.addView(v)
+
+            // 下钻：小类明细（缩进 + 小字号）
+            if (expanded) {
+                val children = subData[name].orEmpty()
+                if (children.isEmpty()) {
+                    val hint = TextView(this).apply {
+                        text = "　　该分类下没有更细的小类记录"
+                        textSize = 12f
+                        setTextColor(ContextCompat.getColor(this@StatsActivity, R.color.text_tertiary))
+                        setPadding(34.dp, 4.dp, 8.dp, 6.dp)
+                    }
+                    llBreakdown.addView(hint)
+                } else {
+                    children.forEach { (childName, childAmt) ->
+                        val sub = LayoutInflater.from(this).inflate(R.layout.item_category_breakdown, llBreakdown, false)
+                        val childPct = if (total > 0) (childAmt / total * 100).toInt() else 0
+                        sub.findViewById<TextView>(R.id.tvName).apply {
+                            text = "· $childName"
+                            textSize = 13f
+                            setPadding(26.dp, 0, 0, 0)
+                        }
+                        sub.findViewById<TextView>(R.id.tvAmount).apply {
+                            text = FormatUtil.money(childAmt)
+                            textSize = 13f
+                        }
+                        sub.findViewById<TextView>(R.id.tvPercent).apply {
+                            text = "$childPct%"
+                            textSize = 11f
+                        }
+                        sub.findViewById<View>(R.id.vDot).visibility = View.INVISIBLE
+                        val subBar = sub.findViewById<ProgressBar>(R.id.progress)
+                        subBar.max = 100; subBar.progress = childPct
+                        subBar.progressTintList = android.content.res.ColorStateList.valueOf(color)
+                        sub.alpha = 0.92f
+                        llBreakdown.addView(sub)
+                    }
+                }
+            }
         }
     }
 

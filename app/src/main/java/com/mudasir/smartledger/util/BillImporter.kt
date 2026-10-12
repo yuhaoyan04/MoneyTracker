@@ -184,10 +184,12 @@ object BillImporter {
                 confirmedKeys.add(bill.dedupKey)
                 inserted++
             } catch (e: Exception) {
-                // 失败绝不混入「跳过」——单独计数并把首个异常原文暴露出来
+                // 失败绝不混入「跳过」——单独计数并把首个异常完整堆栈暴露出来
                 failed++
                 if (firstError == null) {
-                    firstError = "${e.javaClass.simpleName}: ${e.message}"
+                    val stack = e.stackTrace.take(6)
+                        .joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}" }
+                    firstError = "${e.javaClass.name}: ${e.message} @ $stack"
                     Log.w("BillImporter", "first import failure", e)
                 }
             }

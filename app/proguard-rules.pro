@@ -24,6 +24,11 @@
 -keep class com.mudasir.smartledger.data.** { *; }
 -keepclassmembers class com.mudasir.smartledger.data.** { *; }
 
+# PersonalTagger 模型（Gson 反射依赖字段签名；无 keep 时 R8 破坏泛型恢复，
+# 导致 Map 元素被解析为 Double/LinkedTreeMap，引发 ClassCastException）
+-keep class com.mudasir.smartledger.ml.** { *; }
+-keepclassmembers class com.mudasir.smartledger.ml.** { *; }
+
 -keep @androidx.room.Entity class * { *; }
 -keep @androidx.room.Dao class * { *; }
 -keep class * extends androidx.room.RoomDatabase { *; }
