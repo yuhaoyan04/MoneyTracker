@@ -43,13 +43,18 @@ object BillImportParser {
         val logicalLines = splitLogicalLines(text)
         if (logicalLines.size < 2) return Result.Failure("文件内容为空")
 
-        val headerIdx = logicalLines.indexOfFirst {
-            it.contains("交易时间") || it.contains("交易创建时间")
+        // 微信账单顶部有十几行元数据，其中说明行也含「交易时间：xxxx」——
+        // 必须用多关键词组合锁定真正的表头行（时间 + 收/支 + 金额 同时出现）
+        val headerIdx = logicalLines.indexOfFirst { line ->
+            (line.contains("交易时间") || line.contains("交易创建时间")) &&
+                line.contains("收/支") && line.contains("金额")
         }
         if (headerIdx < 0) {
-            return Result.Failure("未找到账单表头——请选择微信/支付宝导出的原始 CSV 账单（不要用 Excel 另存）")
+            return Result.Failure("未找到账单表头——请选择微信/支付宝导出的原始 CSV 账单（不要用 Excel 另存后改动）")
         }
-        val header = splitCsvLine(logicalLines[headerIdx]).map { it.trim() }
+        // 微信官方导出为逗号分隔；从表格软件复制/另存的版本常为 Tab 分隔，自动适配
+        val delimiter = if (logicalLines[headerIdx].contains('\t')) '\t' else ','
+        val header = splitCsvLine(logicalLines[headerIdx], delimiter).map { it.trim() }
         val format = when {
             header.any { it.contains("交易单号") } -> Format.WECHAT
             header.any { it.contains("交易号") } -> Format.ALIPAY
@@ -75,7 +80,7 @@ object BillImportParser {
                 col(listOf("收/支")),
                 col(listOf("交易对方")),
                 col(listOf("商品名称")),
-                col(listOf("付款方式")),
+                col(listOf("付款方式", "支付方式", "收/付款方式")),
                 col(listOf("交易状态"))
             )
         }
@@ -88,7 +93,7 @@ object BillImportParser {
         var skipped = 0
 
         for (i in headerIdx + 1 until logicalLines.size) {
-            val cells = splitCsvLine(logicalLines[i])
+            val cells = splitCsvLine(logicalLines[i], delimiter)
             if (cells.size < 3) { skipped++; continue }
             try {
                 val dirRaw = cells.getOrNull(idxDir).orEmpty().trim()
@@ -168,8 +173,8 @@ object BillImportParser {
         return out
     }
 
-    /** 单行 CSV 分列（处理 "" 转义）。 */
-    private fun splitCsvLine(line: String): List<String> {
+    /** 单行 CSV 分列（处理 "" 转义；分隔符可为逗号或 Tab）。 */
+    private fun splitCsvLine(line: String, delimiter: Char = ','): List<String> {
         val out = mutableListOf<String>()
         val sb = StringBuilder()
         var inQuote = false
@@ -181,7 +186,7 @@ object BillImportParser {
                     if (inQuote && i + 1 < line.length && line[i + 1] == '"') { sb.append('"'); i++ }
                     else inQuote = !inQuote
                 }
-                c == ',' && !inQuote -> { out.add(sb.toString().trim()); sb.clear() }
+                c == delimiter && !inQuote -> { out.add(sb.toString().trim()); sb.clear() }
                 else -> sb.append(c)
             }
             i++

@@ -123,7 +123,8 @@ class SettingsActivity : AppCompatActivity() {
                 )
                 .setPositiveButton("选择 CSV 文件") { _, _ ->
                     runCatching {
-                        billImportLauncher.launch(arrayOf("text/csv", "text/plain", "application/csv", "application/octet-stream"))
+                        // 微信/支付宝账单在不同文件管理器下 MIME 各异（excel/csv/octet），放开为全部类型
+                        billImportLauncher.launch(arrayOf("*/*"))
                     }.onFailure {
                         Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show()
                     }
