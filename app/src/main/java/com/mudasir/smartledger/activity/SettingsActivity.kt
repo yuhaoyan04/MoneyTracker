@@ -209,6 +209,13 @@ class SettingsActivity : AppCompatActivity() {
                     val bills = parsed.bills
                     val expenseCount = bills.count { it.type == TransactionRecord.TYPE_EXPENSE }
                     val incomeCount = bills.size - expenseCount
+                    val sdf = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+                    val rangeStr = "${sdf.format(java.util.Date(bills.minOf { it.timestamp }))} ~ " +
+                        sdf.format(java.util.Date(bills.maxOf { it.timestamp }))
+                    val sample = bills.take(3).joinToString("\n") { b ->
+                        "· ${sdf.format(java.util.Date(b.timestamp))} ${b.merchant ?: b.note ?: ""} " +
+                            "${if (b.type == TransactionRecord.TYPE_EXPENSE) "-" else "+"}¥${"%.2f".format(b.amount)}"
+                    }
                     val confirmed = withContext(Dispatchers.Main) {
                         kotlinx.coroutines.suspendCancellableCoroutine { cont ->
                             AlertDialog.Builder(this@SettingsActivity)
@@ -216,7 +223,9 @@ class SettingsActivity : AppCompatActivity() {
                                 .setMessage(
                                     "解析到 ${bills.size} 笔收支（支出 $expenseCount · 收入 $incomeCount）" +
                                         (if (parsed.skippedRows > 0) "，跳过 ${parsed.skippedRows} 行非收支记录" else "") +
-                                        "。\n导入时将自动跳过已存在的记录，并使用 AI 预分类。确认导入？"
+                                        "\n账单期间：$rangeStr" +
+                                        "\n样例：\n$sample" +
+                                        "\n\n导入时将自动：跳过账本已有记录 · 合并待确认记录 · AI 预分类。确认导入？"
                                 )
                                 .setPositiveButton("导入") { _, _ -> cont.resume(true) }
                                 .setNegativeButton("取消") { _, _ -> cont.resume(false) }
@@ -230,7 +239,7 @@ class SettingsActivity : AppCompatActivity() {
                         refreshBackupStatus()
                         Toast.makeText(
                             this@SettingsActivity,
-                            "导入完成：新增 ${report.inserted} 笔 · 跳过重复 ${report.skipped} 笔",
+                            "导入完成：新增 ${report.inserted} 笔 · 合并待确认 ${report.mergedPending} 笔 · 账本已有跳过 ${report.skippedExisting} 笔",
                             Toast.LENGTH_LONG
                         ).show()
                     }

@@ -88,6 +88,17 @@ interface TransactionDao {
     )
     suspend fun getInRange(start: Long, end: Long): List<TransactionRecord>
 
+    /** 账单对账用：范围内待确认记录（账单可与之合并而非重复插入）。 */
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE isDeleted = 0 AND status = 'PENDING'
+          AND timestamp >= :start AND timestamp < :end
+        ORDER BY timestamp DESC
+        """
+    )
+    suspend fun getPendingInRange(start: Long, end: Long): List<TransactionRecord>
+
     // ---- 软删除 / 回收站 ----
     @Query(
         """
