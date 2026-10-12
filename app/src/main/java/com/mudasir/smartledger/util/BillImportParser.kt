@@ -1,18 +1,20 @@
 package com.mudasir.smartledger.util
 
 import com.mudasir.smartledger.data.TransactionRecord
+import java.io.ByteArrayInputStream
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+import java.util.zip.ZipInputStream
 
 /**
- * 微信 / 支付宝官方账单 CSV 解析器 —— 自动抓取的兜底与对账主链路。
+ * 微信 / 支付宝官方账单解析器 —— 自动抓取的兜底与对账主链路。
  *
- * 覆盖通知监听天然无法覆盖的场景（付款码/扫一扫等前台支付时系统抑制通知）：
- * 用户从 微信支付→钱包→账单→下载账单 / 支付宝→我的→账单→开具交易流水
- * 导出 CSV，本解析器转换为交易记录，按指纹去重后入库。
- *
- * 格式要点：
- * - 微信：GBK 编码，表头含「交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态…」
- * - 支付宝：GBK 编码，表头含「交易号,…,交易创建时间,付款时间,…,交易对方,商品名称,金额（元）,收/支,交易状态…」
- * - 两者金额常带 ¥ 前缀、字段可能被引号包裹（含逗号/换行）
+ * 支持：
+ * - 微信新版导出的 XLSX（ZIP+XML 结构，用标准库解压解析，无第三方依赖）
+ * - 微信/支付宝 CSV（GBK 自动回退、逗号或 Tab 分隔、引号转义、顶部说明行跳过）
+ * - 微信表头行探测：账单顶部十几行元数据中也有「交易时间：」字样，
+ *   必须用多关键词组合（时间 + 收/支 + 金额）锁定真正的表头
  */
 object BillImportParser {
 
@@ -39,50 +41,70 @@ object BillImportParser {
     private enum class Format { WECHAT, ALIPAY }
 
     fun parse(bytes: ByteArray): Result {
-        val text = decodeText(bytes) ?: return Result.Failure("文件为空或无法读取")
-        val logicalLines = splitLogicalLines(text)
-        if (logicalLines.size < 2) return Result.Failure("文件内容为空")
+        if (bytes.isEmpty()) return Result.Failure("文件为空或无法读取")
+        // ZIP 魔数 PK —— 微信新版账单为 XLSX
+        return if (bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) {
+            val table = runCatching { extractXlsxTable(bytes) }.getOrElse {
+                return Result.Failure("无法读取 XLSX 账单（文件可能已损坏）")
+            }
+            if (table.isEmpty()) return Result.Failure("XLSX 账单为空")
+            parseTable(table)
+        } else {
+            val text = decodeText(bytes) ?: return Result.Failure("文件为空或无法读取")
+            val logicalLines = splitLogicalLines(text)
+            if (logicalLines.size < 2) return Result.Failure("文件内容为空")
+            val headerIdx = logicalLines.indexOfFirst { isHeaderRow(it) }
+                ?: return Result.Failure("未找到账单表头——请选择微信/支付宝导出的原始 CSV 或 XLSX 账单（未经编辑）")
+            // 微信官方导出为逗号分隔；从表格软件复制/另存的版本常为 Tab 分隔，自动适配
+            val delimiter = if (logicalLines[headerIdx].contains('\t')) '\t' else ','
+            parseTable(logicalLines.map { splitCsvLine(it, delimiter) })
+        }
+    }
 
-        // 微信账单顶部有十几行元数据，其中说明行也含「交易时间：xxxx」——
-        // 必须用多关键词组合锁定真正的表头行（时间 + 收/支 + 金额 同时出现）
-        val headerIdx = logicalLines.indexOfFirst { line ->
-            (line.contains("交易时间") || line.contains("交易创建时间")) &&
-                line.contains("收/支") && line.contains("金额")
-        }
+    // ===== 表格解析（CSV 与 XLSX 共用） =====
+
+    private fun parseTable(table: List<List<String>>): Result {
+        val headerIdx = table.indexOfFirst { row -> isHeaderRow(row.joinToString(" ")) }
         if (headerIdx < 0) {
-            return Result.Failure("未找到账单表头——请选择微信/支付宝导出的原始 CSV 账单（不要用 Excel 另存后改动）")
+            return Result.Failure("未找到账单表头——请选择微信/支付宝导出的原始 CSV 或 XLSX 账单（未经编辑）")
         }
-        // 微信官方导出为逗号分隔；从表格软件复制/另存的版本常为 Tab 分隔，自动适配
-        val delimiter = if (logicalLines[headerIdx].contains('\t')) '\t' else ','
-        val header = splitCsvLine(logicalLines[headerIdx], delimiter).map { it.trim() }
+        val header = table[headerIdx].map { it.trim() }
+
+        fun col(names: List<String>): Int =
+            header.indexOfFirst { h -> names.any { h.contains(it) } }
+
         val format = when {
             header.any { it.contains("交易单号") } -> Format.WECHAT
             header.any { it.contains("交易号") } -> Format.ALIPAY
             else -> return Result.Failure("无法识别账单格式（既不是微信也不是支付宝账单）")
         }
 
-        fun col(names: List<String>): Int =
-            header.indexOfFirst { h -> names.any { h.contains(it) } }
-
-        val (idxTime, idxAmount, idxDir, idxMerchant, idxItem, idxPayMethod, idxStatus) = when (format) {
-            Format.WECHAT -> Quattro(
-                col(listOf("交易时间")),
-                col(listOf("金额")),
-                col(listOf("收/支")),
-                col(listOf("交易对方")),
-                col(listOf("商品")),
-                col(listOf("支付方式")),
-                col(listOf("当前状态"))
-            )
-            Format.ALIPAY -> Quattro(
-                minPositive(col(listOf("付款时间")), col(listOf("交易创建时间"))),
-                col(listOf("金额")),
-                col(listOf("收/支")),
-                col(listOf("交易对方")),
-                col(listOf("商品名称")),
-                col(listOf("付款方式", "支付方式", "收/付款方式")),
-                col(listOf("交易状态"))
-            )
+        val idxTime: Int
+        val idxAmount: Int
+        val idxDir: Int
+        val idxMerchant: Int
+        val idxItem: Int
+        val idxPayMethod: Int
+        val idxStatus: Int
+        when (format) {
+            Format.WECHAT -> {
+                idxTime = col(listOf("交易时间"))
+                idxAmount = col(listOf("金额"))
+                idxDir = col(listOf("收/支"))
+                idxMerchant = col(listOf("交易对方"))
+                idxItem = col(listOf("商品"))
+                idxPayMethod = col(listOf("支付方式"))
+                idxStatus = col(listOf("当前状态"))
+            }
+            Format.ALIPAY -> {
+                idxTime = minPositive(col(listOf("付款时间")), col(listOf("交易创建时间")))
+                idxAmount = col(listOf("金额"))
+                idxDir = col(listOf("收/支"))
+                idxMerchant = col(listOf("交易对方"))
+                idxItem = col(listOf("商品名称"))
+                idxPayMethod = col(listOf("付款方式", "支付方式", "收/付款方式"))
+                idxStatus = col(listOf("交易状态"))
+            }
         }
         if (idxTime < 0 || idxAmount < 0 || idxDir < 0) {
             return Result.Failure("账单表头缺少关键列（时间/金额/收支柱）")
@@ -92,25 +114,30 @@ object BillImportParser {
         val bills = mutableListOf<ParsedBill>()
         var skipped = 0
 
-        for (i in headerIdx + 1 until logicalLines.size) {
-            val cells = splitCsvLine(logicalLines[i], delimiter)
+        for (i in headerIdx + 1 until table.size) {
+            val cells = table[i]
             if (cells.size < 3) { skipped++; continue }
             try {
                 val dirRaw = cells.getOrNull(idxDir).orEmpty().trim()
                 val type = when {
                     dirRaw.startsWith("支出") -> TransactionRecord.TYPE_EXPENSE
                     dirRaw.startsWith("收入") -> TransactionRecord.TYPE_INCOME
-                    else -> { skipped++; continue }  // 不计收支（"/"、不计收支等）
+                    else -> { skipped++; continue }  // 不计收支（"/"、不计收支等中性交易）
                 }
                 val amount = cells.getOrNull(idxAmount).orEmpty()
                     .replace("¥", "").replace("￥", "").trim().toDoubleOrNull()
                 if (amount == null || amount <= 0.0) { skipped++; continue }
 
                 val timeRaw = cells.getOrNull(idxTime).orEmpty().trim()
-                val ts = parseTime(timeRaw)
+                var ts = parseTime(timeRaw)
+                if (ts <= 0L) {
+                    // XLSX 中时间可能存为 Excel 日期序列数
+                    val serial = timeRaw.toDoubleOrNull()
+                    if (serial != null) ts = excelSerialToMillis(serial)
+                }
                 if (ts <= 0L) { skipped++; continue }
 
-                // 支付宝只导已成功的交易；微信「当前状态」宽松处理（含退款时收/支列已指明方向）
+                // 支付宝只导已成功的交易；微信「当前状态」宽松处理（收/支列已指明方向，退款行会被记为收入）
                 if (format == Format.ALIPAY) {
                     val status = cells.getOrNull(idxStatus).orEmpty()
                     if (status.isNotBlank() && !status.contains("成功")) { skipped++; continue }
@@ -138,10 +165,105 @@ object BillImportParser {
         return Result.Success(bills, sourceChannel, skipped)
     }
 
-    private data class Quattro(
-        val time: Int, val amount: Int, val dir: Int,
-        val merchant: Int, val item: Int, val payMethod: Int, val status: Int
-    )
+    /** 微信表头行：时间 + 收/支 + 金额 同时出现（顶部说明行只有「交易时间：」单一关键词）。 */
+    private fun isHeaderRow(joined: String): Boolean =
+        (joined.contains("交易时间") || joined.contains("交易创建时间")) &&
+            joined.contains("收/支") && joined.contains("金额")
+
+    // ===== XLSX（ZIP + XML）解析 =====
+
+    private fun extractXlsxTable(bytes: ByteArray): List<List<String>> {
+        val shared = mutableListOf<String>()
+        val sheets = mutableListOf<Pair<String, ByteArray>>()
+        ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val name = entry.name.trimStart('/')
+                when {
+                    name.equals("xl/sharedStrings.xml", true) ->
+                        shared.addAll(parseSharedStrings(zis.readBytes()))
+                    name.startsWith("xl/worksheets/") && name.endsWith(".xml") ->
+                        sheets.add(name to zis.readBytes())
+                }
+                entry = zis.nextEntry
+            }
+        }
+
+        // 优先取包含表头关键词的 sheet，否则退回第一个
+        val parsedSheets = sheets.map { (_, xml) -> parseSheet(xml, shared) }
+        return parsedSheets.firstOrNull { rows -> rows.any { isHeaderRow(it.joinToString(" ")) } }
+            ?: parsedSheets.firstOrNull()
+            ?: emptyList()
+    }
+
+    private fun parseSheet(xmlBytes: ByteArray, shared: List<String>): List<List<String>> {
+        val xml = xmlBytes.toString(Charsets.UTF_8)
+        val rows = mutableListOf<List<String>>()
+        Regex("<row[^>]*>.*?</row>|<row[^>]*/>", RegexOption.DOT_MATCHES_ALL).findAll(xml).forEach { rowM ->
+            val cells = mutableMapOf<Int, String>()
+            Regex("<c\\s[^>]*>.*?</c>|<c\\s[^>]*/>", RegexOption.DOT_MATCHES_ALL).findAll(rowM.value).forEach { cellM ->
+                val cellXml = cellM.value
+                val ref = Regex("\\sr=\"([A-Z]+)\\d+\"").find(cellXml)?.groupValues?.get(1) ?: return@forEach
+                val colIdx = colIndex(ref)
+                val value = when {
+                    cellXml.contains("t=\"s\"") -> {
+                        val v = Regex("<v>(.*?)</v>", RegexOption.DOT_MATCHES_ALL).find(cellXml)?.groupValues?.get(1)
+                        v?.trim()?.toIntOrNull()?.let { shared.getOrNull(it) } ?: ""
+                    }
+                    cellXml.contains("t=\"inlineStr\"") ->
+                        Regex("<t[^>]*>(.*?)</t>", RegexOption.DOT_MATCHES_ALL)
+                            .findAll(cellXml).joinToString("") { unescapeXml(it.groupValues[1]) }
+                    else -> unescapeXml(
+                        Regex("<v>(.*?)</v>", RegexOption.DOT_MATCHES_ALL)
+                            .find(cellXml)?.groupValues?.get(1).orEmpty()
+                    )
+                }
+                cells[colIdx] = value
+            }
+            if (cells.isNotEmpty()) {
+                val maxCol = cells.keys.max()
+                rows.add((0..maxCol).map { cells[it].orEmpty() })
+            }
+        }
+        return rows
+    }
+
+    private fun parseSharedStrings(xmlBytes: ByteArray): List<String> {
+        val xml = xmlBytes.toString(Charsets.UTF_8)
+        val out = mutableListOf<String>()
+        Regex("<si[ >].*?</si>|<si/>", RegexOption.DOT_MATCHES_ALL).findAll(xml).forEach { m ->
+            val text = Regex("<t[^>]*>(.*?)</t>", RegexOption.DOT_MATCHES_ALL)
+                .findAll(m.value).joinToString("") { unescapeXml(it.groupValues[1]) }
+            out.add(text)
+        }
+        return out
+    }
+
+    private fun colIndex(letters: String): Int {
+        var idx = 0
+        for (ch in letters) idx = idx * 26 + (ch - 'A' + 1)
+        return idx - 1
+    }
+
+    private fun unescapeXml(s: String): String = s
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace(Regex("&#x([0-9a-fA-F]+);")) { m -> m.groupValues[1].toInt(16).toChar().toString() }
+        .replace(Regex("&#(\\d+);")) { m -> m.groupValues[1].toInt().toChar().toString() }
+        .replace("&amp;", "&")
+
+    /** Excel 日期序列（1900 日期系统，纪元 1899-12-30）→ 毫秒。 */
+    private fun excelSerialToMillis(serial: Double): Long = runCatching {
+        val cal = Calendar.getInstance().apply { clear() }
+        cal.set(1899, Calendar.DECEMBER, 30, 0, 0, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        val days = serial.toLong()
+        cal.add(Calendar.DAY_OF_YEAR, days.toInt())
+        cal.add(Calendar.MILLISECOND, ((serial - days) * 86400000.0).toInt())
+        cal.timeInMillis
+    }.getOrDefault(0L)
 
     private fun minPositive(a: Int, b: Int): Int = when {
         a < 0 -> b
@@ -149,7 +271,7 @@ object BillImportParser {
         else -> minOf(a, b)
     }
 
-    /** UTF-8 优先；出现替换符则回退 GBK（微信/支付宝账单默认 GBK）。 */
+    /** UTF-8 优先；出现替换符则回退 GBK（微信/支付宝 CSV 默认 GBK）。 */
     private fun decodeText(bytes: ByteArray): String? {
         if (bytes.isEmpty()) return null
         val utf8 = String(bytes, Charsets.UTF_8)
@@ -197,7 +319,7 @@ object BillImportParser {
 
     private fun parseTime(raw: String): Long = runCatching {
         val clean = raw.substringBefore('.').trim()
-        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
             .apply { isLenient = false }.parse(clean)?.time ?: 0L
     }.getOrDefault(0L)
 }

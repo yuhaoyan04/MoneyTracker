@@ -118,7 +118,7 @@ class SettingsActivity : AppCompatActivity() {
             AlertDialog.Builder(this)
                 .setTitle("导入支付账单")
                 .setMessage(
-                    "支持微信（我→服务→钱包→账单→下载账单）和支付宝（我的→账单→开具交易流水）导出的原始 CSV 文件。\n\n" +
+                    "支持微信（我→服务→钱包→账单→下载账单）和支付宝（我的→账单→开具交易流水）导出的原始 CSV / XLSX 文件。\n\n" +
                         "用于补记通知抓取覆盖不到的支付（如付款码、扫一扫），导入时自动按指纹去重并 AI 分类。"
                 )
                 .setPositiveButton("选择 CSV 文件") { _, _ ->
