@@ -210,40 +210,54 @@ class SettingsActivity : AppCompatActivity() {
                     val expenseCount = bills.count { it.type == TransactionRecord.TYPE_EXPENSE }
                     val incomeCount = bills.size - expenseCount
                     val sdf = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
-                    val rangeStr = "${sdf.format(java.util.Date(bills.minOf { it.timestamp }))} ~ " +
-                        sdf.format(java.util.Date(bills.maxOf { it.timestamp }))
+                    val plan = BillImporter.plan(this@SettingsActivity, bills, parsed.sourceChannel)
+                    val periodStr = "${sdf.format(java.util.Date(plan.periodStart))} ~ " +
+                        sdf.format(java.util.Date(plan.periodEnd))
                     val sample = bills.take(3).joinToString("\n") { b ->
                         "· ${sdf.format(java.util.Date(b.timestamp))} ${b.merchant ?: b.note ?: ""} " +
                             "${if (b.type == TransactionRecord.TYPE_EXPENSE) "-" else "+"}¥${"%.2f".format(b.amount)}"
                     }
-                    val confirmed = withContext(Dispatchers.Main) {
+                    val dupSampleStr = if (plan.dupSamples.isNotEmpty())
+                        "\n重复样例：\n" + plan.dupSamples.joinToString("\n") { "· $it" } else ""
+                    val confirmedChoice = withContext(Dispatchers.Main) {
                         kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                            var resumed = false
+                            fun finish(v: Boolean?) {
+                                if (!resumed) { resumed = true; cont.resume(v) }
+                            }
                             AlertDialog.Builder(this@SettingsActivity)
-                                .setTitle("${parsed.sourceChannel}账单")
+                                .setTitle("${parsed.sourceChannel}账单 · 对账预检")
                                 .setMessage(
-                                    "解析到 ${bills.size} 笔收支（支出 $expenseCount · 收入 $incomeCount）" +
-                                        (if (parsed.skippedRows > 0) "，跳过 ${parsed.skippedRows} 行非收支记录" else "") +
-                                        "\n账单期间：$rangeStr" +
-                                        "\n样例：\n$sample" +
-                                        "\n\n导入时将自动：跳过账本已有记录 · 合并待确认记录 · AI 预分类。确认导入？"
+                                    "解析到 ${bills.size} 笔收支（支出 $expenseCount · 收入 $incomeCount）\n" +
+                                        "账单期间：$periodStr\n样例：\n$sample\n\n" +
+                                        "与账本比对：全新 ${plan.fresh} 笔 · 可合并待确认 ${plan.pendingMatches} 笔 · " +
+                                        "与已有记录重复 ${plan.exactDups} 笔$dupSampleStr\n\n" +
+                                        "「去重导入」只导入全新记录；「全量导入」将所有解析记录逐条插入（含重复）。"
                                 )
-                                .setPositiveButton("导入") { _, _ -> cont.resume(true) }
-                                .setNegativeButton("取消") { _, _ -> cont.resume(false) }
-                                .setOnCancelListener { cont.resume(false) }
+                                .setPositiveButton("去重导入") { _, _ -> finish(true) }
+                                .setNeutralButton("全量导入") { _, _ -> finish(false) }
+                                .setNegativeButton("取消") { _, _ -> finish(null) }
+                                .setOnCancelListener { finish(null) }
                                 .show()
                         }
                     }
-                    if (confirmed != true) return@launch
-                    val report = BillImporter.import(this@SettingsActivity, bills, parsed.sourceChannel)
-                    withContext(Dispatchers.Main) {
-                        refreshBackupStatus()
-                        Toast.makeText(
-                            this@SettingsActivity,
-                            "导入完成：新增 ${report.inserted} 笔 · 合并待确认 ${report.mergedPending} 笔 · 账本已有跳过 ${report.skippedExisting} 笔",
-                            Toast.LENGTH_LONG
-                        ).show()
+                    when (confirmedChoice) {
+                        null -> return@launch
+                        else -> {
+                            val skipDuplicates = confirmedChoice == true
+                            val report = BillImporter.execute(this@SettingsActivity, bills, parsed.sourceChannel, skipDuplicates)
+                            withContext(Dispatchers.Main) {
+                                refreshBackupStatus()
+                                val mode = if (skipDuplicates) "去重导入" else "全量导入"
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    "$mode 完成：新增 ${report.inserted} 笔 · 合并待确认 ${report.mergedPending} 笔 · 跳过 ${report.skippedExisting} 笔",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            runCatching { AutoBackupManager.backup(this@SettingsActivity) }
+                        }
                     }
-                    runCatching { AutoBackupManager.backup(this@SettingsActivity) }
                 }
             }
         }
