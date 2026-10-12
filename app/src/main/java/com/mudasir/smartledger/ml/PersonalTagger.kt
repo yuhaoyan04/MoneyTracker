@@ -3,6 +3,8 @@ package com.mudasir.smartledger.ml
 import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonDeserializer
 import com.google.gson.reflect.TypeToken
 import com.mudasir.smartledger.data.TransactionRecord
 import java.util.Calendar
@@ -101,11 +103,64 @@ object PersonalTagger {
 
     private fun file(context: Context) = java.io.File(context.applicationContext.filesDir, FILE)
 
+    /**
+     * 宽松 Gson：Int/Long 字段容忍 "3.0" 形式（历史版本/泛型擦除可能写入 Double）。
+     * 否则严格解析会抛异常 → loadImpl 静默重置模型 → 学习数据全丢。
+     */
+    internal val lenientGson: Gson by lazy {
+        GsonBuilder()
+            .registerTypeAdapter(
+                Int::class.javaObjectType,
+                JsonDeserializer<Int> { json, _, _ ->
+                    val p = json.asJsonPrimitive
+                    if (p.isNumber) p.asNumber.toInt() else p.asString.trim().toDouble().toInt()
+                }
+            )
+            .registerTypeAdapter(
+                java.lang.Long::class.java,
+                JsonDeserializer<Long> { json, _, _ ->
+                    val p = json.asJsonPrimitive
+                    if (p.isNumber) p.asNumber.toLong() else p.asString.trim().toDouble().toLong()
+                }
+            )
+            .create()
+    }
+
+    /**
+     * 纠正模型中的数字类型：泛型擦除下 Gson 可能把 JSON 整数反序列化为
+     * Double 存进 Int 结构（或旧版本写入遗留），装箱运算时抛
+     * ClassCastException: Double cannot be cast to Integer。
+     * 加载与保存前都强制纠正一遍，从根源杜绝。
+     */
+    internal fun coerceModelNumbers(m: Model) {
+        fun coerce(map: MutableMap<String, Int>) {
+            @Suppress("UNCHECKED_CAST")
+            val raw = map as MutableMap<Any?, Any?>
+            val it = raw.entries.iterator()
+            while (it.hasNext()) {
+                val e = it.next()
+                val v = e.value
+                if (v is Number && v !is Int) {
+                    it.remove()
+                    raw[e.key] = v.toInt()
+                }
+            }
+        }
+        coerce(m.prior)
+        coerce(m.merchantCorrect)
+        m.feat.values.forEach { level2 -> level2.values.forEach { coerce(it) } }
+        m.merchantMap.values.forEach { coerce(it) }
+        m.merchantHourMap.values.forEach { hour -> hour.values.forEach { coerce(it) } }
+        m.catCorrectedAway.values.forEach { coerce(it) }
+        // RecurringInfo.count / CatStat.count 为强类型 Int 字段：
+        // lenientGson 的 Int 反序列化器已在读取时兜底（"3.0" -> 3），无需此处处理
+    }
+
     private fun loadImpl(context: Context): Model {
         return try {
             val raw = file(context).readText()
             val type = object : TypeToken<Model>() {}.type
-            val m = (Gson().fromJson(raw, type) as? Model) ?: Model()
+            val m = (lenientGson.fromJson(raw, type) as? Model) ?: Model()
             @Suppress("SENSELESS_COMPARISON")
             if (m.prior == null) m.prior = mutableMapOf()
             @Suppress("SENSELESS_COMPARISON")
@@ -124,6 +179,7 @@ object PersonalTagger {
             if (m.catCorrectedAway == null) m.catCorrectedAway = mutableMapOf()
             @Suppress("SENSELESS_COMPARISON")
             if (m.coldMisfire == null) m.coldMisfire = mutableMapOf()
+            coerceModelNumbers(m)
             m
         } catch (e: Exception) {
             Model()
@@ -131,6 +187,7 @@ object PersonalTagger {
     }
 
     private fun saveImpl(context: Context, m: Model) {
+        coerceModelNumbers(m)  // 防御性：写盘前再纠正一遍，杜绝 Double 进入 Int 结构
         val now = System.currentTimeMillis()
         if (m.lastUpdate > 0) {
             val elapsedDays = (now - m.lastUpdate) / 86400000.0
@@ -160,7 +217,7 @@ object PersonalTagger {
         }
         m.lastUpdate = now
         try {
-            file(context).apply { parentFile?.mkdirs() }.writeText(Gson().toJson(m))
+            file(context).apply { parentFile?.mkdirs() }.writeText(lenientGson.toJson(m))
         } catch (e: Exception) {
             Log.w(TAG, "save model failed", e)
         }
