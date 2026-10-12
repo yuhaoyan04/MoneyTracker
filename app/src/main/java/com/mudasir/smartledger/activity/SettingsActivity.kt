@@ -245,17 +245,51 @@ class SettingsActivity : AppCompatActivity() {
                         null -> return@launch
                         else -> {
                             val skipDuplicates = confirmedChoice == true
-                            val report = BillImporter.execute(this@SettingsActivity, bills, parsed.sourceChannel, skipDuplicates)
-                            withContext(Dispatchers.Main) {
-                                refreshBackupStatus()
-                                val mode = if (skipDuplicates) "去重导入" else "全量导入"
-                                Toast.makeText(
-                                    this@SettingsActivity,
-                                    "$mode 完成：新增 ${report.inserted} 笔 · 合并待确认 ${report.mergedPending} 笔 · 跳过 ${report.skippedExisting} 笔",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                            val mode = if (skipDuplicates) "去重导入" else "全量导入"
+                            val result = runCatching {
+                                BillImporter.execute(this@SettingsActivity, bills, parsed.sourceChannel, skipDuplicates)
                             }
-                            runCatching { AutoBackupManager.backup(this@SettingsActivity) }
+                            result.onFailure { e ->
+                                // 协程内的任何异常都不允许静默消失
+                                withContext(Dispatchers.Main) {
+                                    AlertDialog.Builder(this@SettingsActivity)
+                                        .setTitle("导入异常")
+                                        .setMessage("导入过程发生未预期错误：\n${e.javaClass.simpleName}: ${e.message}")
+                                        .setPositiveButton("知道了", null)
+                                        .show()
+                                }
+                            }
+                            result.getOrNull()?.let { report ->
+                                // 导入后回查数据库：账单期间现有多少已确认记录（含导入来源多少笔）
+                                val db = AppDatabase.getDatabase(this@SettingsActivity)
+                                val inPeriod = db.transactionDao().getInRange(
+                                    bills.minOf { it.timestamp } - 60_000,
+                                    bills.maxOf { it.timestamp } + 60_000
+                                )
+                                val fromImport = inPeriod.count { it.source == TransactionRecord.SOURCE_IMPORT }
+                                withContext(Dispatchers.Main) {
+                                    refreshBackupStatus()
+                                    val msg = buildString {
+                                        append("$mode 完成：新增 ${report.inserted} · 合并待确认 ${report.mergedPending} · ")
+                                        append("账本已有跳过 ${report.skippedExisting}")
+                                        if (report.failed > 0) {
+                                            append("\n\n⚠️ 写入失败 ${report.failed} 笔")
+                                            report.firstError?.let { append("\n原因：$it") }
+                                        }
+                                        append("\n\n回查数据库：账单期间现有 ${inPeriod.size} 笔已确认记录")
+                                        append("（其中导入来源 $fromImport 笔）")
+                                        if (inPeriod.isEmpty()) {
+                                            append("\n\n若为 0，请检查：统计页月份是否对应、或账本是否被「清理」过滤。")
+                                        }
+                                    }
+                                    AlertDialog.Builder(this@SettingsActivity)
+                                        .setTitle("导入结果")
+                                        .setMessage(msg)
+                                        .setPositiveButton("知道了", null)
+                                        .show()
+                                }
+                                runCatching { AutoBackupManager.backup(this@SettingsActivity) }
+                            }
                         }
                     }
                 }

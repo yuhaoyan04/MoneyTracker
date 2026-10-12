@@ -42,7 +42,11 @@ object BillImporter {
         val inserted: Int,
         val mergedPending: Int,
         val skippedExisting: Int,
-        val sourceChannel: String
+        val sourceChannel: String,
+        /** 写入失败的行数（与「账本已有而跳过」完全不同）。 */
+        val failed: Int = 0,
+        /** 第一条失败的异常描述 —— 用于把深层错误直接亮给用户。 */
+        val firstError: String? = null
     )
 
     private data class ConfirmedIndex(
@@ -106,6 +110,8 @@ object BillImporter {
         var inserted = 0
         var mergedPending = 0
         var skippedExisting = 0
+        var failed = 0
+        var firstError: String? = null
 
         val minTs = bills.minOf { it.timestamp } - RECONCILE_WINDOW_MS
         val maxTs = bills.maxOf { it.timestamp } + RECONCILE_WINDOW_MS + 1
@@ -150,13 +156,14 @@ object BillImporter {
                     }
                 }
 
-                // 3) 新增（全量模式下重复项也走这里）
+                // 3) 新增（全量模式下重复项也走这里）。显式生成 stableId，排除唯一索引冲突
                 val suggestion = PersonalTagger.recommendWithConfidence(
                     context, bill.type, bill.timestamp, bill.amount,
                     sourceChannel, bill.merchant, bill.note, null
                 )
                 dao.insert(
                     TransactionRecord(
+                        stableId = java.util.UUID.randomUUID().toString(),
                         type = bill.type,
                         amount = bill.amount,
                         categoryName = suggestion.category,
@@ -177,11 +184,15 @@ object BillImporter {
                 confirmedKeys.add(bill.dedupKey)
                 inserted++
             } catch (e: Exception) {
-                Log.w("BillImporter", "import row failed", e)
-                skippedExisting++
+                // 失败绝不混入「跳过」——单独计数并把首个异常原文暴露出来
+                failed++
+                if (firstError == null) {
+                    firstError = "${e.javaClass.simpleName}: ${e.message}"
+                    Log.w("BillImporter", "first import failure", e)
+                }
             }
         }
-        Report(inserted, mergedPending, skippedExisting, sourceChannel)
+        Report(inserted, mergedPending, skippedExisting, sourceChannel, failed, firstError)
     }
 
     private fun dedupKeyOf(type: String, amount: Double, timestamp: Long): String =
