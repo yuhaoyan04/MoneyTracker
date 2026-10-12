@@ -183,6 +183,15 @@ class LedgerNotificationListener : NotificationListenerService() {
             runCatching {
             val dao = AppDatabase.getDatabase(this@LedgerNotificationListener).transactionDao()
             if (parsed != null) {
+                // 内存去重会在进程重启后丢失；先用原始通知做持久化重放保护。
+                if (dao.countExactCapture(
+                        TransactionRecord.SOURCE_CAPTURE_NOTIFICATION,
+                        pkg,
+                        parsed.rawText,
+                        parsed.timestamp - 5 * 60_000,
+                        parsed.timestamp + 5 * 60_000
+                    ) > 0
+                ) return@launch
                 if (isDuplicate(parsed, pkg)) {
                     // 跨 App 去重：同一笔交易被多个 App 通知。
                     // 若本次通知带有商户名，尝试补全已入库记录的空商户。
@@ -221,12 +230,21 @@ class LedgerNotificationListener : NotificationListenerService() {
                     locationName = place?.name,
                     aiConfidence = suggestion.confidence
                 ))
+                runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
                 // 有新的待确认交易 → 刷新常驻通知
                 com.mudasir.smartledger.util.PendingNotifier.update(applicationContext)
             } else if (hasAction) {
                 // 兜底：白名单内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏
                 val fallbackMerchant = title.takeIf { it.isNotBlank() && !needsMerchant(title) }
                     ?: correlateMerchant(0.0, pkg, sbn.postTime)
+                if (dao.countExactCapture(
+                        TransactionRecord.SOURCE_CAPTURE_NOTIFICATION,
+                        pkg,
+                        combined,
+                        (sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()) - 5 * 60_000,
+                        (sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()) + 5 * 60_000
+                    ) > 0
+                ) return@launch
                 dao.insert(
                     TransactionRecord(
                         type = TransactionRecord.TYPE_EXPENSE,
@@ -240,6 +258,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                         timestamp = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
                     )
                 )
+                runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
             }
             }.onFailure { android.util.Log.w("LedgerListener", "capture failed", it) }
         }

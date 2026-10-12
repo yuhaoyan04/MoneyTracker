@@ -3,7 +3,9 @@ package com.mudasir.smartledger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
 import java.util.Calendar
+import java.util.UUID
 
 /**
  * 统一交易记录实体。
@@ -18,12 +20,17 @@ import java.util.Calendar
         Index(value = ["status"]),
         Index(value = ["type"]),
         Index(value = ["categoryName"]),
-        Index(value = ["channelName"])
+        Index(value = ["channelName"]),
+        Index(value = ["stableId"], unique = true)
     ]
 )
 data class TransactionRecord(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+
+    /** Portable identity. Unlike the Room id, this survives export, import and database rebuilds. */
+    @ColumnInfo(defaultValue = "''")
+    val stableId: String = UUID.randomUUID().toString(),
 
     /** EXPENSE / INCOME */
     val type: String = TYPE_EXPENSE,
@@ -80,6 +87,7 @@ data class TransactionRecord(
         const val SOURCE_CAPTURE_NOTIFICATION = "CAPTURE_NOTIFICATION"
         const val SOURCE_CAPTURE_SMS = "CAPTURE_SMS"
         const val SOURCE_CAPTURE_ACCESSIBILITY = "CAPTURE_ACCESSIBILITY"
+        const val SOURCE_IMPORT = "IMPORT"
 
         const val STATUS_PENDING = "PENDING"
         const val STATUS_CONFIRMED = "CONFIRMED"

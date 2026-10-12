@@ -117,6 +117,22 @@ interface TransactionDao {
     @Query("UPDATE transactions SET merchant = :merchant WHERE isDeleted = 0 AND status = 'PENDING' AND amount = :amount AND timestamp >= :cutoff")
     suspend fun updatePendingMerchant(merchant: String, amount: Double, cutoff: Long)
 
+    /** Persistent replay guard for OEM/system notification redelivery after process restart. */
+    @Query(
+        """
+        SELECT COUNT(*) FROM transactions
+        WHERE source = :source AND packageName IS :packageName AND rawText = :rawText
+          AND timestamp BETWEEN :cutoff AND :ceiling
+        """
+    )
+    suspend fun countExactCapture(
+        source: String,
+        packageName: String?,
+        rawText: String,
+        cutoff: Long,
+        ceiling: Long
+    ): Int
+
     // ---- 汇总 ----
     @Query(
         """

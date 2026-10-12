@@ -15,8 +15,7 @@ class BackupWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            AutoBackupManager.backup(applicationContext)
-            Result.success()
+            if (AutoBackupManager.backup(applicationContext)) Result.success() else Result.retry()
         } catch (e: Exception) {
             Result.retry()
         }

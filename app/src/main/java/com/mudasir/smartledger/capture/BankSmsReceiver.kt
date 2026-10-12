@@ -82,6 +82,14 @@ class BankSmsReceiver : BroadcastReceiver() {
                 // 短信到达即记录支付时刻位置（主动新鲜定位，等待最多 8s）
                 val place = com.mudasir.smartledger.util.LocationHelper.freshPlace(context.applicationContext)
                 val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
+                if (dao.countExactCapture(
+                        TransactionRecord.SOURCE_CAPTURE_SMS,
+                        null,
+                        body,
+                        timestamp - 5 * 60_000,
+                        timestamp + 5 * 60_000
+                    ) > 0
+                ) return@launch
                 dao.insert(
                     TransactionRecord(
                         type = parsed.type,
@@ -104,6 +112,7 @@ class BankSmsReceiver : BroadcastReceiver() {
                         )
                     )
                 )
+                runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(context.applicationContext) }
                 com.mudasir.smartledger.util.PendingNotifier.update(context.applicationContext)
             }.onFailure { android.util.Log.w("BankSmsReceiver", "sms capture failed", it) }
         }

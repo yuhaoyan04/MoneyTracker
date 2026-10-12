@@ -17,9 +17,7 @@ private data class Sub(val name: String, val color: String, val parent: String, 
         CustomLedger::class, CustomEntry::class, CustomDailyRecord::class,
         TransactionRecord::class, Category::class, PaymentChannel::class
     ],
-    // Keep the v13 database version used by v2.23.x. The v2.22 behavior is
-    // restored below without downgrading (and therefore without clearing) data.
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -149,6 +147,15 @@ abstract class AppDatabase : RoomDatabase() {
          */
         private val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(database: SupportSQLiteDatabase) = Unit
+        }
+
+        // v14: stable portable identity for merge-safe backup/restore across rebuilds and devices.
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE transactions ADD COLUMN stableId TEXT NOT NULL DEFAULT ''")
+                database.execSQL("UPDATE transactions SET stableId = lower(hex(randomblob(16))) WHERE stableId = ''")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_transactions_stableId ON transactions (stableId)")
+            }
         }
 
         /**
@@ -303,7 +310,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_ledger_db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     // 全新安装时 onCreate 播种全量分类（迁移不会在全新库上执行）
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

@@ -19,12 +19,15 @@ import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.util.AiSettings
 import com.mudasir.smartledger.util.AutoBackupManager
 import com.mudasir.smartledger.util.BackupWorker
+import com.mudasir.smartledger.util.BillImportParser
+import com.mudasir.smartledger.util.BillImporter
 import com.mudasir.smartledger.util.BottomNavHelper
 import com.mudasir.smartledger.util.FormatUtil
 import com.mudasir.smartledger.util.PermissionHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,6 +58,24 @@ class SettingsActivity : AppCompatActivity() {
         uri?.let { exportCsv(it) }
     }
 
+    private val ledgerExportLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let { exportPortableBackup(it) }
+    }
+
+    private val ledgerImportLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { restorePortableBackup(it) }
+    }
+
+    private val billImportLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { importBill(it) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -71,9 +92,45 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnSms).setOnClickListener {
             smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
         }
+        findViewById<View>(R.id.btnBackgroundSettings).setOnClickListener {
+            runCatching {
+                startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            }.onFailure {
+                startActivity(Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", packageName, null)
+                ))
+            }
+            val hint = if (android.os.Build.MANUFACTURER.contains("HUAWEI", ignoreCase = true)) {
+                "还请在手机管家 → 应用启动管理中手动允许三项后台开关"
+            } else {
+                "请将 SmartLedger 设为不受电池优化限制"
+            }
+            Toast.makeText(this, hint, Toast.LENGTH_LONG).show()
+        }
 
         findViewById<View>(R.id.btnBackupNow).setOnClickListener { doBackup() }
+        findViewById<View>(R.id.btnExportBackup).setOnClickListener {
+            ledgerExportLauncher.launch(AutoBackupManager.suggestedExportName())
+        }
         findViewById<View>(R.id.btnRestore).setOnClickListener { doRestore() }
+        findViewById<View>(R.id.btnImportBill).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("导入支付账单")
+                .setMessage(
+                    "支持微信（我→服务→钱包→账单→下载账单）和支付宝（我的→账单→开具交易流水）导出的原始 CSV 文件。\n\n" +
+                        "用于补记通知抓取覆盖不到的支付（如付款码、扫一扫），导入时自动按指纹去重并 AI 分类。"
+                )
+                .setPositiveButton("选择 CSV 文件") { _, _ ->
+                    runCatching {
+                        billImportLauncher.launch(arrayOf("text/csv", "text/plain", "application/csv", "application/octet-stream"))
+                    }.onFailure {
+                        Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
         findViewById<View>(R.id.btnExportCsv).setOnClickListener {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             csvExportLauncher.launch("SmartLedger_${sdf.format(Date())}.csv")
@@ -114,32 +171,108 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun doBackup() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val ok = runCatching { AutoBackupManager.backup(this@SettingsActivity) }.getOrDefault(false)
+            val ok = runCatching { AutoBackupManager.backupNow(this@SettingsActivity) }.getOrDefault(false)
             withContext(Dispatchers.Main) {
                 refreshBackupStatus()
-                Toast.makeText(this@SettingsActivity, if (ok) "已备份到 Download/MoneyTracker" else "备份失败", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@SettingsActivity, if (ok) "已生成不可变备份到 Download/SmartLedger" else "备份失败", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     private fun doRestore() {
         AlertDialog.Builder(this)
-            .setTitle("从备份恢复")
-            .setMessage("将把 Download/MoneyTracker 中的备份覆盖写入当前账本（保留历史清理状态）。继续？")
-            .setPositiveButton("恢复") { _, _ ->
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val n = AutoBackupManager.restore(this@SettingsActivity)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            this@SettingsActivity,
-                            if (n >= 0) "已恢复 $n 条记录" else "未找到备份或恢复失败",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+            .setTitle("导入 SmartLedger 备份")
+            .setMessage("请选择 .json 备份文件。恢复会按交易指纹合并，不会用备份中的数据库 ID 覆盖现有记录。")
+            .setPositiveButton("选择文件") { _, _ ->
+                ledgerImportLauncher.launch(arrayOf("application/json", "text/json", "text/plain", "application/octet-stream"))
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /** 微信/支付宝账单 CSV → 解析 → 确认 → 指纹去重入库 + 打标学习。 */
+    private fun importBill(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val bytes = runCatching {
+                contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }.getOrNull()
+            if (bytes == null) {
+                withContext(Dispatchers.Main) { Toast.makeText(this@SettingsActivity, "无法读取所选文件", Toast.LENGTH_SHORT).show() }
+                return@launch
+            }
+            when (val parsed = BillImportParser.parse(bytes)) {
+                is BillImportParser.Result.Failure -> withContext(Dispatchers.Main) {
+                    Toast.makeText(this@SettingsActivity, parsed.reason, Toast.LENGTH_LONG).show()
+                }
+                is BillImportParser.Result.Success -> {
+                    val bills = parsed.bills
+                    val expenseCount = bills.count { it.type == TransactionRecord.TYPE_EXPENSE }
+                    val incomeCount = bills.size - expenseCount
+                    val confirmed = withContext(Dispatchers.Main) {
+                        kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                            AlertDialog.Builder(this@SettingsActivity)
+                                .setTitle("${parsed.sourceChannel}账单")
+                                .setMessage(
+                                    "解析到 ${bills.size} 笔收支（支出 $expenseCount · 收入 $incomeCount）" +
+                                        (if (parsed.skippedRows > 0) "，跳过 ${parsed.skippedRows} 行非收支记录" else "") +
+                                        "。\n导入时将自动跳过已存在的记录，并使用 AI 预分类。确认导入？"
+                                )
+                                .setPositiveButton("导入") { _, _ -> cont.resume(true) }
+                                .setNegativeButton("取消") { _, _ -> cont.resume(false) }
+                                .setOnCancelListener { cont.resume(false) }
+                                .show()
+                        }
+                    }
+                    if (confirmed != true) return@launch
+                    val report = BillImporter.import(this@SettingsActivity, bills, parsed.sourceChannel)
+                    withContext(Dispatchers.Main) {
+                        refreshBackupStatus()
+                        Toast.makeText(
+                            this@SettingsActivity,
+                            "导入完成：新增 ${report.inserted} 笔 · 跳过重复 ${report.skipped} 笔",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    runCatching { AutoBackupManager.backup(this@SettingsActivity) }
+                }
+            }
+        }
+    }
+
+    private fun exportPortableBackup(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ok = AutoBackupManager.exportToUri(this@SettingsActivity, uri)
+            withContext(Dispatchers.Main) {
+                refreshBackupStatus()
+                Toast.makeText(
+                    this@SettingsActivity,
+                    if (ok) "可迁移备份已导出" else "导出失败，请更换保存位置",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun restorePortableBackup(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = runCatching { AutoBackupManager.restoreFromUri(this@SettingsActivity, uri) }
+            withContext(Dispatchers.Main) {
+                result.onSuccess { report ->
+                    refreshBackupStatus()
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        "恢复完成：新增 ${report.inserted}，更新 ${report.updated}，跳过 ${report.skipped}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }.onFailure { error ->
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        "恢复失败：${error.message ?: "文件无效或已损坏"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun confirmClear(type: String, label: String) {

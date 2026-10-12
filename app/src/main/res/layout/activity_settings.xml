@@ -201,11 +201,19 @@
                         android:layout_marginTop="8dp"
                         android:text="去开启" />
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnBackgroundSettings"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="后台运行与电池优化设置" />
+
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="授权后自动抓取微信、支付宝、京东、淘宝及银行 App 的支付通知与银行卡交易短信，进入收件箱核对即可记账。前台付款码页面监听因系统和厂商限制已停用。开启「支付时记录位置」后，每笔消费会记下支付发生地点。"
+                        android:text="自动采集取决于支付 App 是否发布完整通知，不能保证覆盖每笔交易。华为手机还需在手机管家 → 应用启动管理中允许自动启动、关联启动和后台活动，并关闭本应用的电池优化。"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -241,6 +249,14 @@
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
 
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="自动备份采用版本化字段、校验和与增量历史；重装后请通过下方文件导入恢复。"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnBackupNow"
                         style="@style/Widget.Material3.Button.OutlinedButton"
@@ -250,12 +266,28 @@
                         android:text="立即备份到本机" />
 
                     <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnExportBackup"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="导出可迁移备份文件" />
+
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnRestore"
                         style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="从备份恢复" />
+                        android:text="选择备份文件导入" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnImportBill"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="导入微信 / 支付宝账单（对账兜底）" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnExportCsv"

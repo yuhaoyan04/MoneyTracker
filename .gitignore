@@ -7,8 +7,8 @@
 /release/
 app/release/
 # Project documentation & agent guidelines (internal)
-/docs/
-docs/
+/docs/*
+!/docs/CAPTURE_AND_BACKUP_ARCHITECTURE.md
 /.agents/
 .agents/
 AGENTS.md
