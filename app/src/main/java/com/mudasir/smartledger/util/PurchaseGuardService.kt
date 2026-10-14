@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.util.Log
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -132,9 +133,11 @@ class PurchaseGuardService : Service() {
     private fun checkForeground() {
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return
         val now = System.currentTimeMillis()
-        val begin = if (lastPoll in 1 until now - 1000) lastPoll else now - 10_000
+        // 使用事件会延迟入库：窗口小幅回溯 + 以最大事件时间戳推进，避免漏读
+        val begin = (lastPoll - 2000L).coerceAtLeast(now - 60_000L)
         var latestPkg: String? = null
         var latestCls: String? = null
+        var maxTs = 0L
         val events = usm.queryEvents(begin, now)
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
@@ -142,9 +145,10 @@ class PurchaseGuardService : Service() {
             if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
                 latestPkg = event.packageName
                 latestCls = event.className ?: ""
+                maxTs = maxOf(maxTs, event.timeStamp)
             }
         }
-        lastPoll = now
+        lastPoll = if (maxTs > 0) maxTs else (now - 1500L)
         val fg = latestPkg ?: currentFg ?: return
         val cls = latestCls ?: currentCls ?: ""
         if (fg == currentFg && cls == currentCls) return
@@ -153,8 +157,10 @@ class PurchaseGuardService : Service() {
         val scopeMode = prefs.getString("guard_scope", "payment") ?: "payment"
         val watchedHit = fg in watchedPackages
         val payScreen = watchedHit && isPaymentScreen(fg, cls)
+        // 调试可见性：受监控 App 内的页面切换记录（logcat 过滤 PurchaseGuard）
+        if (watchedHit) Log.d("PurchaseGuard", "fg=$fg cls=$cls payScreen=$payScreen")
         // 状态键：包名 + 是否支付界面（精确模式下同 App 内进入付款页也要触发）
-        val newKey = "$fg|$payScreen"
+        val newKey = "$fg|$cls|$payScreen"
         if (newKey == lastKey) return
         val prev = currentFg
         currentFg = fg
@@ -179,19 +185,23 @@ class PurchaseGuardService : Service() {
     }
 
     /**
-     * 支付界面判定（按 Activity 类名关键词，大小写不敏感）：
+     * 支付界面判定：
+     * - 支付宝 SDK 收银台可能出现在任意购物 App 进程内（淘宝/京东/美团跳支付宝），
+     *   类名含 alipay+pay/cashier 时无论包名一律视为支付页
      * - 微信：付款码(offline) / 转账(remittance) / 收付款入口(wallet.pay)
-     * - 支付宝及其它：收银台(cashier) / 支付页(pay)
+     * - 其余包：cashier / pay 关键词
      * 各版本类名可能变化，若失效应切换到设置中的「宽松模式」。
      */
     private fun isPaymentScreen(pkg: String, cls: String): Boolean {
         val c = cls.lowercase()
+        if (c.contains("alipay") && (c.contains("pay") || c.contains("cashier"))) return true
+        if (c.contains("cashier")) return true
         return when {
             pkg == "com.tencent.mm" ->
                 listOf("offline", "remittance", "wallet.pay").any { c.contains(it) }
             pkg.startsWith("com.eg.android.AlipayGphone") ->
-                listOf("cashier", "payui", "payment", "pay").any { c.contains(it) }
-            else -> listOf("cashier", "pay").any { c.contains(it) }
+                listOf("payui", "payment", "pay").any { c.contains(it) }
+            else -> c.contains("pay")
         }
     }
 
