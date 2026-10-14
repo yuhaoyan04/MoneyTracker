@@ -135,6 +135,11 @@ class SettingsActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnGuard).setOnClickListener { toggleGuard() }
         findViewById<View>(R.id.btnThreshold).setOnClickListener { editThreshold() }
+        findViewById<View>(R.id.btnGuardMode).setOnClickListener { editGuardMode() }
+        findViewById<View>(R.id.btnCooldown).setOnClickListener { editCooldown() }
+        findViewById<View>(R.id.btnWishlist).setOnClickListener {
+            startActivity(Intent(this, WishlistActivity::class.java))
+        }
         findViewById<View>(R.id.btnExportCsv).setOnClickListener {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             csvExportLauncher.launch("SmartLedger_${sdf.format(Date())}.csv")
@@ -195,6 +200,61 @@ class SettingsActivity : AppCompatActivity() {
         // 门槛显示
         val threshold = prefs.getFloat("big_spend_threshold", 500f)
         findViewById<TextView>(R.id.tvThreshold).text = "¥${threshold.toInt()}"
+
+        // 提醒方式 / 冷静时长
+        val mode = prefs.getString("guard_mode", "overlay") ?: "overlay"
+        findViewById<TextView>(R.id.tvGuardMode).text =
+            if (mode == "overlay") "全屏冷静（强制倒计时）" else "仅通知"
+        val cooldown = prefs.getInt("guard_cooldown_seconds", 5)
+        findViewById<TextView>(R.id.tvCooldown).text = "$cooldown 秒"
+    }
+
+    /** 提醒方式：全屏冷静（需悬浮窗权限）/ 仅通知。 */
+    private fun editGuardMode() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val current = prefs.getString("guard_mode", "overlay") ?: "overlay"
+        val options = arrayOf("全屏冷静（强制倒计时，推荐）", "仅通知")
+        var picked = if (current == "overlay") 0 else 1
+        AlertDialog.Builder(this)
+            .setTitle("提醒方式")
+            .setSingleChoiceItems(options, picked) { _, which -> picked = which }
+            .setPositiveButton("保存") { _, _ ->
+                val mode = if (picked == 0) "overlay" else "notify"
+                prefs.edit().putString("guard_mode", mode).apply()
+                if (mode == "overlay" && !android.provider.Settings.canDrawOverlays(this)) {
+                    // 引导授予悬浮窗权限
+                    runCatching {
+                        startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.fromParts("package", packageName, null)
+                            )
+                        )
+                    }
+                    Toast.makeText(this, "请允许「显示在其他应用上层」，否则会退回通知提醒", Toast.LENGTH_LONG).show()
+                }
+                refreshGuardStatus()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 冷静时长：3-30 秒。 */
+    private fun editCooldown() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val current = prefs.getInt("guard_cooldown_seconds", 5)
+        val options = arrayOf("3 秒", "5 秒", "10 秒", "15 秒", "20 秒")
+        val values = intArrayOf(3, 5, 10, 15, 20)
+        var picked = values.indexOf(current).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("冷静时长")
+            .setSingleChoiceItems(options, picked) { _, which -> picked = which }
+            .setPositiveButton("保存") { _, _ ->
+                prefs.edit().putInt("guard_cooldown_seconds", values[picked]).apply()
+                refreshGuardStatus()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 守护服务开关：首次需授权「使用情况访问」，之后一键启停。 */
@@ -208,6 +268,19 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this, "请允许 SmartLedger 的「使用情况访问权限」，返回后再次点击开启", Toast.LENGTH_LONG).show()
             }
             !running -> {
+                // 全屏冷静模式需要悬浮窗权限（未授权时服务自动退回通知模式）
+                val mode = prefs.getString("guard_mode", "overlay") ?: "overlay"
+                if (mode == "overlay" && !android.provider.Settings.canDrawOverlays(this)) {
+                    runCatching {
+                        startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.fromParts("package", packageName, null)
+                            )
+                        )
+                    }
+                    Toast.makeText(this, "建议允许「显示在其他应用上层」以启用全屏冷静，否则将使用通知提醒", Toast.LENGTH_LONG).show()
+                }
                 runCatching {
                     androidx.core.content.ContextCompat.startForegroundService(
                         this, Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java)

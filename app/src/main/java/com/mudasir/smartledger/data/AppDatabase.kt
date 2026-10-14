@@ -15,9 +15,10 @@ private data class Sub(val name: String, val color: String, val parent: String, 
     entities = [
         CalcHistory::class, Expense::class, Electricity::class, MilkRecord::class,
         CustomLedger::class, CustomEntry::class, CustomDailyRecord::class,
-        TransactionRecord::class, Category::class, PaymentChannel::class
+        TransactionRecord::class, Category::class, PaymentChannel::class,
+        WishlistItem::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -30,6 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
     abstract fun categoryDao(): CategoryDao
     abstract fun channelDao(): ChannelDao
+    abstract fun wishlistDao(): WishlistDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -155,6 +157,23 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE transactions ADD COLUMN stableId TEXT NOT NULL DEFAULT ''")
                 database.execSQL("UPDATE transactions SET stableId = lower(hex(randomblob(16))) WHERE stableId = ''")
                 database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_transactions_stableId ON transactions (stableId)")
+            }
+        }
+
+        // v15: 想好再买 · 愿望清单（24 小时冷静回访）
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS wishlist_items (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "name TEXT NOT NULL, " +
+                        "amount REAL NOT NULL, " +
+                        "createdAt INTEGER NOT NULL, " +
+                        "status TEXT NOT NULL, " +
+                        "resolvedAt INTEGER)"
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_wishlist_items_createdAt ON wishlist_items (createdAt)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_wishlist_items_status ON wishlist_items (status)")
             }
         }
 
@@ -310,7 +329,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_ledger_db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     // 全新安装时 onCreate 播种全量分类（迁移不会在全新库上执行）
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

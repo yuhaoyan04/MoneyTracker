@@ -11,13 +11,21 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
+import android.view.View
+import android.view.WindowManager
+import android.widget.TextView
 import androidx.core.app.ServiceCompat
+import android.widget.Toast
+import com.mudasir.smartledger.R
+import com.mudasir.smartledger.activity.WishlistAddActivity
 import com.mudasir.smartledger.data.AppDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 /**
@@ -165,11 +173,104 @@ class PurchaseGuardService : Service() {
                     com.mudasir.smartledger.data.TransactionRecord.TYPE_EXPENSE,
                     cal.timeInMillis, end.timeInMillis
                 )
-                val budget = getSharedPreferences("budget_prefs", Context.MODE_PRIVATE)
-                    .getFloat("monthly_budget", 0f).toDouble()
+                val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                val budget = prefs.getFloat("monthly_budget", 0f).toDouble()
                 val pct = if (budget > 0) ((spent / budget) * 100).toInt().coerceIn(0, 100) else null
-                PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
+                val mode = prefs.getString("guard_mode", "overlay") ?: "overlay"
+                withContext(Dispatchers.Main) {
+                    if (mode == "overlay" && Settings.canDrawOverlays(this@PurchaseGuardService)) {
+                        showCooldownOverlay(spent, pct)
+                    } else {
+                        PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
+                    }
+                }
             }
         }
+    }
+
+    // ===== 全屏强制冷静浮层 =====
+
+    private var overlayView: View? = null
+    private var overlayAutoRemove: Runnable? = null
+
+    private fun showCooldownOverlay(spent: Double, budgetPct: Int?) {
+        if (overlayView != null) return
+        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        val view = android.view.LayoutInflater.from(this)
+            .inflate(R.layout.view_cooldown_overlay, null)
+
+        val spendText = buildString {
+            append("本月已支出 ¥${"%.0f".format(spent)}")
+            budgetPct?.let { append(" · 预算已用 $it%") }
+        }
+        view.findViewById<TextView>(R.id.tvCooldownSpend).text = spendText
+
+        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        val cooldown = prefs.getInt("guard_cooldown_seconds", 5).coerceIn(3, 30)
+        val tvCountdown = view.findViewById<TextView>(R.id.tvCountdown)
+        val btnContinue = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnContinue)
+        val btnWishlist = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnWishlist)
+
+        var remain = cooldown
+        tvCountdown.text = remain.toString()
+        btnContinue.isEnabled = false
+        btnContinue.alpha = 0.45f
+
+        val tick = object : Runnable {
+            override fun run() {
+                remain--
+                if (remain > 0) {
+                    tvCountdown.text = remain.toString()
+                    handler.postDelayed(this, 1000)
+                } else {
+                    tvCountdown.text = "🧘"
+                    btnContinue.isEnabled = true
+                    btnContinue.alpha = 1f
+                    btnContinue.text = "我已三思，继续"
+                }
+            }
+        }
+        handler.postDelayed(tick, 1000)
+
+        btnContinue.setOnClickListener { removeOverlay() }
+        btnWishlist.setOnClickListener {
+            removeOverlay()
+            // SYSTEM_ALERT_WINDOW 已授权 → 允许从后台启动输入页（平台豁免）
+            runCatching {
+                startActivity(
+                    Intent(this@PurchaseGuardService, WishlistAddActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                Toast.makeText(this@PurchaseGuardService, "记录后 24 小时，我们会问你还想不想买", Toast.LENGTH_LONG).show()
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            android.graphics.PixelFormat.TRANSLUCENT
+        )
+        runCatching {
+            wm.addView(view, params)
+            overlayView = view
+            // 安全阀：60 秒无操作自动移除，绝不困住用户
+            val autoRemove = Runnable { removeOverlay() }
+            overlayAutoRemove = autoRemove
+            handler.postDelayed(autoRemove, 60_000)
+        }.onFailure { overlayView = null }
+    }
+
+    private fun removeOverlay() {
+        overlayAutoRemove?.let { handler.removeCallbacks(it) }
+        overlayAutoRemove = null
+        overlayView?.let { v ->
+            runCatching {
+                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v)
+            }
+        }
+        overlayView = null
     }
 }
