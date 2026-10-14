@@ -78,6 +78,9 @@ class PurchaseGuardService : Service() {
         private const val POLL_MS = 1500L
         private const val MIN_NUDGE_INTERVAL_MS = 5 * 60_000L
         private const val NOTIFICATION_ID = 2001
+
+        /** 三思授权冷却：确认放行后，同支付 App 在此时间内不重复拦截。 */
+        private const val APPROVAL_COOLDOWN_MS = 120_000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -182,12 +185,18 @@ class PurchaseGuardService : Service() {
             else -> payScreen
         }
         if (shouldNudge) {
-            // 精确模式下同款页面 60 秒内只提醒一次；宽松模式 5 分钟
-            val interval = if (scopeMode == "app") 5 * 60_000L else 60_000L
-            if (now - lastNudgeAt >= interval) {
-                lastNudgeAt = now
-                nudge()
-            }
+            // 2 分钟授权冷却：点过「我已三思，继续付款」后，同一支付意图视为已授权，
+            // 不再重复拦截（跨进程重启依然有效——冷却持久化在本地）。
+            // 2 分钟后再次进入付款页 → 重新拦截。
+            val lastPkg = prefs.getString("guard_last_pkg", "")
+            val lastAt = prefs.getLong("guard_last_at", 0L)
+            if (fg == lastPkg && now - lastAt < APPROVAL_COOLDOWN_MS) return
+            lastNudgeAt = now
+            prefs.edit()
+                .putString("guard_last_pkg", fg)
+                .putLong("guard_last_at", now)
+                .apply()
+            nudge()
         } else if (prev in watchedPackages) {
             // 离开支付应用/支付页面 → 撤下提醒
             PurchaseGuardNotifier.cancelThink(this)
@@ -294,8 +303,20 @@ class PurchaseGuardService : Service() {
         }
         handler.postDelayed(tick, 1000)
 
-        btnContinue.setOnClickListener { removeOverlay() }
+        btnContinue.setOnClickListener {
+            // 手动确认放行 → 刷新授权冷却（从此刻起 2 分钟内同 App 不再拦截）
+            getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
+                .putString("guard_last_pkg", currentFg ?: "")
+                .putLong("guard_last_at", System.currentTimeMillis())
+                .apply()
+            removeOverlay()
+        }
         btnWishlist.setOnClickListener {
+            // 记入愿望清单 = 放弃这次购买 → 同样刷新冷却
+            getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
+                .putString("guard_last_pkg", currentFg ?: "")
+                .putLong("guard_last_at", System.currentTimeMillis())
+                .apply()
             removeOverlay()
             // SYSTEM_ALERT_WINDOW 已授权 → 允许从后台启动输入页（平台豁免）
             runCatching {

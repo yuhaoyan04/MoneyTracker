@@ -232,14 +232,17 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 提醒方式：全屏冷静（需悬浮窗权限）/ 仅通知。 */
+    /** 提醒方式：全屏冷静（强制手动确认才放行）/ 仅通知（轻提醒）。 */
     private fun editGuardMode() {
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
         val current = prefs.getString("guard_mode", "overlay") ?: "overlay"
-        val options = arrayOf("全屏冷静（强制倒计时，推荐）", "仅通知")
+        val options = arrayOf(
+            "全屏冷静 · 强制倒计时，手动确认才放行（推荐）",
+            "仅通知 · 轻提醒，不打断操作"
+        )
         var picked = if (current == "overlay") 0 else 1
         AlertDialog.Builder(this)
-            .setTitle("提醒方式")
+            .setTitle("冷静强度")
             .setSingleChoiceItems(options, picked) { _, which -> picked = which }
             .setPositiveButton("保存") { _, _ ->
                 val mode = if (picked == 0) "overlay" else "notify"
