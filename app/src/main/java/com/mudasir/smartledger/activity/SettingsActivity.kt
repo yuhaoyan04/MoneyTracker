@@ -143,6 +143,13 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnClearIncome).setOnClickListener { confirmClear(TransactionRecord.TYPE_INCOME, "收入") }
 
         findViewById<TextView>(R.id.tvVersion).text = "v${BuildConfig.VERSION_NAME}"
+        findViewById<View>(R.id.rowPrivacy).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("隐私承诺")
+                .setMessage(com.mudasir.smartledger.util.PrivacyText.FULL)
+                .setPositiveButton("知道了", null)
+                .show()
+        }
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_settings)
     }
 

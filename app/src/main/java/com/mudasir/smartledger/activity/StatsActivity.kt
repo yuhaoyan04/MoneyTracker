@@ -47,6 +47,7 @@ import com.mudasir.smartledger.util.AiHelper
 import com.mudasir.smartledger.util.AiSettings
 import com.mudasir.smartledger.util.BottomNavHelper
 import com.mudasir.smartledger.util.FormatUtil
+import com.mudasir.smartledger.ml.PersonalTagger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -300,10 +301,29 @@ class StatsActivity : AppCompatActivity() {
                 findViewById<TextView>(R.id.tvSumExpense).text = FormatUtil.money(totalExpense)
                 findViewById<TextView>(R.id.tvSumBalance).text = FormatUtil.money(totalIncome - totalExpense)
                 findViewById<View>(R.id.tvEmpty).visibility = if (records.isEmpty()) View.VISIBLE else View.GONE
+                renderAiTrustCard()
                 renderInsights(insights)
                 renderPie(); renderBreakdown()
             }
         }
+    }
+
+    /** AI 打标信任卡片：把自进化引擎的能力可视化（数据足够时展示）。 */
+    private fun renderAiTrustCard() {
+        val card = findViewById<View>(R.id.cardAiTrust)
+        val (accepted, corrected) = PersonalTagger.learningStats(this)
+        if (accepted + corrected < 20) {
+            // 学习样本太少，采纳率无统计意义
+            card.visibility = View.GONE
+            return
+        }
+        val rate = (accepted * 100f / (accepted + corrected)).toInt()
+        val autoTagged = records.count { it.aiConfidence != null }
+        findViewById<TextView>(R.id.tvAiTrustBody).text =
+            "已学习 ${accepted + corrected} 笔 · 你的采纳率 ${rate}%" +
+                "（其余 ${corrected} 笔已按你的纠正调整）\n本月自动分类 $autoTagged 笔 · " +
+                "引擎正随你的习惯持续进化"
+        card.visibility = View.VISIBLE
     }
 
     /** 本地规则洞察：环比 / 头部分类 / 日均 / 最大单笔 / 笔数。纯离线，无 AI 依赖。 */

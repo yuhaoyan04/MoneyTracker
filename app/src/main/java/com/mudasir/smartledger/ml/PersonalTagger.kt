@@ -94,6 +94,10 @@ object PersonalTagger {
         var catCorrectedAway: MutableMap<String, MutableMap<String, Int>> = mutableMapOf(),
         /** 全局冷启动误判记忆：分类 → 该分类的冷启动建议被纠正的次数。 */
         var coldMisfire: MutableMap<String, Int> = mutableMapOf(),
+        /** 学习采纳统计：learn() 正样本数（AI 建议被接受）。 */
+        var acceptCount: Int = 0,
+        /** 学习采纳统计：correct() 用户纠正次数（AI 建议被改掉）。 */
+        var correctCount: Int = 0,
         var catStats: MutableMap<String, CatStat> = mutableMapOf(),
         var recurringMap: MutableMap<String, MutableList<RecurringInfo>> = mutableMapOf(),
         var lastUpdate: Long = 0
@@ -264,6 +268,12 @@ object PersonalTagger {
 
     // ===== 公开 API =====
 
+    /** 学习采纳统计：(采纳数, 纠正数) —— 采纳率 = 采纳/(采纳+纠正)，UI 信任卡片数据源。 */
+    fun learningStats(context: Context): Pair<Int, Int> = synchronized(lock) {
+        val m = loadImpl(context)
+        m.acceptCount to m.correctCount
+    }
+
     /** 带置信度的推荐结果：confidence ∈ [0,1]，可用于 UI 展示「AI 信心 92%」。 */
     data class Recommendation(val category: String, val confidence: Float)
 
@@ -408,6 +418,7 @@ object PersonalTagger {
             val feats = featuresOf(type, timestamp, amount, channel)
 
             m.total++
+            m.acceptCount++
             m.prior[category] = (m.prior[category] ?: 0) + 1
             for ((f, v) in feats) {
                 m.feat.getOrPut(f) { mutableMapOf() }
@@ -479,6 +490,7 @@ object PersonalTagger {
                     }
                 }
                 updateCatStats(m, oldCategory, amount, -1)
+                m.correctCount++
             }
 
             m.total++

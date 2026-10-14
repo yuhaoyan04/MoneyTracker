@@ -77,6 +77,14 @@ class HomeActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        // 首次启动 → 引导向导（授权三件套 + 导入历史账单的 aha 时刻）
+        if (!getSharedPreferences("onboarding_prefs", MODE_PRIVATE).getBoolean("done", false)) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+
         setContentView(R.layout.activity_home)
 
         locationLauncher.launch(
