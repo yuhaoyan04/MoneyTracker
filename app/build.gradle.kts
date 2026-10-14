@@ -16,8 +16,8 @@ android {
         targetSdk = 36
         // Compatibility rollback: v2.22.0 behavior with a higher version code so
         // devices already on v2.23.x can install it without uninstalling.
-        versionCode = 57
-        versionName = "2.29.3"
+        versionCode = 58
+        versionName = "2.30.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

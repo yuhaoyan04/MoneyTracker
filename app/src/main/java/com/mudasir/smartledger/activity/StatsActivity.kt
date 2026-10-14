@@ -47,7 +47,9 @@ import com.mudasir.smartledger.util.AiHelper
 import com.mudasir.smartledger.util.AiSettings
 import com.mudasir.smartledger.util.BottomNavHelper
 import com.mudasir.smartledger.util.FormatUtil
+import com.mudasir.smartledger.util.ReportCardBuilder
 import com.mudasir.smartledger.ml.PersonalTagger
+import android.content.Intent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -151,6 +153,7 @@ class StatsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnPrev).setOnClickListener { shiftMonth(-1) }
         findViewById<View>(R.id.btnNext).setOnClickListener { shiftMonth(1) }
         findViewById<View>(R.id.btnAi).setOnClickListener { runAiAnalysis() }
+        findViewById<View>(R.id.btnReportCard).setOnClickListener { showReportCardDialog() }
 
         findViewById<MaterialButtonToggleGroup>(R.id.toggleDim).addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
@@ -324,6 +327,76 @@ class StatsActivity : AppCompatActivity() {
                 "（其余 ${corrected} 笔已按你的纠正调整）\n本月自动分类 $autoTagged 笔 · " +
                 "引擎正随你的习惯持续进化"
         card.visibility = View.VISIBLE
+    }
+
+    /** 生成月报卡片 → 分享 / 保存到相册。 */
+    private fun showReportCardDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("月报卡片")
+            .setMessage("将生成本月账单卡片（收支概览 + 支出构成 TOP5 + 已省下统计），可分享给微信好友或保存到相册。")
+            .setPositiveButton("分享") { _, _ -> makeReportCard(share = true) }
+            .setNeutralButton("保存到相册") { _, _ -> makeReportCard(share = false) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun makeReportCard(share: Boolean) {
+        // 想好再买本月「已省下」统计
+        val savedStart = Calendar.getInstance().apply {
+            set(year, month, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val savedEnd = Calendar.getInstance().apply {
+            set(year, month, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0)
+        }.apply { add(Calendar.MONTH, 1) }.timeInMillis
+        lifecycleScope.launch(Dispatchers.IO) {
+            val catByName = db.categoryDao().getAll().associateBy { it.name }
+            val droppedAll = db.wishlistDao().getAll()
+                .filter { it.status == com.mudasir.smartledger.data.WishlistItem.STATUS_DROPPED }
+            val dropped = droppedAll.filter {
+                (it.resolvedAt ?: 0) >= savedStart && (it.resolvedAt ?: 0) < savedEnd
+            }
+            val savedTotal = dropped.sumOf { it.amount }
+            val bmp = ReportCardBuilder.build(
+                year, month, FormatUtil.monthLabel(year, month),
+                records, catByName, savedTotal, dropped.size
+            )
+            // 写入缓存供分享
+            val dir = java.io.File(cacheDir, "share").apply { mkdirs() }
+            val file = java.io.File(dir, "MoneyTracker_${year}年${month + 1}月账单.png")
+            file.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            withContext(Dispatchers.Main) {
+                if (share) {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        this@StatsActivity, "com.mudasir.smartledger.fileprovider", file
+                    )
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/png"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(Intent.createChooser(send, "分享月报卡片"))
+                } else {
+                    // 保存到相册（Pictures/MoneyTracker）
+                    val values = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, file.name)
+                        put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+                            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                                android.os.Environment.DIRECTORY_PICTURES + "/MoneyTracker")
+                    }
+                    runCatching {
+                        val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                            ?: error("无法写入相册")
+                        contentResolver.openOutputStream(uri)?.use {
+                            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                        }
+                        Toast.makeText(this@StatsActivity, "已保存到 相册/Pictures/MoneyTracker", Toast.LENGTH_LONG).show()
+                    }.onFailure {
+                        Toast.makeText(this@StatsActivity, "保存失败：${it.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
     }
 
     /** 本地规则洞察：环比 / 头部分类 / 日均 / 最大单笔 / 笔数。纯离线，无 AI 依赖。 */

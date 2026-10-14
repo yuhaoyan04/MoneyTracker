@@ -29,6 +29,8 @@ object PendingNotifier {
     /** 挂起调用：查询当前待确认数量并刷新/清除常驻通知。所有增删 PENDING 的地方都应调用。 */
     suspend fun update(context: Context) = withContext(Dispatchers.IO) {
         runCatching {
+            // 同步刷新桌面小组件（今日/本月支出随交易变化）
+            com.mudasir.smartledger.widget.StatsWidgetProvider.updateAll(context)
             val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
             val count = dao.countPending()
             if (count <= 0) {

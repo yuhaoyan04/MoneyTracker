@@ -202,5 +202,17 @@
             android:name=".util.WishlistActionReceiver"
             android:exported="false" />
 
+        <!-- 桌面小组件：今日支出 + 快速记账 -->
+        <receiver
+            android:name=".widget.StatsWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/stats_widget_info" />
+        </receiver>
+
     </application>
 </manifest>

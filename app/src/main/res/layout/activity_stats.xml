@@ -474,6 +474,16 @@
                 android:layout_marginTop="24dp"
                 android:text="AI 智能分析本月"
                 app:icon="@drawable/ic_ai_logo" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnReportCard"
+                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginTop="10dp"
+                android:text="生成月报卡片（分享 / 保存）"
+                app:icon="@drawable/ic_receipt" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 

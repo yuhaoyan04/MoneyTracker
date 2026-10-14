@@ -146,6 +146,7 @@ class HomeActivity : AppCompatActivity() {
 
         com.mudasir.smartledger.util.BackupWorker.schedulePeriodic(this)
         com.mudasir.smartledger.util.SilentConfirmWorker.schedulePeriodic(this)
+        com.mudasir.smartledger.util.MonthlyReportWorker.scheduleDaily(this)
 
         observeData()
     }
