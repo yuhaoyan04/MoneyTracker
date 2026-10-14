@@ -51,6 +51,16 @@ class PurchaseGuardService : Service() {
         var isRunning = false
             private set
 
+        /** 检测自检：守护服务最近一次识别到的前台页面与判定（设置页展示用）。 */
+        @Volatile
+        var debugPkg: String = ""
+        @Volatile
+        var debugCls: String = ""
+        @Volatile
+        var debugPay: Boolean = false
+        @Volatile
+        var debugUpdatedAt: Long = 0
+
         private val watchedPackages = setOf(
             "com.tencent.mm",                  // 微信
             "com.eg.android.AlipayGphone",     // 支付宝
@@ -182,6 +192,11 @@ class PurchaseGuardService : Service() {
             // 离开支付应用/支付页面 → 撤下提醒
             PurchaseGuardNotifier.cancelThink(this)
         }
+        // 检测自检数据（设置页实时展示）
+        debugPkg = fg
+        debugCls = cls
+        debugPay = payScreen
+        debugUpdatedAt = now
     }
 
     /**

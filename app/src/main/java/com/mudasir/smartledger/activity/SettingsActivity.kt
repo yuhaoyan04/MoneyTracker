@@ -138,6 +138,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnGuardMode).setOnClickListener { editGuardMode() }
         findViewById<View>(R.id.btnCooldown).setOnClickListener { editCooldown() }
         findViewById<View>(R.id.btnGuardScope).setOnClickListener { editGuardScope() }
+        findViewById<View>(R.id.btnGuardDebug).setOnClickListener { showGuardDebug() }
         findViewById<View>(R.id.btnWishlist).setOnClickListener {
             startActivity(Intent(this, WishlistActivity::class.java))
         }
@@ -321,6 +322,43 @@ class SettingsActivity : AppCompatActivity() {
                 refreshGuardStatus()
             }
         }
+    }
+
+    /** 检测自检：实时显示守护服务识别到的前台页面与判定，用于排查漏拦截。 */
+    private fun showGuardDebug() {
+        val tv = TextView(this).apply {
+            textSize = 13f
+            setPadding(0, 16, 0, 0)
+            typeface = android.graphics.Typeface.MONOSPACE
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("检测自检（实时）")
+            .setMessage("打开微信/支付宝/淘宝的付款页面，下面的识别结果会实时刷新。\n\n把识别不到的页面截图发给我们，即可精确补规则。")
+            .setView(tv)
+            .setPositiveButton("关闭", null)
+            .show()
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val updater = object : Runnable {
+            override fun run() {
+                if (!dialog.isShowing) return
+                val svc = com.mudasir.smartledger.util.PurchaseGuardService
+                if (!com.mudasir.smartledger.util.PurchaseGuardService.isRunning) {
+                    tv.text = "守护服务未运行——请先在上方开启"
+                } else if (svc.debugUpdatedAt == 0L) {
+                    tv.text = "等待页面事件…\n（请切换到微信/支付宝/淘宝的任意页面）"
+                } else {
+                    val age = ((System.currentTimeMillis() - svc.debugUpdatedAt) / 1000).toInt()
+                    tv.text = buildString {
+                        append("前台应用：${svc.debugPkg}\n")
+                        append("当前页面：${svc.debugCls}\n")
+                        append("判定：${if (svc.debugPay) "✓ 支付页面（已拦截）" else "非支付页面"}\n")
+                        append("更新于 ${age} 秒前")
+                    }
+                }
+                handler.postDelayed(this, 1000)
+            }
+        }
+        updater.run()
     }
 
     /** 大额消费提醒门槛输入。 */
