@@ -73,6 +73,8 @@ class PurchaseGuardService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastPoll = 0L
     private var currentFg: String? = null
+    private var currentCls: String? = null
+    private var lastKey = ""
     private var lastNudgeAt = 0L
     private var screenOn = true
 
@@ -131,30 +133,65 @@ class PurchaseGuardService : Service() {
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return
         val now = System.currentTimeMillis()
         val begin = if (lastPoll in 1 until now - 1000) lastPoll else now - 10_000
-        var latest: Pair<String, Long>? = null
+        var latestPkg: String? = null
+        var latestCls: String? = null
         val events = usm.queryEvents(begin, now)
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
-                latest = event.packageName to event.timeStamp
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+                latestPkg = event.packageName
+                latestCls = event.className ?: ""
             }
         }
         lastPoll = now
-        val fg = latest?.first ?: currentFg ?: return
-        if (fg == currentFg) return
+        val fg = latestPkg ?: currentFg ?: return
+        val cls = latestCls ?: currentCls ?: ""
+        if (fg == currentFg && cls == currentCls) return
+
+        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        val scopeMode = prefs.getString("guard_scope", "payment") ?: "payment"
+        val watchedHit = fg in watchedPackages
+        val payScreen = watchedHit && isPaymentScreen(fg, cls)
+        // 状态键：包名 + 是否支付界面（精确模式下同 App 内进入付款页也要触发）
+        val newKey = "$fg|$payScreen"
+        if (newKey == lastKey) return
         val prev = currentFg
         currentFg = fg
+        currentCls = cls
+        lastKey = newKey
 
-        if (fg in watchedPackages) {
-            val now2 = System.currentTimeMillis()
-            if (now2 - lastNudgeAt >= MIN_NUDGE_INTERVAL_MS) {
-                lastNudgeAt = now2
+        val shouldNudge = when (scopeMode) {
+            "app" -> watchedHit
+            else -> payScreen
+        }
+        if (shouldNudge) {
+            // 精确模式下同款页面 60 秒内只提醒一次；宽松模式 5 分钟
+            val interval = if (scopeMode == "app") 5 * 60_000L else 60_000L
+            if (now - lastNudgeAt >= interval) {
+                lastNudgeAt = now
                 nudge()
             }
         } else if (prev in watchedPackages) {
-            // 离开支付应用 → 撤下提醒
+            // 离开支付应用/支付页面 → 撤下提醒
             PurchaseGuardNotifier.cancelThink(this)
+        }
+    }
+
+    /**
+     * 支付界面判定（按 Activity 类名关键词，大小写不敏感）：
+     * - 微信：付款码(offline) / 转账(remittance) / 收付款入口(wallet.pay)
+     * - 支付宝及其它：收银台(cashier) / 支付页(pay)
+     * 各版本类名可能变化，若失效应切换到设置中的「宽松模式」。
+     */
+    private fun isPaymentScreen(pkg: String, cls: String): Boolean {
+        val c = cls.lowercase()
+        return when {
+            pkg == "com.tencent.mm" ->
+                listOf("offline", "remittance", "wallet.pay").any { c.contains(it) }
+            pkg.startsWith("com.eg.android.AlipayGphone") ->
+                listOf("cashier", "payui", "payment", "pay").any { c.contains(it) }
+            else -> listOf("cashier", "pay").any { c.contains(it) }
         }
     }
 

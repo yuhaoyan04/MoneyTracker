@@ -137,6 +137,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnThreshold).setOnClickListener { editThreshold() }
         findViewById<View>(R.id.btnGuardMode).setOnClickListener { editGuardMode() }
         findViewById<View>(R.id.btnCooldown).setOnClickListener { editCooldown() }
+        findViewById<View>(R.id.btnGuardScope).setOnClickListener { editGuardScope() }
         findViewById<View>(R.id.btnWishlist).setOnClickListener {
             startActivity(Intent(this, WishlistActivity::class.java))
         }
@@ -201,12 +202,33 @@ class SettingsActivity : AppCompatActivity() {
         val threshold = prefs.getFloat("big_spend_threshold", 500f)
         findViewById<TextView>(R.id.tvThreshold).text = "¥${threshold.toInt()}"
 
-        // 提醒方式 / 冷静时长
+        // 提醒方式 / 冷静时长 / 提醒范围
         val mode = prefs.getString("guard_mode", "overlay") ?: "overlay"
         findViewById<TextView>(R.id.tvGuardMode).text =
             if (mode == "overlay") "全屏冷静（强制倒计时）" else "仅通知"
         val cooldown = prefs.getInt("guard_cooldown_seconds", 5)
         findViewById<TextView>(R.id.tvCooldown).text = "$cooldown 秒"
+        val scope = prefs.getString("guard_scope", "payment") ?: "payment"
+        findViewById<TextView>(R.id.tvGuardScope).text =
+            if (scope == "payment") "进入支付页面时" else "打开支付应用时"
+    }
+
+    /** 提醒范围：精确（进入付款页面）/ 宽松（打开支付应用）。 */
+    private fun editGuardScope() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val current = prefs.getString("guard_scope", "payment") ?: "payment"
+        val options = arrayOf("进入支付页面时（推荐，聊天/浏览不打扰）", "打开支付应用时（宽松）")
+        var picked = if (current == "app") 1 else 0
+        AlertDialog.Builder(this)
+            .setTitle("提醒范围")
+            .setSingleChoiceItems(options, picked) { _, which -> picked = which }
+            .setPositiveButton("保存") { _, _ ->
+                val scope = if (picked == 0) "payment" else "app"
+                prefs.edit().putString("guard_scope", scope).apply()
+                refreshGuardStatus()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 提醒方式：全屏冷静（需悬浮窗权限）/ 仅通知。 */
