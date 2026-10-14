@@ -91,6 +91,17 @@ class HomeActivity : AppCompatActivity() {
         }
         // 自愈：启动时若有待确认交易，确保常驻通知存在
         refreshPendingNotification()
+        // 想好再买：开启过则自动拉起守护服务（系统杀掉后自愈）
+        if (getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                .getBoolean("guard_enabled", false) &&
+            com.mudasir.smartledger.util.PermissionHelper.hasUsageAccess(this)
+        ) {
+            runCatching {
+                androidx.core.content.ContextCompat.startForegroundService(
+                    this, Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java)
+                )
+            }
+        }
 
         adapter = TransactionAdapter { r ->
             startActivity(Intent(this, AddEditTransactionActivity::class.java).putExtra(AddEditTransactionActivity.EXTRA_ID, r.id))

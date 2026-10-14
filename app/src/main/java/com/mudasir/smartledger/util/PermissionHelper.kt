@@ -27,4 +27,28 @@ object PermissionHelper {
             android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
+    /** 「想好再买」所需的使用情况访问权限（检测支付应用进入前台）。 */
+    fun hasUsageAccess(context: Context): Boolean {
+        val ops = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        val mode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+            ops.unsafeCheckOpNoThrow(
+                android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(), context.packageName
+            )
+        else
+            @Suppress("DEPRECATION")
+            ops.checkOpNoThrow(
+                android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(), context.packageName
+            )
+        return mode == android.app.AppOpsManager.MODE_ALLOWED
+    }
+
+    fun openUsageAccessSettings(context: Context) {
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure {
+            context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
 }

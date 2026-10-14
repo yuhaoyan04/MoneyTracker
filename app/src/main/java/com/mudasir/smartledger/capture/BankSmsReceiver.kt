@@ -114,6 +114,17 @@ class BankSmsReceiver : BroadcastReceiver() {
                 )
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(context.applicationContext) }
                 com.mudasir.smartledger.util.PendingNotifier.update(context.applicationContext)
+                // 想好再买：超过门槛的大额消费 → 立即冷静提醒
+                if (parsed.type == TransactionRecord.TYPE_EXPENSE && parsed.amount > 0) {
+                    val threshold = context.applicationContext
+                        .getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                        .getFloat("big_spend_threshold", 500f)
+                    if (parsed.amount >= threshold) {
+                        com.mudasir.smartledger.util.PurchaseGuardNotifier.notifyBigSpend(
+                            context.applicationContext, parsed.amount, parsed.merchant ?: "银行卡消费"
+                        )
+                    }
+                }
             }.onFailure { android.util.Log.w("BankSmsReceiver", "sms capture failed", it) }
         }
     }

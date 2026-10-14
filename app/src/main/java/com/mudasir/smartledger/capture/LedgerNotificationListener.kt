@@ -1,6 +1,7 @@
 package com.mudasir.smartledger.capture
 
 import android.app.Notification
+import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.mudasir.smartledger.data.AppDatabase
@@ -233,6 +234,16 @@ class LedgerNotificationListener : NotificationListenerService() {
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
                 // 有新的待确认交易 → 刷新常驻通知
                 com.mudasir.smartledger.util.PendingNotifier.update(applicationContext)
+                // 想好再买：超过门槛的大额消费 → 立即冷静提醒
+                if (rec.type == TransactionRecord.TYPE_EXPENSE && rec.amount > 0) {
+                    val threshold = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                        .getFloat("big_spend_threshold", 500f)
+                    if (rec.amount >= threshold) {
+                        com.mudasir.smartledger.util.PurchaseGuardNotifier.notifyBigSpend(
+                            applicationContext, rec.amount, enrichedMerchant ?: "支付"
+                        )
+                    }
+                }
             } else if (hasAction) {
                 // 兜底：白名单内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏
                 val fallbackMerchant = title.takeIf { it.isNotBlank() && !needsMerchant(title) }

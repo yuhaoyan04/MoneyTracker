@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -132,6 +133,8 @@ class SettingsActivity : AppCompatActivity() {
                 .setNegativeButton("取消", null)
                 .show()
         }
+        findViewById<View>(R.id.btnGuard).setOnClickListener { toggleGuard() }
+        findViewById<View>(R.id.btnThreshold).setOnClickListener { editThreshold() }
         findViewById<View>(R.id.btnExportCsv).setOnClickListener {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             csvExportLauncher.launch("SmartLedger_${sdf.format(Date())}.csv")
@@ -151,7 +154,97 @@ class SettingsActivity : AppCompatActivity() {
         refreshPermissionStatus()
         refreshAiStatus()
         refreshBackupStatus()
+        refreshGuardStatus()
         BackupWorker.schedulePeriodic(this)
+    }
+
+    /** 想好再买：状态刷新（使用情况权限 + 守护服务运行态）。 */
+    private fun refreshGuardStatus() {
+        val tv = findViewById<TextView>(R.id.tvGuardStatus)
+        val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnGuard)
+        val usageOk = PermissionHelper.hasUsageAccess(this)
+        val running = com.mudasir.smartledger.util.PurchaseGuardService.isRunning
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        when {
+            running && usageOk -> {
+                tv.text = "已开启"
+                tv.setTextColor(getColorCompat(R.color.color_income))
+                btn.visibility = View.VISIBLE
+                btn.text = "关闭提醒"
+            }
+            !usageOk -> {
+                tv.text = "需授权使用情况访问"
+                tv.setTextColor(getColorCompat(R.color.color_expense))
+                btn.visibility = View.VISIBLE
+                btn.text = "去授权"
+            }
+            else -> {
+                tv.text = "未开启"
+                tv.setTextColor(getColorCompat(R.color.color_expense))
+                btn.visibility = View.VISIBLE
+                btn.text = "去开启"
+            }
+        }
+        // 门槛显示
+        val threshold = prefs.getFloat("big_spend_threshold", 500f)
+        findViewById<TextView>(R.id.tvThreshold).text = "¥${threshold.toInt()}"
+    }
+
+    /** 守护服务开关：首次需授权「使用情况访问」，之后一键启停。 */
+    private fun toggleGuard() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val usageOk = PermissionHelper.hasUsageAccess(this)
+        val running = com.mudasir.smartledger.util.PurchaseGuardService.isRunning
+        when {
+            !usageOk -> {
+                PermissionHelper.openUsageAccessSettings(this)
+                Toast.makeText(this, "请允许 SmartLedger 的「使用情况访问权限」，返回后再次点击开启", Toast.LENGTH_LONG).show()
+            }
+            !running -> {
+                runCatching {
+                    androidx.core.content.ContextCompat.startForegroundService(
+                        this, Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java)
+                    )
+                }.onFailure {
+                    Toast.makeText(this, "启动守护服务失败：${it.message}", Toast.LENGTH_LONG).show()
+                }
+                prefs.edit().putBoolean("guard_enabled", true).apply()
+                Toast.makeText(this, "想好再买已开启 · 进入支付应用时会提醒你", Toast.LENGTH_LONG).show()
+                refreshGuardStatus()
+            }
+            else -> {
+                stopService(Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java))
+                prefs.edit().putBoolean("guard_enabled", false).apply()
+                Toast.makeText(this, "想好再买已关闭", Toast.LENGTH_SHORT).show()
+                refreshGuardStatus()
+            }
+        }
+    }
+
+    /** 大额消费提醒门槛输入。 */
+    private fun editThreshold() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            hint = "金额（元），最低 10"
+            setText(prefs.getFloat("big_spend_threshold", 500f).toInt().toString())
+        }
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val wrap = LinearLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("大额消费提醒门槛")
+            .setMessage("超过此金额的消费被抓取时，立即弹出「想好再买」冷静提醒。")
+            .setView(wrap)
+            .setPositiveButton("保存") { _, _ ->
+                val v = input.text?.toString()?.trim()?.toDoubleOrNull() ?: 500.0
+                prefs.edit().putFloat("big_spend_threshold", v.coerceAtLeast(10.0).toFloat()).apply()
+                refreshGuardStatus()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun refreshAiStatus() {
