@@ -154,6 +154,9 @@ class StatsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnNext).setOnClickListener { shiftMonth(1) }
         findViewById<View>(R.id.btnAi).setOnClickListener { runAiAnalysis() }
         findViewById<View>(R.id.btnReportCard).setOnClickListener { showReportCardDialog() }
+        findViewById<View>(R.id.btnYearly).setOnClickListener {
+            startActivity(android.content.Intent(this, YearlyReportActivity::class.java))
+        }
 
         findViewById<MaterialButtonToggleGroup>(R.id.toggleDim).addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener

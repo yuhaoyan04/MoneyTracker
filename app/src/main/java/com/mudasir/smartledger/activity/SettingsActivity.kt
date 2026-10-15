@@ -1,4 +1,4 @@
-﻿package com.mudasir.smartledger.activity
+package com.mudasir.smartledger.activity
 
 import android.Manifest
 import android.content.Intent
@@ -143,6 +143,15 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnWishlist).setOnClickListener {
             startActivity(Intent(this, WishlistActivity::class.java))
         }
+        findViewById<View>(R.id.btnProActivate).setOnClickListener { activatePro() }
+        findViewById<View>(R.id.btnProDeactivate).setOnClickListener {
+            com.mudasir.smartledger.util.ProManager.deactivate(this)
+            refreshProStatus()
+            Toast.makeText(this, "已退出 Pro 激活", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<View>(R.id.btnWebdavConfig).setOnClickListener { editWebdavConfig() }
+        findViewById<View>(R.id.btnWebdavUpload).setOnClickListener { webdavUpload() }
+        findViewById<View>(R.id.btnWebdavRestore).setOnClickListener { webdavRestore() }
         findViewById<View>(R.id.btnExportCsv).setOnClickListener {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             csvExportLauncher.launch("SmartLedger_${sdf.format(Date())}.csv")
@@ -170,6 +179,7 @@ class SettingsActivity : AppCompatActivity() {
         refreshAiStatus()
         refreshBackupStatus()
         refreshGuardStatus()
+        refreshProStatus()
         BackupWorker.schedulePeriodic(this)
     }
 
@@ -203,6 +213,10 @@ class SettingsActivity : AppCompatActivity() {
         // 门槛显示
         val threshold = prefs.getFloat("big_spend_threshold", 500f)
         findViewById<TextView>(R.id.tvThreshold).text = "¥${threshold.toInt()}"
+
+        // WebDAV 配置状态
+        findViewById<TextView>(R.id.tvWebdavStatus).text =
+            if (com.mudasir.smartledger.util.WebDavSync.loadConfig(this) != null) "已配置" else "未配置"
 
         // 悬浮球状态
         val ballOn = prefs.getBoolean("ball_enabled", false) &&
@@ -701,6 +715,167 @@ class SettingsActivity : AppCompatActivity() {
                 bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
             }
         }
+    }
+
+    /** Pro 授权状态刷新 + WebDAV 配置状态。 */
+    private fun refreshProStatus() {
+        val tv = findViewById<TextView>(R.id.tvProStatus)
+        val btnActivate = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnProActivate)
+        val btnDeactivate = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnProDeactivate)
+        val info = if (com.mudasir.smartledger.util.ProManager.isPro(this))
+            com.mudasir.smartledger.util.ProManager.verify(com.mudasir.smartledger.util.ProManager.storedLicense(this))
+        else null
+        if (info != null) {
+            tv.text = if (info.name.isNotBlank()) "已激活 · ${info.name}" else "已激活 · ${info.email}"
+            tv.setTextColor(getColorCompat(R.color.color_income))
+            btnActivate.visibility = View.GONE
+            btnDeactivate.visibility = View.VISIBLE
+        } else {
+            tv.text = "未激活"
+            tv.setTextColor(getColorCompat(R.color.color_expense))
+            btnActivate.visibility = View.VISIBLE
+            btnActivate.text = "激活 Pro（输入授权码）"
+            btnDeactivate.visibility = View.GONE
+        }
+        val cfg = com.mudasir.smartledger.util.WebDavSync.loadConfig(this)
+        findViewById<TextView>(R.id.tvWebdavStatus).text = if (cfg != null) "已配置" else "未配置"
+    }
+
+    /** 激活 Pro：粘贴授权码离线验证。 */
+    private fun activatePro() {
+        val input = android.widget.EditText(this).apply {
+            hint = "粘贴授权码（LICENSE=... 开头亦可）"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+            addView(TextView(this@SettingsActivity).apply {
+                text = "授权码获取与购买：yizhilaotian@gmail.com"
+                textSize = 12f
+                setTextColor(getColorCompat(R.color.text_secondary))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("激活 MoneyTracker Pro")
+            .setView(wrap)
+            .setPositiveButton("激活") { _, _ ->
+                val raw = input.text?.toString()?.trim().orEmpty()
+                val license = raw.substringAfter("LICENSE=", raw)
+                val info = com.mudasir.smartledger.util.ProManager.activate(this, license)
+                if (info != null) {
+                    refreshProStatus()
+                    Toast.makeText(this, "Pro 已激活 · 感谢支持！", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "授权码无效", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** WebDAV 服务器配置（服务器/账号/应用密码/加密口令）。 */
+    private fun editWebdavConfig() {
+        val prefs = getSharedPreferences("webdav_prefs", MODE_PRIVATE)
+        val saved = com.mudasir.smartledger.util.WebDavSync.loadConfig(this)
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        fun addField(label: String, hint: String, value: String, password: Boolean): android.widget.EditText {
+            wrap.addView(TextView(this).apply {
+                text = label
+                textSize = 12f
+                setTextColor(getColorCompat(R.color.text_secondary))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = (10 * resources.displayMetrics.density).toInt()
+            })
+            val et = android.widget.EditText(this).apply {
+                this.hint = hint
+                setText(value)
+                inputType = if (password)
+                    android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                else android.text.InputType.TYPE_CLASS_TEXT
+            }
+            wrap.addView(et, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            return et
+        }
+        val etServer = addField("服务器地址", "如 https://dav.jianguoyun.com/dav/", saved?.serverUrl ?: "https://dav.jianguoyun.com/dav/", false)
+        val etUser = addField("账号", "登录账号", saved?.user ?: "", false)
+        val etPassword = addField("应用密码", "应用密码", saved?.password ?: "", true)
+        val etPassphrase = addField("端到端加密口令", "忘记将无法恢复云端备份", "", true)
+
+        AlertDialog.Builder(this)
+            .setTitle("WebDAV 云同步配置")
+            .setView(wrap)
+            .setPositiveButton("保存") { _, _ ->
+                com.mudasir.smartledger.util.WebDavSync.saveConfig(
+                    this,
+                    com.mudasir.smartledger.util.WebDavSync.Config(
+                        serverUrl = etServer.text?.toString()?.trim().orEmpty(),
+                        user = etUser.text?.toString()?.trim().orEmpty(),
+                        password = etPassword.text?.toString().orEmpty(),
+                        passphrase = etPassphrase.text?.toString()?.trim().orEmpty()
+                    )
+                )
+                refreshProStatus()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun webdavUpload() {
+        val cfg = com.mudasir.smartledger.util.WebDavSync.loadConfig(this)
+        if (cfg == null) {
+            Toast.makeText(this, "请先配置 WebDAV 服务器", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!com.mudasir.smartledger.util.ProManager.isPro(this)) {
+            Toast.makeText(this, "云同步属于 Pro 功能", Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            com.mudasir.smartledger.util.WebDavSync.upload(this@SettingsActivity, cfg)
+                .onSuccess { name ->
+                    refreshBackupStatus()
+                    Toast.makeText(this@SettingsActivity, "已上传加密备份：$name", Toast.LENGTH_LONG).show()
+                }
+                .onFailure {
+                    Toast.makeText(this@SettingsActivity, "上传失败：${it.message}", Toast.LENGTH_LONG).show()
+                }
+        }
+    }
+
+    private fun webdavRestore() {
+        val cfg = com.mudasir.smartledger.util.WebDavSync.loadConfig(this)
+        if (cfg == null) {
+            Toast.makeText(this, "请先配置 WebDAV 服务器", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("从云端恢复")
+            .setMessage("将下载云端最新加密备份并合并到本地账本（按指纹去重，不覆盖现有记录）。继续？")
+            .setPositiveButton("恢复") { _, _ ->
+                lifecycleScope.launch {
+                    com.mudasir.smartledger.util.WebDavSync.restore(this@SettingsActivity, cfg)
+                        .onSuccess { report ->
+                            refreshBackupStatus()
+                            Toast.makeText(
+                                this@SettingsActivity,
+                                "恢复完成：新增 ${report.inserted} · 更新 ${report.updated} · 跳过 ${report.skipped}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        .onFailure {
+                            Toast.makeText(this@SettingsActivity, "恢复失败：${it.message}", Toast.LENGTH_LONG).show()
+                        }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun getColorCompat(resId: Int): Int = androidx.core.content.ContextCompat.getColor(this, resId)

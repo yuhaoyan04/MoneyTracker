@@ -95,6 +95,13 @@ object AutoBackupManager {
         return runCatching { restoreJson(context, json) }.getOrNull()
     }
 
+    /** 供 WebDAV 云同步：生成当前账本的可迁移信封 JSON。 */
+    fun envelopeJsonForSync(context: Context): String? = runCatching { createBackupJson(context) }.getOrNull()
+
+    /** 供 WebDAV 云同步：解析并恢复云端下载的信封 JSON（走同一校验+合并管线）。 */
+    fun restoreFromEnvelopeJson(context: Context, json: String): LedgerRestoreReport? =
+        runCatching { restoreJson(context, json) }.getOrNull()
+
     /** Restore a user-selected backup; this remains reliable across reinstall and OEM variants. */
     fun restoreFromUri(context: Context, uri: Uri): LedgerRestoreReport =
         context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
