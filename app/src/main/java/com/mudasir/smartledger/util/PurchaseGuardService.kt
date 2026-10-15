@@ -1,24 +1,37 @@
 package com.mudasir.smartledger.util
 
+import android.app.Service
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
-import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
-import android.util.Log
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
+import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.app.ServiceCompat
 import android.widget.Toast
+import kotlin.math.abs
+import androidx.core.app.ServiceCompat
 import com.mudasir.smartledger.R
+import com.mudasir.smartledger.activity.AddEditTransactionActivity
+import com.mudasir.smartledger.activity.CaptureInboxActivity
+import com.mudasir.smartledger.activity.SettingsActivity
 import com.mudasir.smartledger.activity.WishlistAddActivity
 import com.mudasir.smartledger.data.AppDatabase
 import kotlinx.coroutines.CoroutineScope
@@ -30,28 +43,26 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 /**
- * 「想好再买」守护服务（前台服务 + UsageStats）：
+ * 「想好再买」守护服务 + 悬浮球：
  *
- * 用户进入微信/支付宝等支付应用时，立即弹出冷静提醒
- * （本月已支出语境 + 预算进度），离开支付应用自动撤下。
+ * 1. 支付语境提醒：用户进入支付应用付款页面时，弹出冷静浮层/通知
+ *    （UsageStatsManager 页面级检测，输入密码之前完成干预）
+ * 2. 悬浮球：全局可拖动小球（待确认角标），单击展开快捷面板
+ *    （记一笔/收件箱/想好再买/隐藏），双击直达记一笔
  *
- * 平台约束说明：
- * - Android 不允许第三方 App 在付款确认前读取金额/商户，因此提醒基于
- *   「进入支付应用」这一语境，而非具体订单 —— 这是隐私与能力的诚实边界
- * - 使用 UsageStatsManager（使用情况访问权限），稳定性远好于无障碍方案
- * - 屏幕熄灭时暂停轮询以省电
+ * 平台约束：Android 不允许第三方 App 在付款确认前读取金额/商户，
+ * 提醒基于「进入支付页面」语境；金额维度由大额预警在支付后立即补上。
  */
 class PurchaseGuardService : Service() {
 
     companion object {
         const val CHANNEL_ACTIVE = PurchaseGuardNotifier.CHANNEL_ACTIVE
 
-        /** 同进程内可读的运行态（设置页状态展示用）。 */
         @Volatile
         var isRunning = false
             private set
 
-        /** 检测自检：守护服务最近一次识别到的前台页面与判定（设置页展示用）。 */
+        /** 检测自检：最近一次识别到的前台页面与判定（设置页实时展示）。 */
         @Volatile
         var debugPkg: String = ""
         @Volatile
@@ -62,6 +73,29 @@ class PurchaseGuardService : Service() {
         var debugUpdatedAt: Long = 0
         @Volatile
         var debugHistory: List<String> = emptyList()
+
+        @Volatile
+        private var instance: PurchaseGuardService? = null
+
+        /** 悬浮球开关（设置页与面板共用）。 */
+        fun setBallEnabled(context: Context, enabled: Boolean) {
+            context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                .edit().putBoolean("ball_enabled", enabled).apply()
+            if (enabled && !isRunning) {
+                androidx.core.content.ContextCompat.startForegroundService(
+                    context, Intent(context, PurchaseGuardService::class.java)
+                )
+            }
+            instance?.apply { handler.post { applyBallVisibility() } }
+        }
+
+        fun refreshBallBadge(context: Context) {
+            instance?.handler?.post { instance?.updateBallBadge() }
+        }
+
+        fun applyBall(context: Context) {
+            instance?.handler?.post { instance?.applyBallVisibility() }
+        }
 
         private val watchedPackages = setOf(
             "com.tencent.mm",                  // 微信
@@ -78,11 +112,12 @@ class PurchaseGuardService : Service() {
         )
 
         private const val POLL_MS = 1500L
-        private const val MIN_NUDGE_INTERVAL_MS = 5 * 60_000L
         private const val NOTIFICATION_ID = 2001
 
         /** 三思授权冷却：确认放行后，同支付 App 在此时间内不重复拦截。 */
         private const val APPROVAL_COOLDOWN_MS = 120_000L
+        private const val BALL_SIZE_DP = 44
+        private const val PANEL_WIDTH_DP = 168
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -93,6 +128,7 @@ class PurchaseGuardService : Service() {
     private var lastKey = ""
     private var lastNudgeAt = 0L
     private var screenOn = true
+    private var pollCount = 0
 
     private val screenReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -104,6 +140,9 @@ class PurchaseGuardService : Service() {
     private val pollRunnable = object : Runnable {
         override fun run() {
             if (screenOn) runCatching { checkForeground() }
+            // 悬浮球角标：每 4 次轮询（约 6 秒）同步一次待确认数
+            pollCount++
+            if (ballView != null && pollCount % 4 == 0) updateBallBadge()
             handler.postDelayed(this, POLL_MS)
         }
     }
@@ -113,8 +152,8 @@ class PurchaseGuardService : Service() {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        instance = this
         PurchaseGuardNotifier.ensureChannels(this)
-        // 前台服务类型：specialUse —— 支付语境提醒无法归入其他 FGS 类型
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 NOTIFICATION_ID, PurchaseGuardNotifier.buildActive(this),
@@ -131,6 +170,7 @@ class PurchaseGuardService : Service() {
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_ON).also {
             it.addAction(Intent.ACTION_SCREEN_OFF)
         })
+        applyBallVisibility()
         handler.post(pollRunnable)
     }
 
@@ -138,12 +178,17 @@ class PurchaseGuardService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        instance = null
+        removePanel()
+        removeBall()
         runCatching { unregisterReceiver(screenReceiver) }
         handler.removeCallbacksAndMessages(null)
         PurchaseGuardNotifier.cancelThink(this)
         scope.cancel()
         super.onDestroy()
     }
+
+    // ===== 支付页面检测 =====
 
     private fun checkForeground() {
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return
@@ -172,9 +217,10 @@ class PurchaseGuardService : Service() {
         val scopeMode = prefs.getString("guard_scope", "payment") ?: "payment"
         val watchedHit = fg in watchedPackages
         val payScreen = watchedHit && isPaymentScreen(fg, cls)
-        // 调试可见性：受监控 App 内的页面切换记录（logcat 过滤 PurchaseGuard）
-        if (watchedHit) Log.d("PurchaseGuard", "fg=$fg cls=$cls payScreen=$payScreen")
-        // 状态键：包名 + 是否支付界面（精确模式下同 App 内进入付款页也要触发）
+        if (watchedHit) {
+            Log.d("PurchaseGuard", "fg=$fg cls=$cls payScreen=$payScreen")
+            pushHistory(fg, cls, payScreen)
+        }
         val newKey = "$fg|$cls|$payScreen"
         if (newKey == lastKey) return
         val prev = currentFg
@@ -187,9 +233,7 @@ class PurchaseGuardService : Service() {
             else -> payScreen
         }
         if (shouldNudge) {
-            // 2 分钟授权冷却：点过「我已三思，继续付款」后，同一支付意图视为已授权，
-            // 不再重复拦截（跨进程重启依然有效——冷却持久化在本地）。
-            // 2 分钟后再次进入付款页 → 重新拦截。
+            // 2 分钟授权冷却：确认放行后同一支付意图不重复拦截（持久化，跨进程重启有效）
             val lastPkg = prefs.getString("guard_last_pkg", "")
             val lastAt = prefs.getLong("guard_last_at", 0L)
             if (fg == lastPkg && now - lastAt < APPROVAL_COOLDOWN_MS) return
@@ -200,11 +244,8 @@ class PurchaseGuardService : Service() {
                 .apply()
             nudge()
         } else if (prev in watchedPackages) {
-            // 离开支付应用/支付页面 → 撤下提醒
             PurchaseGuardNotifier.cancelThink(this)
         }
-        // 检测自检数据（设置页实时展示）
-        if (watchedHit) pushHistory(fg, cls, payScreen)
         debugPkg = fg
         debugCls = cls
         debugPay = payScreen
@@ -212,15 +253,6 @@ class PurchaseGuardService : Service() {
         debugHistory = historyDeque.toList()
     }
 
-    /**
-     * 支付界面判定：
-     * - 支付宝 SDK 收银台可能出现在任意购物 App 进程内（淘宝/京东/美团跳支付宝），
-     *   类名含 alipay+pay/cashier 时无论包名一律视为支付页
-     * - 微信：付款码(offline) / 转账(remittance) / 收付款入口(wallet.pay)，
-     *   并以 "pay" 兜底（WalletPayUI/PayUI 等变体）
-     * - 其余包：cashier / pay / trade 关键词
-     * 各版本类名可能变化，若失效应切换到设置中的「宽松模式」。
-     */
     private fun isPaymentScreen(pkg: String, cls: String): Boolean {
         val c = cls.lowercase()
         if (c.contains("alipay") && (c.contains("pay") || c.contains("cashier"))) return true
@@ -233,9 +265,6 @@ class PurchaseGuardService : Service() {
             else -> listOf("pay", "trade").any { c.contains(it) }
         }
     }
-
-    /** 页面判定历史环形缓冲（最近 12 条，检测自检弹窗展示，方便反馈精确类名）。 */
-    private val historyDeque = ArrayDeque<String>()
 
     private fun pushHistory(pkg: String, cls: String, pay: Boolean) {
         val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
@@ -274,7 +303,7 @@ class PurchaseGuardService : Service() {
         }
     }
 
-    // ===== 全屏强制冷静浮层 =====
+    // ===== 强制冷静浮层 =====
 
     private var overlayView: View? = null
     private var overlayAutoRemove: Runnable? = null
@@ -312,14 +341,13 @@ class PurchaseGuardService : Service() {
                     tvCountdown.text = "🧘"
                     btnContinue.isEnabled = true
                     btnContinue.alpha = 1f
-                    btnContinue.text = "我已三思，继续"
+                    btnContinue.text = "我已三思，继续付款"
                 }
             }
         }
         handler.postDelayed(tick, 1000)
 
         btnContinue.setOnClickListener {
-            // 手动确认放行 → 刷新授权冷却（从此刻起 2 分钟内同 App 不再拦截）
             getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
                 .putString("guard_last_pkg", currentFg ?: "")
                 .putLong("guard_last_at", System.currentTimeMillis())
@@ -327,19 +355,17 @@ class PurchaseGuardService : Service() {
             removeOverlay()
         }
         btnWishlist.setOnClickListener {
-            // 记入愿望清单 = 放弃这次购买 → 同样刷新冷却
             getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
                 .putString("guard_last_pkg", currentFg ?: "")
                 .putLong("guard_last_at", System.currentTimeMillis())
                 .apply()
             removeOverlay()
-            // SYSTEM_ALERT_WINDOW 已授权 → 允许从后台启动输入页（平台豁免）
             runCatching {
                 startActivity(
-                    Intent(this@PurchaseGuardService, WishlistAddActivity::class.java)
+                    Intent(this, WishlistAddActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
-                Toast.makeText(this@PurchaseGuardService, "记录后 24 小时，我们会问你还想不想买", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "记录后 24 小时，我们会问你还想不想买", Toast.LENGTH_LONG).show()
             }
         }
 
@@ -354,7 +380,6 @@ class PurchaseGuardService : Service() {
         runCatching {
             wm.addView(view, params)
             overlayView = view
-            // 安全阀：60 秒无操作自动移除，绝不困住用户
             val autoRemove = Runnable { removeOverlay() }
             overlayAutoRemove = autoRemove
             handler.postDelayed(autoRemove, 60_000)
@@ -371,4 +396,299 @@ class PurchaseGuardService : Service() {
         }
         overlayView = null
     }
+
+    // ===== 悬浮球 =====
+
+    private var ballView: View? = null
+    private var ballParams: WindowManager.LayoutParams? = null
+    private var panelView: View? = null
+    private var panelParams: WindowManager.LayoutParams? = null
+    private var ballBadge: TextView? = null
+    private var pendingSingleTap: Runnable? = null
+    private var lastTapUpElapsed = 0L
+    private var pendingCount = 0
+
+    private fun ballEnabled(): Boolean =
+        getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            .getBoolean("ball_enabled", false)
+
+    private fun applyBallVisibility() {
+        if (ballEnabled() && Settings.canDrawOverlays(this)) showBall() else { removePanel(); removeBall() }
+    }
+
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    private fun showBall() {
+        if (ballView != null) return
+        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        if (!Settings.canDrawOverlays(this)) return
+
+        val container = FrameLayout(this)
+        val circle = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(BALL_SIZE_DP), dp(BALL_SIZE_DP)).apply {
+                gravity = Gravity.CENTER
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#E6C15F3C"))
+            }
+        }
+        val badge = TextView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = dp(-2)
+                marginEnd = dp(-2)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#D67270"))
+            }
+            setPadding(dp(4), dp(1), dp(4), dp(1))
+            textSize = 10f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            visibility = View.GONE
+        }
+        ballBadge = badge
+        container.addView(circle)
+        container.addView(badge)
+
+        val size = dp(BALL_SIZE_DP)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            x = dp(12)
+            y = resources.displayMetrics.heightPixels / 3
+        }
+        attachBallTouch(container, params, size)
+        runCatching {
+            wm.addView(container, params)
+            ballView = container
+            ballParams = params
+            updateBallBadge()
+        }.onFailure { ballView = null }
+    }
+
+    private fun removeBall() {
+        ballView?.let { v ->
+            runCatching {
+                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v)
+            }
+        }
+        ballView = null
+        ballParams = null
+        ballBadge = null
+    }
+
+    private fun hideBall() {
+        getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("ball_enabled", false).apply()
+        removePanel()
+        removeBall()
+        Toast.makeText(this, "悬浮球已隐藏，可在设置中重新开启", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun attachBallTouch(view: View, params: WindowManager.LayoutParams, sizePx: Int) {
+        val conf = android.view.ViewConfiguration.get(this)
+        val slop = conf.scaledTouchSlop
+        var downRawX = 0f; var downRawY = 0f
+        var startX = 0; var startY = 0
+        var dragging = false
+
+        view.setOnTouchListener { _, ev ->
+            when (ev.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = ev.rawX; downRawY = ev.rawY
+                    startX = params.x; startY = params.y
+                    dragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = ev.rawX - downRawX
+                    val dy = ev.rawY - downRawY
+                    if (dragging || abs(dx) > slop || abs(dy) > slop) {
+                        dragging = true
+                        val screenW = resources.displayMetrics.widthPixels
+                        val screenH = resources.displayMetrics.heightPixels
+                        params.x = (startX + dx).toInt().coerceIn(0, screenW - sizePx)
+                        params.y = (startY + dy).toInt().coerceIn(0, screenH - sizePx)
+                        runCatching {
+                            (getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                                .updateViewLayout(view, params)
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (dragging) {
+                        snapToEdge(params, sizePx)
+                        runCatching {
+                            (getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                                .updateViewLayout(view, params)
+                        }
+                    } else handleTap()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun snapToEdge(params: WindowManager.LayoutParams, sizePx: Int) {
+        val screenW = resources.displayMetrics.widthPixels
+        params.x = if (params.x + sizePx / 2 < screenW / 2) dp(8) else screenW - sizePx - dp(8)
+    }
+
+    private fun handleTap() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastTapUpElapsed < 300) {
+            // 双击 → 直达记一笔
+            pendingSingleTap?.let { handler.removeCallbacks(it) }
+            pendingSingleTap = null
+            lastTapUpElapsed = 0
+            openAddEdit()
+        } else {
+            lastTapUpElapsed = now
+            val singleTap = Runnable {
+                pendingSingleTap = null
+                togglePanel()
+            }
+            pendingSingleTap = singleTap
+            handler.postDelayed(singleTap, 280)
+        }
+    }
+
+    private fun openAddEdit() {
+        removePanel()
+        runCatching {
+            startActivity(
+                Intent(this, AddEditTransactionActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
+
+    private fun togglePanel() {
+        if (panelView != null) { removePanel(); return }
+        val ball = ballView ?: return
+        val bp = ballParams ?: return
+        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        val panel = buildPanelView()
+        val width = dp(PANEL_WIDTH_DP)
+        val side = if (bp.x + dp(BALL_SIZE_DP) / 2 < resources.displayMetrics.widthPixels / 2) 1 else -1
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            x = if (side == 1) bp.x + dp(BALL_SIZE_DP) + dp(8) else bp.x - width - dp(8)
+            x = x.coerceAtLeast(dp(8))
+            y = bp.y
+        }
+        runCatching {
+            wm.addView(panel, params)
+            panelView = panel
+            panelParams = params
+        }
+    }
+
+    private fun removePanel() {
+        panelView?.let { v ->
+            runCatching {
+                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v)
+            }
+        }
+        panelView = null
+        panelParams = null
+    }
+
+    private fun buildPanelView(): View {
+        val ctx = this
+        val density = resources.displayMetrics.density
+        fun dpx(v: Int) = (v * density).toInt()
+        val panel = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F22A2828"))
+                cornerRadius = dpx(14).toFloat()
+            }
+            setPadding(dpx(6), dpx(4), dpx(6), dpx(4))
+        }
+        fun row(label: String, onClick: () -> Unit) {
+            panel.addView(TextView(ctx).apply {
+                text = label
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                setPadding(dpx(14), dpx(12), dpx(14), dpx(12))
+                background = ctx.obtainStyledAttributes(
+                    intArrayOf(android.R.attr.selectableItemBackground)
+                ).use { it.getDrawable(0) }
+                setOnClickListener {
+                    onClick()
+                    removePanel()
+                }
+            })
+        }
+        row("✏️ 记一笔") { openAddEdit() }
+        row("📥 收件箱${if (pendingCount > 0) " ($pendingCount)" else ""}") {
+            runCatching {
+                startActivity(
+                    Intent(ctx, CaptureInboxActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+        }
+        row("🧘 想好再买：${if (ballEnabled()) "已开启" else "仅悬浮球"}") {
+            // 语义：跳转到设置页调整（避免面板内误关守护）
+            runCatching {
+                startActivity(
+                    Intent(ctx, SettingsActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+        }
+        row("✕ 隐藏悬浮球") { hideBall() }
+        return panel
+    }
+
+    private fun updateBallBadge() {
+        val ball = ballView ?: return
+        scope.launch {
+            val count = runCatching {
+                AppDatabase.getDatabase(applicationContext).transactionDao().countPending()
+            }.getOrDefault(0)
+            pendingCount = count
+            handler.post {
+                ballBadge?.apply {
+                    visibility = if (count > 0) View.VISIBLE else View.GONE
+                    text = if (count > 99) "99+" else count.toString()
+                }
+            }
+        }
+    }
+
+    // ===== 检测自检数据 =====
+
+    private val historyDeque = ArrayDeque<String>()
+
+    /** 检测自检：守护服务最近一次识别到的前台页面与判定（设置页展示用）。 */
+    @Volatile
+    var debugPkg: String = ""
+    @Volatile
+    var debugCls: String = ""
+    @Volatile
+    var debugPay: Boolean = false
+    @Volatile
+    var debugUpdatedAt: Long = 0
+    @Volatile
+    var debugHistory: List<String> = emptyList()
 }

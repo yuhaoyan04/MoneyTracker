@@ -139,6 +139,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnCooldown).setOnClickListener { editCooldown() }
         findViewById<View>(R.id.btnGuardScope).setOnClickListener { editGuardScope() }
         findViewById<View>(R.id.btnGuardDebug).setOnClickListener { showGuardDebug() }
+        findViewById<View>(R.id.btnBall).setOnClickListener { toggleBall() }
         findViewById<View>(R.id.btnWishlist).setOnClickListener {
             startActivity(Intent(this, WishlistActivity::class.java))
         }
@@ -202,6 +203,16 @@ class SettingsActivity : AppCompatActivity() {
         // 门槛显示
         val threshold = prefs.getFloat("big_spend_threshold", 500f)
         findViewById<TextView>(R.id.tvThreshold).text = "¥${threshold.toInt()}"
+
+        // 悬浮球状态
+        val ballOn = prefs.getBoolean("ball_enabled", false) &&
+            com.mudasir.smartledger.util.PurchaseGuardService.isRunning
+        findViewById<TextView>(R.id.tvBallStatus).apply {
+            text = if (ballOn) "已开启" else "已关闭"
+            setTextColor(getColorCompat(if (ballOn) R.color.color_income else R.color.text_secondary))
+        }
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnBall).text =
+            if (ballOn) "关闭悬浮球" else "开启悬浮球"
 
         // 提醒方式 / 冷静时长 / 提醒范围
         val mode = prefs.getString("guard_mode", "overlay") ?: "overlay"
@@ -367,6 +378,26 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         updater.run()
+    }
+
+    /** 悬浮球开关：需悬浮窗权限；守护服务未运行时自动拉起。 */
+    private fun toggleBall() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val enable = !prefs.getBoolean("ball_enabled", false)
+        if (enable && !android.provider.Settings.canDrawOverlays(this)) {
+            runCatching {
+                startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.fromParts("package", packageName, null)
+                    )
+                )
+            }
+            Toast.makeText(this, "请先允许「显示在其他应用上层」", Toast.LENGTH_LONG).show()
+            return
+        }
+        com.mudasir.smartledger.util.PurchaseGuardService.setBallEnabled(this, enable)
+        refreshGuardStatus()
     }
 
     /** 大额消费提醒门槛输入。 */
