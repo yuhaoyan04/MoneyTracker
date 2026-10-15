@@ -51,4 +51,19 @@ object PermissionHelper {
             context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
+
+    /** 增强检测（无障碍服务）是否已启用。 */
+    fun isAccessibilityCaptureEnabled(context: Context): Boolean {
+        val flat = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        val target = ComponentName(context, "com.mudasir.smartledger.util.AccessibilityCaptureService").flattenToString()
+        return flat.split(":").any { it.equals(target, ignoreCase = true) }
+    }
+
+    fun openAccessibilitySettings(context: Context) {
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure {
+            context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
 }

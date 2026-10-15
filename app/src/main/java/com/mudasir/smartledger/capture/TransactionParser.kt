@@ -27,13 +27,23 @@ object TransactionParser {
     )
 
     // ---- 收支方向关键词 ----
+    // 强收入词：真实入账语义，营销文案极少伪造完整句式
+    private val strongIncomeKeywords = listOf(
+        "退款成功", "退款已", "已退款", "退款到账", "退款将", "收款成功", "已收款",
+        "转入成功", "代发工资", "工资", "分红", "退款"
+    )
+    // 弱收入词：需配合强收入词或无支出词时才判收入
     private val incomeKeywords = listOf(
-        "收款", "收入", "到账", "入账", "代发工资", "退款", "退回", "转入", "提现",
-        "红包", "转账收入", "收益", "利息", "返还", "退款成功", "已退款"
+        "收款", "收入", "到账", "入账", "转入", "提现", "收益", "利息", "返还", "红包"
     )
     private val expenseKeywords = listOf(
         "支付成功", "消费", "付款", "扣款", "支出", "实付", "自动扣款", "代扣",
         "已支付", "付款成功", "刷卡", "购物", "充值", "花费", "花呗", "已扣"
+    )
+    // 营销话术：与支出词同现时视为营销噪音（真实扣款通知通常不含这些）
+    private val marketingKeywords = listOf(
+        "立享", "领取", "邀请", "免费领", "0元领", "零元领", "秒杀", "砍价",
+        "扫码领", "开通即", "快去", "速抢", "拼团", "助力"
     )
 
     // ---- 渠道推断 ----
@@ -108,11 +118,22 @@ object TransactionParser {
 
     private fun inferType(text: String): String {
         val t = text.replace(" ", "")
-        // 收入关键词优先（避免「退款」被「消费」误判等）
-        if (incomeKeywords.any { kw -> t.contains(kw) }) return TransactionRecord.TYPE_INCOME
-        if (expenseKeywords.any { kw -> t.contains(kw) }) return TransactionRecord.TYPE_EXPENSE
-        // 默认按金额上下文：含「余额」「账户」偏向银行，默认支出
-        return TransactionRecord.TYPE_EXPENSE
+        val hasStrongIncome = strongIncomeKeywords.any { t.contains(it) }
+        val hasWeakIncome = incomeKeywords.any { t.contains(it) }
+        val hasExpense = expenseKeywords.any { t.contains(it) }
+        val marketing = marketingKeywords.any { t.contains(it) }
+        return when {
+            // 强收入词（退款/工资/收款成功等）→ 收入；营销词不改变其真实性
+            hasStrongIncome -> TransactionRecord.TYPE_INCOME
+            // 支出词存在：
+            // - 同时有弱收入词且为营销话术（如「支付XX元立享优惠，即刻到账」）→ 支出
+            // - 无营销话术（「支付成功，已优惠5元」）→ 支出
+            hasExpense -> TransactionRecord.TYPE_EXPENSE
+            // 仅弱收入词（到账/入账/提现等）→ 收入（如「您的退款已到账」）
+            hasWeakIncome && !marketing -> TransactionRecord.TYPE_INCOME
+            // 弱收入词 + 营销话术 → 疑似营销噪音，按支出兜底（收件箱可修正）
+            else -> TransactionRecord.TYPE_EXPENSE
+        }
     }
 
     private fun inferChannel(text: String, packageName: String?): String {

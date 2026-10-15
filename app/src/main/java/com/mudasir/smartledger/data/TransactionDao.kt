@@ -71,6 +71,17 @@ interface TransactionDao {
     @Query("SELECT COUNT(*) FROM transactions WHERE isDeleted = 0 AND status = 'PENDING'")
     suspend fun countPending(): Int
 
+    /** 跨通道去重：金额范围 + 时间窗口内的待确认同额记录数（无障碍通道与通知通道互斥）。 */
+    @Query(
+        """
+        SELECT COUNT(*) FROM transactions
+        WHERE isDeleted = 0 AND status = 'PENDING'
+          AND amount BETWEEN :lo AND :hi
+          AND timestamp BETWEEN :start AND :end
+        """
+    )
+    suspend fun countPendingLike(lo: Double, hi: Double, start: Long, end: Long): Int
+
     @Query("SELECT * FROM transactions WHERE isDeleted = 0 AND status = 'PENDING' ORDER BY timestamp DESC LIMIT 1")
     suspend fun latestPending(): TransactionRecord?
 

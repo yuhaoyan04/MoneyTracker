@@ -93,6 +93,13 @@ class PurchaseGuardService : Service() {
             instance?.handler?.post { instance?.updateBallBadge() }
         }
 
+        /** 无障碍通道检测到支付页 → 触发想好再买浮层/通知（遵守 2 分钟授权冷却）。 */
+        fun onExternalPayPage(context: Context) {
+            instance?.handler?.post {
+                runCatching { instance?.nudgeFromDetection() }
+            }
+        }
+
         fun applyBall(context: Context) {
             instance?.handler?.post { instance?.applyBallVisibility() }
         }
@@ -274,6 +281,15 @@ class PurchaseGuardService : Service() {
     }
 
     private fun nudge() {
+        nudgeInternal()
+    }
+
+    /** 无障碍通道触发的提醒入口（与 usage 检测共用冷却与浮层逻辑）。 */
+    fun nudgeFromDetection() {
+        nudgeInternal()
+    }
+
+    private fun nudgeInternal() {
         scope.launch {
             runCatching {
                 val dao = AppDatabase.getDatabase(applicationContext).transactionDao()
