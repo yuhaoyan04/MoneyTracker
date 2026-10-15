@@ -77,7 +77,7 @@ class CaptureInboxActivity : AppCompatActivity() {
                     if (confirmed && r.categoryName.isNotBlank()) {
                         runCatching {
                             com.mudasir.smartledger.ml.PersonalTagger.learn(
-                                this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName, r.merchant
+                                this@CaptureInboxActivity, r.type, r.timestamp, r.amount, r.channelName, r.categoryName, r.merchant, r.locationName
                             )
                         }
                         runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
@@ -123,7 +123,7 @@ class CaptureInboxActivity : AppCompatActivity() {
                     if (changed > 0 && it.categoryName.isNotBlank()) {
                         runCatching {
                             com.mudasir.smartledger.ml.PersonalTagger.learn(
-                                this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName, it.merchant
+                                this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName, it.merchant, it.locationName
                             )
                         }
                     }

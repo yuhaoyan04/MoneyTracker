@@ -60,6 +60,8 @@ class PurchaseGuardService : Service() {
         var debugPay: Boolean = false
         @Volatile
         var debugUpdatedAt: Long = 0
+        @Volatile
+        var debugHistory: List<String> = emptyList()
 
         private val watchedPackages = setOf(
             "com.tencent.mm",                  // 微信
@@ -202,18 +204,21 @@ class PurchaseGuardService : Service() {
             PurchaseGuardNotifier.cancelThink(this)
         }
         // 检测自检数据（设置页实时展示）
+        if (watchedHit) pushHistory(fg, cls, payScreen)
         debugPkg = fg
         debugCls = cls
         debugPay = payScreen
         debugUpdatedAt = now
+        debugHistory = historyDeque.toList()
     }
 
     /**
      * 支付界面判定：
      * - 支付宝 SDK 收银台可能出现在任意购物 App 进程内（淘宝/京东/美团跳支付宝），
      *   类名含 alipay+pay/cashier 时无论包名一律视为支付页
-     * - 微信：付款码(offline) / 转账(remittance) / 收付款入口(wallet.pay)
-     * - 其余包：cashier / pay 关键词
+     * - 微信：付款码(offline) / 转账(remittance) / 收付款入口(wallet.pay)，
+     *   并以 "pay" 兜底（WalletPayUI/PayUI 等变体）
+     * - 其余包：cashier / pay / trade 关键词
      * 各版本类名可能变化，若失效应切换到设置中的「宽松模式」。
      */
     private fun isPaymentScreen(pkg: String, cls: String): Boolean {
@@ -222,11 +227,21 @@ class PurchaseGuardService : Service() {
         if (c.contains("cashier")) return true
         return when {
             pkg == "com.tencent.mm" ->
-                listOf("offline", "remittance", "wallet.pay").any { c.contains(it) }
+                listOf("offline", "remittance", "wallet.pay", "pay").any { c.contains(it) }
             pkg.startsWith("com.eg.android.AlipayGphone") ->
                 listOf("payui", "payment", "pay").any { c.contains(it) }
-            else -> c.contains("pay")
+            else -> listOf("pay", "trade").any { c.contains(it) }
         }
+    }
+
+    /** 页面判定历史环形缓冲（最近 12 条，检测自检弹窗展示，方便反馈精确类名）。 */
+    private val historyDeque = ArrayDeque<String>()
+
+    private fun pushHistory(pkg: String, cls: String, pay: Boolean) {
+        val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+            .format(java.util.Date())
+        historyDeque.addLast("$stamp ${pkg.substringAfterLast('.')} | ${cls.substringAfterLast('.')} | ${if (pay) "✓支付页" else "—"}")
+        while (historyDeque.size > 12) historyDeque.removeFirst()
     }
 
     private fun nudge() {

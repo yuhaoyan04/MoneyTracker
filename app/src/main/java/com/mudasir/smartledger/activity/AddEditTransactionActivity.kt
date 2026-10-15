@@ -518,13 +518,14 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 // 待确认数量可能变化（确认了一条 PENDING），刷新常驻通知
                 com.mudasir.smartledger.util.PendingNotifier.update(this@AddEditTransactionActivity)
 
-                // 个性化打标学习：确认/修正即训练
+                // 个性化打标学习：确认/修正即训练（位置参与特征，越用越准）
                 if (resolvedCategory.isNotBlank()) {
                     val old = suggestedCategory
+                    val locForLearn = saved.locationName ?: place?.name
                     if (old != null && old != resolvedCategory) {
-                        PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, resolvedCategory, existing?.merchant)
+                        PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, resolvedCategory, existing?.merchant, locForLearn)
                     } else {
-                        PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, resolvedCategory, existing?.merchant)
+                        PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, resolvedCategory, existing?.merchant, locForLearn)
                     }
                 }
 

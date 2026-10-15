@@ -350,13 +350,18 @@ class SettingsActivity : AppCompatActivity() {
                 } else if (svc.debugUpdatedAt == 0L) {
                     tv.text = "等待页面事件…\n（请切换到微信/支付宝/淘宝的任意页面）"
                 } else {
-                    val age = ((System.currentTimeMillis() - svc.debugUpdatedAt) / 1000).toInt()
-                    tv.text = buildString {
-                        append("前台应用：${svc.debugPkg}\n")
-                        append("当前页面：${svc.debugCls}\n")
-                        append("判定：${if (svc.debugPay) "✓ 支付页面（已拦截）" else "非支付页面"}\n")
-                        append("更新于 ${age} 秒前")
+                val age = ((System.currentTimeMillis() - svc.debugUpdatedAt) / 1000).toInt()
+                tv.text = buildString {
+                    append("前台应用：${svc.debugPkg}\n")
+                    append("当前页面：${svc.debugCls}\n")
+                    append("判定：${if (svc.debugPay) "✓ 支付页面（已拦截）" else "非支付页面"}\n")
+                    append("更新于 ${age} 秒前")
+                    val hist = svc.debugHistory
+                    if (hist.isNotEmpty()) {
+                        append("\n\n最近页面：\n")
+                        append(hist.joinToString("\n") { "· $it" })
                     }
+                }
                 }
                 handler.postDelayed(this, 1000)
             }

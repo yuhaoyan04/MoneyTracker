@@ -149,7 +149,8 @@ object BillImporter {
                         )
                         PersonalTagger.learn(
                             context, bill.type, bill.timestamp, bill.amount,
-                            sourceChannel, pending.categoryName.ifBlank { suggestion.category }, bill.merchant
+                            sourceChannel, pending.categoryName.ifBlank { suggestion.category }, bill.merchant,
+                            pending.locationName
                         )
                         mergedPending++
                         continue
@@ -179,7 +180,7 @@ object BillImporter {
                 )
                 PersonalTagger.learn(
                     context, bill.type, bill.timestamp, bill.amount,
-                    sourceChannel, suggestion.category, bill.merchant
+                    sourceChannel, suggestion.category, bill.merchant, null
                 )
                 confirmedKeys.add(bill.dedupKey)
                 inserted++

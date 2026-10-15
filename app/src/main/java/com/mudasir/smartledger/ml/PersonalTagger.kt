@@ -320,7 +320,7 @@ object PersonalTagger {
 
         // Layer 2: Bayes
         val bayesHit: String? = if (m.total >= MIN_SAMPLES && m.prior.isNotEmpty()) {
-            val feats = featuresOf(type, timestamp, amount, channel)
+            val feats = featuresOf(type, timestamp, amount, channel, locationName)
             bayesArgmax(m, feats, amount)
         } else null
 
@@ -410,12 +410,13 @@ object PersonalTagger {
         amount: Double,
         channel: String,
         category: String,
-        merchant: String? = null
+        merchant: String? = null,
+        locationName: String? = null
     ) {
         if (category.isBlank()) return
         synchronized(lock) {
             val m = loadImpl(context)
-            val feats = featuresOf(type, timestamp, amount, channel)
+            val feats = featuresOf(type, timestamp, amount, channel, locationName)
 
             m.total++
             m.acceptCount++
@@ -453,12 +454,13 @@ object PersonalTagger {
         channel: String,
         oldCategory: String?,
         newCategory: String,
-        merchant: String? = null
+        merchant: String? = null,
+        locationName: String? = null
     ) {
         if (newCategory.isBlank()) return
         synchronized(lock) {
             val m = loadImpl(context)
-            val feats = featuresOf(type, timestamp, amount, channel)
+            val feats = featuresOf(type, timestamp, amount, channel, locationName)
             val norm = normalizeMerchant(merchant)
 
             if (!oldCategory.isNullOrBlank() && oldCategory != newCategory) {
@@ -626,14 +628,46 @@ object PersonalTagger {
 
     // ===== 特征 + 贝叶斯 =====
 
-    private fun featuresOf(type: String, ts: Long, amount: Double, channel: String): Map<String, String> {
+    private fun featuresOf(
+        type: String,
+        ts: Long,
+        amount: Double,
+        channel: String,
+        locationName: String? = null
+    ): Map<String, String> {
         val c = Calendar.getInstance().apply { timeInMillis = ts }
-        return mapOf(
-            "hour" to hourBand(c.get(Calendar.HOUR_OF_DAY)),
-            "amount" to amountBand(amount),
+        val hb = hourBand(c.get(Calendar.HOUR_OF_DAY))
+        val ab = amountBand(amount)
+        val feats = mutableMapOf(
+            "hour" to hb,
+            "amount" to ab,
             "weekday" to weekdayBand(c.get(Calendar.DAY_OF_WEEK)),
-            "channel" to (channel.trim().ifBlank { "未知" })
+            "channel" to (channel.trim().ifBlank { "未知" }),
+            // 联合特征：相近金额在不同时段含义完全不同（早上¥25=早餐，晚上¥25=奶茶）
+            "hour_amount" to "${hb}_${ab}"
         )
+        // 地点类别特征（从支付地点提取场所类型，位置感知分类的泛化层）
+        val loc = locCategory(locationName)
+        if (loc.isNotEmpty()) feats["loc"] = loc
+        return feats
+    }
+
+    /** 从地点名提取场所类别（贝叶斯 loc 特征的取值域）。 */
+    private fun locCategory(loc: String?): String {
+        if (loc.isNullOrBlank()) return ""
+        val l = loc.lowercase()
+        return when {
+            listOf("地铁", "公交", "高铁", "火车站", "机场", "高速", "加油站", "充电", "停车").any { l.contains(it) } -> "交通"
+            listOf("医院", "诊所", "药店", "药房", "门诊", "卫生").any { l.contains(it) } -> "医疗"
+            listOf("超市", "商场", "购物中心", "便利店", "菜市场", "市场", "广场").any { l.contains(it) } -> "购物"
+            listOf("餐厅", "饭店", "小吃", "咖啡", "奶茶", "食堂", "美食", "酒楼").any { l.contains(it) } -> "餐饮"
+            listOf("学校", "大学", "学院", "培训", "教育", "书香").any { l.contains(it) } -> "教育"
+            listOf("小区", "公寓", "家园", "苑", "公寓", "社区").any { l.contains(it) } -> "住宅"
+            listOf("大厦", "写字楼", "科技园", "产业园", "软件园", "中心", "创业").any { l.contains(it) } -> "写字楼"
+            listOf("公园", "影院", "电影", "健身", "景区", "游乐", "体育").any { l.contains(it) } -> "休闲"
+            listOf("银行", "atm").any { l.contains(it) } -> "金融"
+            else -> ""
+        }
     }
 
     private fun hourBand(h: Int): String = when (h) {

@@ -20,6 +20,8 @@
     <!-- 想好再买：检测支付应用进入前台（使用情况访问，需用户在系统设置授权） -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <!-- 想好再买：全屏冷静浮层（悬浮窗，需用户在系统设置授权；不声明则授权列表不显示本应用） -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 想好再买：前台守护服务（specialUse 类型，Android 14+ 要求） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />

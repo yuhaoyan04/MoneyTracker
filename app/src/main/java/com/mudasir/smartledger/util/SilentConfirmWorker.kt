@@ -70,7 +70,8 @@ class SilentConfirmWorker(
                         record.amount,
                         record.channelName,
                         record.categoryName,
-                        record.merchant
+                        record.merchant,
+                        record.locationName
                     )
                     learned++
                 }
