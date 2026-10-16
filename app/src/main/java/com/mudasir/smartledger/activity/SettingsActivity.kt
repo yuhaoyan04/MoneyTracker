@@ -362,13 +362,14 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(0, 16, 0, 0)
             typeface = android.graphics.Typeface.MONOSPACE
         }
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
         val dialog = AlertDialog.Builder(this)
             .setTitle("检测自检（实时）")
             .setMessage("打开微信/支付宝/淘宝的付款页面，下面的识别结果会实时刷新。\n\n把识别不到的页面截图发给我们，即可精确补规则。")
             .setView(tv)
             .setPositiveButton("关闭", null)
             .show()
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        dialog.setOnDismissListener { handler.removeCallbacksAndMessages(null) }
         val updater = object : Runnable {
             override fun run() {
                 if (!dialog.isShowing) return

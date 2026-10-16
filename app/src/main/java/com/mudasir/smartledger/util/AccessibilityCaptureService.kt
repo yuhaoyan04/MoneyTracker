@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.mudasir.smartledger.capture.RecentCaptureRegistry
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
 import kotlinx.coroutines.CoroutineScope
@@ -97,11 +98,13 @@ class AccessibilityCaptureService : AccessibilityService() {
         scope.launch {
             runCatching {
                 val dao = AppDatabase.getDatabase(applicationContext).transactionDao()
-                // 跨通道去重：通知/短信通道 90 秒内已记录同额同向 → 跳过
+                // 跨通道去重①：通知/短信通道 90 秒窗口内已有同额同向待确认 → 跳过
                 if (dao.countPendingLike(
                         amount, amount, now - 90_000, now + 90_000
                     ) > 0
                 ) return@runCatching
+                // 跨通道去重②：与通知通道共享的注册表（同额同向 90 秒视为同一笔）
+                if (RecentCaptureRegistry.isDuplicate(type, amount)) return@runCatching
                 val suggestion = com.mudasir.smartledger.ml.PersonalTagger.recommendWithConfidence(
                     applicationContext, type, now, amount, channelOf(pkg), null, combined.take(300), null
                 )
