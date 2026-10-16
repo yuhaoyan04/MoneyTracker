@@ -200,6 +200,20 @@
                 android:value="Monitor payment-app foreground transitions to show a think-before-buy spending reminder" />
         </service>
 
+        <!-- 增强模式（可选）：无障碍监控支付确认页（密码输入前），覆盖 H5/内嵌收银台 -->
+        <service
+            android:name=".util.AccessibilityCaptureService"
+            android:exported="false"
+            android:label="支付页增强检测"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_capture_config" />
+        </service>
+
         <!-- 想好再买：愿望清单 24 小时回访通知上的快捷操作 -->
         <receiver
             android:name=".util.WishlistActionReceiver"

@@ -90,6 +90,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnNotif).setOnClickListener {
             PermissionHelper.openNotificationListenerSettings(this)
         }
+        findViewById<View>(R.id.btnGuardToggle).setOnClickListener { toggleGuard() }
         findViewById<View>(R.id.btnSms).setOnClickListener {
             smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
         }
@@ -133,7 +134,9 @@ class SettingsActivity : AppCompatActivity() {
                 .setNegativeButton("取消", null)
                 .show()
         }
-        findViewById<View>(R.id.btnGuard).setOnClickListener { toggleGuard() }
+        findViewById<View>(R.id.btnNotif).setOnClickListener {
+            PermissionHelper.openNotificationListenerSettings(this)
+        }
         findViewById<View>(R.id.btnThreshold).setOnClickListener { editThreshold() }
         findViewById<View>(R.id.btnGuardMode).setOnClickListener { editGuardMode() }
         findViewById<View>(R.id.btnCooldown).setOnClickListener { editCooldown() }
@@ -186,7 +189,7 @@ class SettingsActivity : AppCompatActivity() {
     /** 想好再买：状态刷新（使用情况权限 + 守护服务运行态）。 */
     private fun refreshGuardStatus() {
         val tv = findViewById<TextView>(R.id.tvGuardStatus)
-        val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnGuard)
+        val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnGuardToggle)
         val usageOk = PermissionHelper.hasUsageAccess(this)
         val running = com.mudasir.smartledger.util.PurchaseGuardService.isRunning
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
