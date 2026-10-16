@@ -55,7 +55,7 @@ class WishlistActivity : AppCompatActivity() {
                     if (list.isEmpty()) View.VISIBLE else View.GONE
                 val dropped = list.filter { it.status == WishlistItem.STATUS_DROPPED }
                 findViewById<TextView>(R.id.tvSavedTotal).text =
-                    "¥" + FormatUtil.money(dropped.sumOf { it.amount })
+                    FormatUtil.money(dropped.sumOf { it.amount })
                 findViewById<TextView>(R.id.tvSavedHint).text =
                     "${dropped.size} 个冲动被冷静期拦下"
             }
@@ -85,7 +85,7 @@ class WishlistActivity : AppCompatActivity() {
         override fun onBindViewHolder(h: VH, position: Int) {
             val item = items[position]
             h.tvName.text = item.name
-            h.tvAmount.text = "¥" + FormatUtil.money(item.amount)
+            h.tvAmount.text = FormatUtil.money(item.amount)
             h.tvMeta.text = "记录于 ${sdf.format(Date(item.createdAt))}"
 
             val waiting = item.status == WishlistItem.STATUS_WAITING

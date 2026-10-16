@@ -91,6 +91,10 @@ class SettingsActivity : AppCompatActivity() {
             PermissionHelper.openNotificationListenerSettings(this)
         }
         findViewById<View>(R.id.btnGuardToggle).setOnClickListener { toggleGuard() }
+        findViewById<View>(R.id.btnAccCapture).setOnClickListener {
+            PermissionHelper.openAccessibilitySettings(this)
+            Toast.makeText(this, "在「已下载的服务」中开启「支付页增强检测」", Toast.LENGTH_LONG).show()
+        }
         findViewById<View>(R.id.btnSms).setOnClickListener {
             smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
         }
@@ -182,6 +186,7 @@ class SettingsActivity : AppCompatActivity() {
         refreshAiStatus()
         refreshBackupStatus()
         refreshGuardStatus()
+        refreshAccCaptureStatus()
         refreshProStatus()
         BackupWorker.schedulePeriodic(this)
     }
@@ -719,6 +724,16 @@ class SettingsActivity : AppCompatActivity() {
                 bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
             }
         }
+    }
+
+    /** 支付页增强检测（无障碍服务）状态刷新。 */
+    private fun refreshAccCaptureStatus() {
+        val tv = findViewById<TextView>(R.id.tvAccCaptureStatus)
+        val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnAccCapture)
+        val enabled = PermissionHelper.isAccessibilityCaptureEnabled(this)
+        tv.text = if (enabled) "已开启" else "未开启"
+        tv.setTextColor(getColorCompat(if (enabled) R.color.color_income else R.color.color_expense))
+        btn.visibility = if (enabled) View.GONE else View.VISIBLE
     }
 
     /** Pro 授权状态刷新 + WebDAV 配置状态。 */
