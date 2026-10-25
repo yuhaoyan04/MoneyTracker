@@ -937,18 +937,23 @@ object PersonalTagger {
     private fun rulePredict(type: String, ts: Long, amount: Double, channel: String, merchant: String?, rawText: String?, locationName: String? = null): String? {
         val c = Calendar.getInstance().apply { timeInMillis = ts }
         val h = c.get(Calendar.HOUR_OF_DAY)
-        val combined = ((merchant.orEmpty()) + " " + channel + " " + (rawText.orEmpty()) + " " + (locationName.orEmpty())).lowercase()
+        // coreText 不含地点名：常驻地址常含「学院/教育/书香/银行/广场」等词（学院路、
+        // 教育新村、银行家属院），混入关键词匹配会让所有消费被误判为特定分类
+        val coreText = ((merchant.orEmpty()) + " " + channel + " " + (rawText.orEmpty())).lowercase()
         val ch = channel.lowercase()
         val mRaw = (merchant.orEmpty()).lowercase()
         val loc = (locationName.orEmpty()).lowercase()
         val amt = amount
 
-        fun has(vararg kw: String) = kw.any { combined.contains(it) }
+        fun has(vararg kw: String) = kw.any { coreText.contains(it) }
         fun chHas(vararg kw: String) = kw.any { ch.contains(it) }
         fun mHas(vararg kw: String) = kw.any { mRaw.contains(it) }
         fun locHas(vararg kw: String) = kw.any { loc.contains(it) }
 
         // ===== TIER 0: 地理位置信号（最强优先级） =====
+        // 注意：地点名来自 GPS 反地理编码，常驻地址常含「学院路/教育新村/书香雅苑/
+        // 银行家属院」等词——教育类场所词误触发率远高于真命中率，已整类移除；
+        // 教育消费由文本规则（课程/培训/网课）与账单导入兜底。
         if (type != TransactionRecord.TYPE_INCOME) {
             if (locHas("地铁", "metro", "轨道交通")) return "地铁"
             if (locHas("公交", "巴士", "brt")) return "公交"
@@ -960,15 +965,13 @@ object PersonalTagger {
             if (locHas("便利店", "711", "全家", "罗森", "便利")) return "零食饮料"
             if (locHas("咖啡", "星巴克", "瑞幸", "manner", "tea", "茶")) return "零食饮料"
             if (locHas("餐厅", "饭店", "美食", "酒楼", "食府", "小吃", "排档")) return "下馆子"
-            if (locHas("商场", "广场", "购物", "百货", "奥莱", "outlets")) return "服饰"
-            if (locHas("学校", "大学", "学院", "培训", "教育")) return "课程培训"
+            if (locHas("购物广场", "百货", "奥莱", "outlets")) return "服饰"
             if (locHas("书店", "图书", "书城")) return "书籍文具"
             if (locHas("影院", "电影", "剧院", "大麦", "演出")) return "电影演出"
             if (locHas("酒店", "旅馆", "民宿", "宾馆")) return "旅行出游"
             if (locHas("健身", " gym", "瑜伽", "游泳", "运动")) return "娱乐"
             if (locHas("理发", "美容", "美甲", "美发", "沙龙")) return "日用品"
-            if (locHas("菜市场", "市场", "农贸")) return "超市日用"
-            if (locHas("银行", "atm")) return "其他"
+            if (locHas("菜市场", "农贸")) return "超市日用"
             if (locHas("充电", "充电桩", "新能源")) return "加油停车"
         }
 
