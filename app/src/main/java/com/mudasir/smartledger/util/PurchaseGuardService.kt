@@ -420,6 +420,10 @@ class PurchaseGuardService : Service() {
     private var panelView: View? = null
     private var panelParams: WindowManager.LayoutParams? = null
     private var ballBadge: TextView? = null
+    private var dockedView: View? = null
+    private var dockedParams: WindowManager.LayoutParams? = null
+    @Volatile
+    private var isDocked = false
     private var pendingSingleTap: Runnable? = null
     private var lastTapUpElapsed = 0L
     private var pendingCount = 0
@@ -444,7 +448,9 @@ class PurchaseGuardService : Service() {
             .getBoolean("ball_enabled", false)
 
     private fun applyBallVisibility() {
-        if (ballEnabled() && Settings.canDrawOverlays(this)) showBall() else { removePanel(); removeBall() }
+        if (ballEnabled() && Settings.canDrawOverlays(this)) {
+            if (isDocked) showDocked(dockRight = false, y = visTop + dp(48)) else showBall()
+        } else { removePanel(); removeDocked(); removeBall() }
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -459,9 +465,13 @@ class PurchaseGuardService : Service() {
             layoutParams = FrameLayout.LayoutParams(dp(BALL_SIZE_DP), dp(BALL_SIZE_DP)).apply {
                 gravity = Gravity.CENTER
             }
-            background = GradientDrawable().apply {
+            // 渐变陶土色 + 半透明白环：精致不突兀
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.parseColor("#F2D98273"), Color.parseColor("#F2C15F3C"))
+            ).apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#E6C15F3C"))
+                setStroke(dp(2), Color.parseColor("#59FFFFFF"))
             }
         }
         val badge = TextView(this).apply {
@@ -576,10 +586,18 @@ class PurchaseGuardService : Service() {
                 }
                 MotionEvent.ACTION_UP -> {
                     if (dragging) {
-                        snapToEdge(params, sizePx)
-                        runCatching {
-                            (getSystemService(Context.WINDOW_SERVICE) as WindowManager)
-                                .updateViewLayout(view, params)
+                        // 贴边收纳：松手时球中心接近左右边缘 → 收纳为半胶囊
+                        val ballCenter = params.x + sizePx / 2
+                        val nearLeftEdge = ballCenter < dp(28)
+                        val nearRightEdge = ballCenter > resources.displayMetrics.widthPixels - dp(28)
+                        if (nearLeftEdge || nearRightEdge) {
+                            showDocked(dockRight = nearRightEdge, y = params.y)
+                        } else {
+                            snapToEdge(params, sizePx)
+                            runCatching {
+                                (getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                                    .updateViewLayout(view, params)
+                            }
                         }
                     } else handleTap()
                     true
@@ -593,6 +611,61 @@ class PurchaseGuardService : Service() {
         val screenW = visRight - visLeft
         params.x = if (params.x + sizePx / 2 < screenW / 2) visLeft + dp(8) else visRight - sizePx - dp(8)
         params.y = params.y.coerceIn(visTop + dp(8), (visBottom - sizePx - dp(8)).coerceAtLeast(visTop))
+    }
+
+    /** 贴边半胶囊（收纳态）：点击恢复完整悬浮球。 */
+    private fun showDocked(dockRight: Boolean, y: Int) {
+        removeBall()
+        if (dockedView != null) return
+        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        if (!Settings.canDrawOverlays(this)) return
+
+        val dock = View(this).apply {
+            layoutParams = ViewGroup.LayoutParams(dp(14), dp(48))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                val r = dp(7).toFloat()
+                cornerRadii = if (dockRight)
+                    floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
+                else
+                    floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
+                setColor(Color.parseColor("#B3C15F3C"))
+            }
+        }
+        dock.setOnClickListener {
+            runCatching {
+                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(dock)
+            }
+            dockedView = null
+            isDocked = false
+            showBall()
+        }
+        val params = WindowManager.LayoutParams(
+            dp(14), dp(48),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            x = if (dockRight) resources.displayMetrics.widthPixels - dp(14) else visLeft
+            this.y = y.coerceIn(visTop + dp(8), (visBottom - dp(48) - dp(8)).coerceAtLeast(visTop + dp(8)))
+        }
+        runCatching {
+            wm.addView(dock, params)
+            dockedView = dock
+            dockedParams = params
+            isDocked = true
+        }.onFailure { dockedView = null }
+    }
+
+    private fun removeDocked() {
+        dockedView?.let { v ->
+            runCatching {
+                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v)
+            }
+        }
+        dockedView = null
+        dockedParams = null
+        isDocked = false
     }
 
     private fun handleTap() {
@@ -695,6 +768,13 @@ class PurchaseGuardService : Service() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
             }
+        }
+        row("📌 贴边收纳") {
+            removePanel()
+            val bp = ballParams ?: return@row
+            val nearRight = bp.x + dp(BALL_SIZE_DP) / 2 > resources.displayMetrics.widthPixels / 2
+            removeBall()
+            showDocked(dockRight = nearRight, y = bp.y)
         }
         row("🧘 想好再买：${if (ballEnabled()) "已开启" else "仅悬浮球"}") {
             // 语义：跳转到设置页调整（避免面板内误关守护）
