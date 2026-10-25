@@ -424,6 +424,21 @@ class PurchaseGuardService : Service() {
     private var lastTapUpElapsed = 0L
     private var pendingCount = 0
 
+    // 可见显示区域（排除状态栏/导航栏）——悬浮球拖动与吸边的钳制边界
+    private var visLeft = 0
+    private var visTop = 0
+    private var visRight = 0
+    private var visBottom = 0
+
+    private fun computeVisibleBounds(view: View) {
+        val r = android.graphics.Rect()
+        view.getWindowVisibleDisplayFrame(r)
+        if (r.width() > 0 && r.height() > 0) {
+            visLeft = r.left; visTop = r.top
+            visRight = r.right; visBottom = r.bottom
+        }
+    }
+
     private fun ballEnabled(): Boolean =
         getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
             .getBoolean("ball_enabled", false)
@@ -476,12 +491,11 @@ class PurchaseGuardService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             x = dp(12)
-            y = resources.displayMetrics.heightPixels / 3
+            y = resources.displayMetrics.heightPixels / 4
         }
         attachBallTouch(container, params, size)
         runCatching {
@@ -518,12 +532,30 @@ class PurchaseGuardService : Service() {
         var startX = 0; var startY = 0
         var dragging = false
 
+        // 可见显示区域（排除状态栏/导航栏）：钳制边界，防止球被拖进系统栏底下"消失"
+        fun computeBounds() {
+            val r = android.graphics.Rect()
+            view.getWindowVisibleDisplayFrame(r)
+            if (r.width() > 0 && r.height() > 0) {
+                params.x = params.x.coerceIn(r.left, r.right - sizePx)
+                params.y = params.y.coerceIn(r.top, r.bottom - sizePx)
+            }
+        }
+
         view.setOnTouchListener { _, ev ->
             when (ev.action) {
                 MotionEvent.ACTION_DOWN -> {
                     downRawX = ev.rawX; downRawY = ev.rawY
                     startX = params.x; startY = params.y
                     dragging = false
+                    computeVisibleBounds(view)
+                    // 立即把越界的球拉回可见区（修复历史"消失"的球）
+                    params.x = params.x.coerceIn(visLeft, (visRight - sizePx).coerceAtLeast(visLeft))
+                    params.y = params.y.coerceIn(visTop, (visBottom - sizePx).coerceAtLeast(visTop))
+                    runCatching {
+                        (getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                            .updateViewLayout(view, params)
+                    }
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -531,10 +563,10 @@ class PurchaseGuardService : Service() {
                     val dy = ev.rawY - downRawY
                     if (dragging || abs(dx) > slop || abs(dy) > slop) {
                         dragging = true
-                        val screenW = resources.displayMetrics.widthPixels
-                        val screenH = resources.displayMetrics.heightPixels
-                        params.x = (startX + dx).toInt().coerceIn(0, screenW - sizePx)
-                        params.y = (startY + dy).toInt().coerceIn(0, screenH - sizePx)
+                        params.x = (startX + dx).toInt()
+                            .coerceIn(visLeft, (visRight - sizePx).coerceAtLeast(visLeft))
+                        params.y = (startY + dy).toInt()
+                            .coerceIn(visTop, (visBottom - sizePx).coerceAtLeast(visTop))
                         runCatching {
                             (getSystemService(Context.WINDOW_SERVICE) as WindowManager)
                                 .updateViewLayout(view, params)
@@ -558,8 +590,9 @@ class PurchaseGuardService : Service() {
     }
 
     private fun snapToEdge(params: WindowManager.LayoutParams, sizePx: Int) {
-        val screenW = resources.displayMetrics.widthPixels
-        params.x = if (params.x + sizePx / 2 < screenW / 2) dp(8) else screenW - sizePx - dp(8)
+        val screenW = visRight - visLeft
+        params.x = if (params.x + sizePx / 2 < screenW / 2) visLeft + dp(8) else visRight - sizePx - dp(8)
+        params.y = params.y.coerceIn(visTop + dp(8), (visBottom - sizePx - dp(8)).coerceAtLeast(visTop))
     }
 
     private fun handleTap() {
