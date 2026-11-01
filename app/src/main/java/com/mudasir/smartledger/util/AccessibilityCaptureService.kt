@@ -7,6 +7,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.mudasir.smartledger.capture.CaptureWhitelist
+import com.mudasir.smartledger.capture.PageAmountExtractor
 import com.mudasir.smartledger.capture.RecentCaptureRegistry
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
@@ -65,13 +67,7 @@ class AccessibilityCaptureService : AccessibilityService() {
             "验证并支付", "安全支付", "指纹支付", "刷脸支付", "面容支付",
             "支付金额", "付款金额"
         )
-        // 分期特征：出现则不使用裸小数兜底（页面有多个等额小数，取最大会错）
-        private val installmentWords = listOf("每月", "分期", "期数", "月供")
-        // 金额：¥/￥ 优先，兼容 N.NN元
-        private val amountRegex = Regex("""[¥￥]\s*([0-9]+(?:\.[0-9]{1,2})?)""")
-        private val yuanRegex = Regex("""([0-9]{1,6}(?:\.[0-9]{1,2})?)\s*元""")
-        // 裸小数兜底（仅在强确认词命中后使用）
-        private val bareDecimalRegex = Regex("""([0-9]{1,6}\.[0-9]{2})""")
+        // 金额提取与渠道归类提取至 PageAmountExtractor / CaptureWhitelist（可单元测试）
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -114,6 +110,13 @@ class AccessibilityCaptureService : AccessibilityService() {
         val pkg = root.packageName?.toString() ?: return
         val texts = mutableListOf<String>()
         collectTexts(root, texts, 0)
+        // v2.37.0 多窗口采集：密码弹窗 / 收银台弹层是独立窗口，
+        // rootInActiveWindow 读不到 —— 遍历所有活动窗口补充
+        runCatching {
+            windows.filter { it.isActive }.forEach { w ->
+                w.root?.let { wroot -> collectTexts(wroot, texts, 0) }
+            }
+        }
         if (texts.size < 2) return
         val combined = texts.joinToString(" ")
 
@@ -140,7 +143,7 @@ class AccessibilityCaptureService : AccessibilityService() {
             }
         }
 
-        val amount = extractAmount(combined) ?: return
+        val amount = PageAmountExtractor.extract(combined) ?: return
         val key = "$pkg|$amount"
         // 90 秒内同一笔（同包同额）只记一次
         if (key == lastCapturedKey && nowMs - lastCapturedAt < 90_000) return
@@ -148,6 +151,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         lastCapturedAt = nowMs
 
         val type = TransactionRecord.TYPE_EXPENSE
+        val channel = CaptureWhitelist.channelOf(pkg)
 
         scope.launch {
             runCatching {
@@ -160,14 +164,14 @@ class AccessibilityCaptureService : AccessibilityService() {
                 // 跨通道去重②：与通知/短信通道共享的注册表
                 if (RecentCaptureRegistry.isDuplicate(type, amount)) return@runCatching
                 val suggestion = com.mudasir.smartledger.ml.PersonalTagger.recommendWithConfidence(
-                    applicationContext, type, nowMs, amount, channelOf(pkg), null, combined.take(300), null
+                    applicationContext, type, nowMs, amount, channel, null, combined.take(300), null
                 )
                 dao.insert(
                     TransactionRecord(
                         type = type,
                         amount = amount,
                         categoryName = suggestion.category,
-                        channelName = channelOf(pkg),
+                        channelName = channel,
                         merchant = null,
                         rawText = combined.take(400),
                         source = TransactionRecord.SOURCE_CAPTURE_ACCESSIBILITY,
@@ -180,14 +184,6 @@ class AccessibilityCaptureService : AccessibilityService() {
                 PendingNotifier.update(applicationContext)
             }.onFailure { android.util.Log.w(TAG, "capture failed", it) }
         }
-    }
-
-    private fun channelOf(pkg: String): String = when {
-        pkg == "com.tencent.mm" -> "微信支付"
-        pkg.startsWith("com.eg.android.AlipayGphone") -> "支付宝"
-        pkg == "com.unionpay" -> "云闪付"
-        pkg == "com.jingdong.app.mall" || pkg == "com.jd.jrapp" -> "京东"
-        else -> "其他"
     }
 
     /** 守护服务未运行时的兜底：直接发「想好再买」冷静通知（无浮层）。 */
@@ -207,22 +203,6 @@ class AccessibilityCaptureService : AccessibilityService() {
         val budget = prefs.getFloat("monthly_budget", 0f).toDouble()
         val pct = if (budget > 0) ((spent / budget) * 100).toInt().coerceIn(0, 100) else null
         PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
-    }
-
-    private fun extractAmount(text: String): Double? {
-        amountRegex.find(text)?.let { m ->
-            return m.groupValues[1].toDoubleOrNull()?.takeIf { it > 0 }
-        }
-        yuanRegex.find(text)?.let { m ->
-            return m.groupValues[1].toDoubleOrNull()?.takeIf { it > 0 }
-        }
-        // 裸小数兜底：收银台常把金额渲染为独立节点（¥ 缺失）。
-        // 分期页有多个等额小数（¥83.33×3），不适用兜底。
-        if (installmentWords.any { text.contains(it) }) return null
-        val candidates = bareDecimalRegex.findAll(text).mapNotNull {
-            it.groupValues[1].toDoubleOrNull()
-        }.filter { it > 0 }
-        return candidates.maxOrNull()
     }
 
     private fun collectTexts(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {

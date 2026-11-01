@@ -39,29 +39,11 @@ class LedgerNotificationListener : NotificationListenerService() {
         "信用卡", "花呗", "借呗", "云闪付", "数字人民币", "现金", "其他", "android"
     )
 
-    // 严格白名单：只处理这些 App 的通知，其余全部忽略
-    private val watchedPackages = setOf(
-        "com.tencent.mm",                  // 微信
-        "com.eg.android.AlipayGphone",     // 支付宝
-        "com.eg.android.AlipayGphone.rc",  // 支付宝（变体）
-        "com.eg.android.AlipayGphone.lite",// 支付宝_lite
-        "com.taobao.taobao",               // 淘宝
-        "com.taobao.idlefish",             // 闲鱼
-        "com.jingdong.app.mall",           // 京东
-        "com.jingdong.app.mall.alpha",     // 京东（变体）
-        "com.jd.jrapp",                    // 京东金融
-        "com.jdpaysdk",                    // 京东支付
-        "com.sankuai.meituan",             // 美团
-        "com.sankuai.meituan.takeoutnew",  // 美团外卖
-        "com.meituan.retail.v4",           // 美团买菜
-        "com.sankuai.mt.pro",              // 美团商家版
-        "com.ele.android",                 // 饿了么
-        "com.sdu.didi.psnger",             // 滴滴出行
-        "com.xunmeng.pinduoduo",           // 拼多多
-        "com.unionpay",                    // 云闪付
-        "com.MobileTicket",                // 铁路12306
-        "com.taou.maimai"                  // 脉脉（企业支付）
-    )
+    // 严格白名单（v2.37.0 收紧，用户指令）：只采集 微信 / 支付宝 / 云闪付（银行卡
+    // 支付工具）的通知 —— 淘宝/京东/美团/拼多多等购物 App 推送是广告金额噪音的
+    // 主要来源，全部从源头切断。银行卡支付走短信通道（BankSmsReceiver）。
+    // 白名单与渠道归类见 CaptureWhitelist（纯逻辑、可单元测试）。
+    private val watchedPackages = CaptureWhitelist.packages
 
     // 完成表述词、营销黑名单、双信号门已提取至 NotificationGate（纯逻辑、可单元测试）：
     // v2.36.0 起 Gate3 改为「必备完成词」，广告金额误判的根治见 NotificationGate 文档。
