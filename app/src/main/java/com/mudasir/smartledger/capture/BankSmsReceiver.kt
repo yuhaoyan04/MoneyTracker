@@ -79,9 +79,21 @@ class BankSmsReceiver : BroadcastReceiver() {
         scope.launch {
             // 后台协程绝不抛异常 —— 任何失败只记日志，保住前台体验
             runCatching {
+                val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
+                // 跨通道去重（v2.36.0）：银行短信常比钱包通知晚 1-3 分钟，
+                // 同一笔卡支付已有「支付成功通知」入库时，短信通道不得重复入库。
+                // 窗口放宽到 5 分钟（短信延迟上限），宁合并勿重复。
+                if (com.mudasir.smartledger.capture.RecentCaptureRegistry.isDuplicate(
+                        parsed.type, parsed.amount, 300_000L
+                    )
+                ) return@launch
+                if (dao.countPendingLike(
+                        parsed.amount, parsed.amount,
+                        timestamp - 300_000L, timestamp + 120_000L
+                    ) > 0
+                ) return@launch
                 // 短信到达即记录支付时刻位置（主动新鲜定位，等待最多 8s）
                 val place = com.mudasir.smartledger.util.LocationHelper.freshPlace(context.applicationContext)
-                val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
                 if (dao.countExactCapture(
                         TransactionRecord.SOURCE_CAPTURE_SMS,
                         null,

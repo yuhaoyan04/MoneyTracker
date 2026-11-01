@@ -274,6 +274,17 @@ object PersonalTagger {
         m.acceptCount to m.correctCount
     }
 
+    /** 已掌握的商户身份数量（≥2 次确认才计入）—— 自进化可见性的直观指标。 */
+    fun knownMerchantCount(context: Context): Int = synchronized(lock) {
+        val m = loadImpl(context)
+        m.merchantMap.count { it.value.values.sum() >= 2 }
+    }
+
+    /** 模型总学习样本数 —— 信任卡片「已学习 N 笔」。 */
+    fun totalSamples(context: Context): Int = synchronized(lock) {
+        loadImpl(context).total
+    }
+
     /** 带置信度的推荐结果：confidence ∈ [0,1]，可用于 UI 展示「AI 信心 92%」。 */
     data class Recommendation(val category: String, val confidence: Float)
 

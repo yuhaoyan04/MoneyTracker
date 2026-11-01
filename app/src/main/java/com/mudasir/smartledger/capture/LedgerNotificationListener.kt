@@ -63,49 +63,9 @@ class LedgerNotificationListener : NotificationListenerService() {
         "com.taou.maimai"                  // 脉脉（企业支付）
     )
 
-    // 完成表述词 —— 命中说明这是真实支付通知（支付成功/已支付/已扣款…），
-    // 即使文本同时含「优惠券/立减」等营销词也不得丢弃
-        // 强完成词：命中说明这是真实支付/收款结果文案，即使含「优惠/立减」也不丢弃。
-        // 注意：不能用裸「已/完成/到账」——营销文案「立返XX到账」「已领取」会绕过。
-        private val completionWords = listOf(
-            "支付成功", "付款成功", "已支付", "已付款", "支付完成", "交易完成", "交易成功",
-            "扣款成功", "已消费", "收款成功", "已收款", "退款成功", "已退款", "已存入", "支付凭证"
-        )
+    // 完成表述词、营销黑名单、双信号门已提取至 NotificationGate（纯逻辑、可单元测试）：
+    // v2.36.0 起 Gate3 改为「必备完成词」，广告金额误判的根治见 NotificationGate 文档。
 
-    // 促销 / 广告黑名单 —— 仅当通知缺少「完成表述」时生效（防止营销伪装支付）
-    private val promotionalBlacklist = listOf(
-        "广告", "促销", "优惠", "立减", "满减", "折扣", "领取", "福利", "活动",
-        "立享", "笔笔", "0元购", "0元领", "免费领", "零元购",
-        "邀请", "推广", "积分", "签到", "优惠券", "红包", "抽奖", "推荐",
-        "降价", "新品", "限时", "抢购", "薪资", "月薪", "好友", "拼团", "砍价",
-        "免费", "赠送", "中奖", "补贴", "新人专享", "热卖", "爆款", "种草",
-        "好友拼", "帮砍", "直播间", "开播", "预告", "更新", "评论", "点赞",
-        "关注", "粉丝", "消息提醒", "验证码", "动态", "好友请求", "申请",
-        "面试", "简历", "职位", "hr", "boss直聘", "拉勾", "猎聘", "前程无忧",
-        "智联", "51job", "zhilian", "商品降价", "购物车", "收藏", "评价",
-        "返现", "提现到账通知", "收益到账", "结算", "结算成功"
-    )
-
-    // 支付动作关键词 —— 双信号之一（必须同时有金额符号才认定为支付通知）
-    private val paymentActionKeywords = listOf(
-        "支付成功", "支付", "消费", "付款成功", "付款", "扣款", "自动扣款", "代扣",
-        "已支付", "刷卡", "花费", "已扣", "收款", "到账", "入账", "退款",
-        "退回", "转入", "已退款", "退款成功", "转账", "代付"
-    )
-
-    // 金额符号 —— 双信号之二
-    private fun hasAmountSymbol(text: String): Boolean =
-        text.contains("¥") || text.contains("￥") || text.contains("元")
-
-    private fun isPromotional(text: String): Boolean {
-        val lower = text.lowercase()
-        return promotionalBlacklist.any { lower.contains(it.lowercase()) }
-    }
-
-    private fun hasPaymentAction(text: String): Boolean {
-        val lower = text.lowercase()
-        return paymentActionKeywords.any { lower.contains(it.lowercase()) }
-    }
 
     /** 判断 merchant 字段是否为空或只是渠道名（需要跨 App 补全） */
     private fun needsMerchant(merchant: String?): Boolean {
@@ -167,16 +127,10 @@ class LedgerNotificationListener : NotificationListenerService() {
         // 微博、新闻、银行 App 非通知源（银行走短信）等全部忽略
         if (pkg !in watchedPackages) return
 
-        // === Gate 2: 双信号门 —— 支付动作 + 金额符号 必须同时满足 ===
-        val hasAction = hasPaymentAction(combined)
-        val hasAmount = hasAmountSymbol(combined)
-        if (!hasAction || !hasAmount) return
-
-        // === Gate 3: 促销过滤 —— 仅当缺少「完成表述」时应用 ===
-        // 真实支付通知常含「已优惠/立减/满减/红包抵扣」等营销词（如「支付成功，已优惠3元」），
-        // 不能仅凭营销词丢弃；只有缺少「成功/已/完成/凭证」等完成词时才判为营销
-        val hasCompletion = completionWords.any { combined.contains(it) }
-        if (!hasCompletion && isPromotional(combined)) return
+        // === Gates 2+3: 双信号门 + 完成词主门（逻辑提取至 NotificationGate，可单元测试） ===
+        // v2.36.0：广告金额误判收支的根治 —— 无「支付成功/已扣款/已到账」等完成表述
+        // 一律不采集（漏采可补记，广告污染需逐条清理）。
+        if (!NotificationGate.shouldCapture(combined)) return
 
         val parsed = TransactionParser.parse(
             text = combined,
@@ -208,6 +162,18 @@ class LedgerNotificationListener : NotificationListenerService() {
                     }
                     return@launch
                 }
+                // 跨通道去重（v2.36.0）：银行短信常比钱包通知晚 1-3 分钟，
+                // 同一笔卡支付会同时产生「微信支付凭证通知 + 银行扣款短信」。
+                // ① 共享注册表（通知↔无障碍↔短信 同进程）3 分钟窗口
+                if (RecentCaptureRegistry.isDuplicate(parsed.type, parsed.amount, 180_000L)) {
+                    return@launch
+                }
+                // ② DB 待确认池（跨进程重启兜底）：±3 分钟内已有同额待确认 → 同一笔
+                if (dao.countPendingLike(
+                        parsed.amount, parsed.amount,
+                        parsed.timestamp - 180_000L, parsed.timestamp + 180_000L
+                    ) > 0
+                ) return@launch
                 val rec = parsed.toRecord()
                 // 商户关联：若当前通知缺少商户，从 60s 窗口内其他 App 的通知补全
                 val enrichedMerchant = if (needsMerchant(rec.merchant)) {
@@ -248,8 +214,8 @@ class LedgerNotificationListener : NotificationListenerService() {
                         )
                     }
                 }
-            } else if (hasAction) {
-                // 兜底：白名单内疑似支付但解析失败 —— 仍以原文入库，确保不遗漏
+            } else {
+                // 兜底：白名单内疑似支付但解析失败（门槛已过 NotificationGate）—— 仍以原文入库，确保不遗漏
                 val fallbackMerchant = title.takeIf { it.isNotBlank() && !needsMerchant(title) }
                     ?: correlateMerchant(0.0, pkg, sbn.postTime)
                 if (dao.countExactCapture(

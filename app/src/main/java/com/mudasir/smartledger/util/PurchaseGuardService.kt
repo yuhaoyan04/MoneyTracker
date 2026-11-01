@@ -93,11 +93,16 @@ class PurchaseGuardService : Service() {
             instance?.handler?.post { instance?.updateBallBadge() }
         }
 
-        /** 无障碍通道检测到支付页 → 触发想好再买浮层/通知（遵守 2 分钟授权冷却）。 */
-        fun onExternalPayPage(context: Context) {
-            instance?.handler?.post {
-                runCatching { instance?.nudgeFromDetection() }
+        /**
+         * 无障碍通道检测到支付页 → 触发想好再买浮层/通知（遵守 2 分钟授权冷却）。
+         * v2.36.0 返回 true=守护服务在线已接手；false=服务未运行，调用方可做兜底提醒。
+         */
+        fun onExternalPayPage(context: Context): Boolean {
+            val svc = instance ?: return false
+            svc.handler.post {
+                runCatching { svc.nudgeFromDetection() }
             }
+            return true
         }
 
         fun applyBall(context: Context) {
