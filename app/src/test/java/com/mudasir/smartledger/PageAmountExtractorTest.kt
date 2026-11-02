@@ -11,6 +11,14 @@ import org.junit.Test
  */
 class PageAmountExtractorTest {
 
+    @Test
+    fun `conservative extraction uses labelled total and rejects ambiguous amounts`() {
+        assertEquals(88.0, PageAmountExtractor.extractConservative("支付成功 优惠 ¥10.00 实付金额 ¥88.00")!!, 0.001)
+        assertNull(PageAmountExtractor.extractConservative("支付成功 优惠 ¥10.00 ¥88.00"))
+        assertNull(PageAmountExtractor.extractConservative("支付成功 订单号 123.45"))
+        assertEquals(1234.56, PageAmountExtractor.extractConservative("付款成功 交易金额 1,234.56元")!!, 0.001)
+    }
+
     // ===== 符号前缀 =====
 
     @Test

@@ -22,6 +22,17 @@ object PageAmountExtractor {
     private fun parseAmount(raw: String): Double? =
         raw.replace(",", "").toDoubleOrNull()?.takeIf { it > 0 }
 
+    /** Accept a labelled transaction amount or one unambiguous currency amount. */
+    fun extractConservative(text: String): Double? {
+        val label = Regex("""(?:实付金额|付款金额|支付金额|交易金额|实付款|实付|付款|支付)\s*[:：]?\s*[¥￥]?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*元?""")
+        val labelled = label.findAll(text).mapNotNull { parseAmount(it.groupValues[1]) }.distinct().toList()
+        if (labelled.size == 1) return labelled.single()
+        if (labelled.size > 1) return null
+        val amounts = (amountRegex.findAll(text).mapNotNull { parseAmount(it.groupValues[1]) } +
+            yuanRegex.findAll(text).mapNotNull { parseAmount(it.groupValues[1]) }).distinct().toList()
+        return amounts.singleOrNull()
+    }
+
     /**
      * 从页面文本中提取支付金额。
      * @param allowBareFallback 无符号裸小数兜底开关（分期页传 false 或自动检测）

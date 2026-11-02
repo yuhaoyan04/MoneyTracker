@@ -76,7 +76,9 @@ class BankSmsReceiver : BroadcastReceiver() {
             timestamp = timestamp
         ) ?: return
 
+        val pendingResult = goAsync()
         scope.launch {
+            try {
             // 后台协程绝不抛异常 —— 任何失败只记日志，保住前台体验
             runCatching {
                 val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
@@ -138,6 +140,9 @@ class BankSmsReceiver : BroadcastReceiver() {
                     }
                 }
             }.onFailure { android.util.Log.w("BankSmsReceiver", "sms capture failed", it) }
+            } finally {
+                pendingResult.finish()
+            }
         }
     }
 }

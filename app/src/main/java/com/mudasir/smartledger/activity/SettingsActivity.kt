@@ -196,8 +196,9 @@ class SettingsActivity : AppCompatActivity() {
         val tv = findViewById<TextView>(R.id.tvGuardStatus)
         val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnGuardToggle)
         val usageOk = PermissionHelper.hasUsageAccess(this)
-        val running = com.mudasir.smartledger.util.PurchaseGuardService.isRunning
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val running = com.mudasir.smartledger.util.PurchaseGuardService.isRunning &&
+            prefs.getBoolean("guard_enabled", false)
         when {
             running && usageOk -> {
                 tv.text = "已开启"
@@ -239,7 +240,9 @@ class SettingsActivity : AppCompatActivity() {
         // 提醒方式 / 冷静时长 / 提醒范围
         val mode = prefs.getString("guard_mode", "overlay") ?: "overlay"
         findViewById<TextView>(R.id.tvGuardMode).text =
-            if (mode == "overlay") "全屏冷静（强制倒计时）" else "仅通知"
+            if (mode == "overlay") {
+                if (android.provider.Settings.canDrawOverlays(this)) "全屏冷静" else "缺少悬浮窗权限，将使用通知"
+            } else "仅通知"
         val cooldown = prefs.getInt("guard_cooldown_seconds", 5)
         findViewById<TextView>(R.id.tvCooldown).text = "$cooldown 秒"
         val scope = prefs.getString("guard_scope", "payment") ?: "payment"
@@ -270,7 +273,7 @@ class SettingsActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
         val current = prefs.getString("guard_mode", "overlay") ?: "overlay"
         val options = arrayOf(
-            "全屏冷静 · 强制倒计时，手动确认才放行（推荐）",
+            "全屏冷静 · 倒计时后手动关闭（需要悬浮窗权限）",
             "仅通知 · 轻提醒，不打断操作"
         )
         var picked = if (current == "overlay") 0 else 1
@@ -320,7 +323,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun toggleGuard() {
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
         val usageOk = PermissionHelper.hasUsageAccess(this)
-        val running = com.mudasir.smartledger.util.PurchaseGuardService.isRunning
+        val running = prefs.getBoolean("guard_enabled", false)
         when {
             !usageOk -> {
                 PermissionHelper.openUsageAccessSettings(this)
@@ -352,8 +355,10 @@ class SettingsActivity : AppCompatActivity() {
                 refreshGuardStatus()
             }
             else -> {
-                stopService(Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java))
                 prefs.edit().putBoolean("guard_enabled", false).apply()
+                if (!prefs.getBoolean("ball_enabled", false)) {
+                    stopService(Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java))
+                }
                 Toast.makeText(this, "想好再买已关闭", Toast.LENGTH_SHORT).show()
                 refreshGuardStatus()
             }

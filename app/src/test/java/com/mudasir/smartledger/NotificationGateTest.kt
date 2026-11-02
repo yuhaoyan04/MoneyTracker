@@ -10,6 +10,12 @@ import org.junit.Test
  * 用例全部来自真实世界的通知文案形态。
  */
 class NotificationGateTest {
+    @Test
+    fun `wechat chat messages cannot impersonate payment notifications by body alone`() {
+        assertFalse(NotificationGate.isTrustedSender("com.tencent.mm", "张三"))
+        assertTrue(NotificationGate.isTrustedSender("com.tencent.mm", "微信支付"))
+        assertTrue(NotificationGate.isTrustedSender("com.eg.android.AlipayGphone", "支付宝"))
+    }
 
     // ===== 真实支付/收款通知 —— 必须放行 =====
 

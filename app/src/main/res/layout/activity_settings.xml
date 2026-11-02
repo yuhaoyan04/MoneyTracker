@@ -208,7 +208,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="在密码输入之前读取订单金额，覆盖 H5/内嵌收银台变体。仅识别含支付特征的页面。"
+                        android:text="识别支持的支付应用中的付款页和成功页。冷静浮层还需开启想好再买并授予悬浮窗权限；部分页面无法读取。成功后识别的金额进入待确认。"
                         android:textColor="@color/text_tertiary"
                         android:textSize="12sp" />
 

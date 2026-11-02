@@ -17,12 +17,16 @@ package com.mudasir.smartledger.capture
  */
 object NotificationGate {
 
+    /** WeChat also carries arbitrary chat messages, so require the payment service as sender. */
+    fun isTrustedSender(pkg: String, title: String): Boolean =
+        pkg != "com.tencent.mm" || listOf("微信支付", "微信收款助手").any { title.contains(it) }
+
     /** 完成表述词（强）：真实支付/收款/退款结果文案 */
     val completionWords = listOf(
         // 支出结果
         "支付成功", "付款成功", "已支付", "已付款", "支付完成", "付款完成",
         "已扣款", "扣款成功", "扣款完成", "自动扣款成功", "刷卡成功",
-        "交易完成", "交易成功", "下单成功", "已消费",
+        "交易完成", "交易成功", "已消费",
         "微信支付凭证", "付款凭证", "支付凭证",
         // 收入结果
         "收款成功", "已收款", "已到账", "到账成功", "已存入", "已转入",

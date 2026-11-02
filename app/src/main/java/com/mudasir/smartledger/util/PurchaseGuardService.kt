@@ -57,6 +57,8 @@ class PurchaseGuardService : Service() {
 
     companion object {
         const val CHANNEL_ACTIVE = PurchaseGuardNotifier.CHANNEL_ACTIVE
+        private const val ACTION_PAY_PAGE = "com.mudasir.smartledger.PAY_PAGE"
+        private const val EXTRA_PAY_PACKAGE = "pay_package"
 
         @Volatile
         var isRunning = false
@@ -97,12 +99,20 @@ class PurchaseGuardService : Service() {
          * 无障碍通道检测到支付页 → 触发想好再买浮层/通知（遵守 2 分钟授权冷却）。
          * v2.36.0 返回 true=守护服务在线已接手；false=服务未运行，调用方可做兜底提醒。
          */
-        fun onExternalPayPage(context: Context): Boolean {
-            val svc = instance ?: return false
-            svc.handler.post {
-                runCatching { svc.nudgeFromDetection() }
+        fun onExternalPayPage(context: Context, pkg: String): Boolean {
+            val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("guard_enabled", false)) return false
+            val svc = instance
+            if (svc != null) {
+                svc.handler.post { runCatching { svc.nudgeFromDetection(pkg) } }
+                return true
             }
-            return true
+            return runCatching {
+                androidx.core.content.ContextCompat.startForegroundService(context,
+                    Intent(context, PurchaseGuardService::class.java)
+                        .setAction(ACTION_PAY_PAGE).putExtra(EXTRA_PAY_PACKAGE, pkg))
+                true
+            }.getOrDefault(false)
         }
 
         fun applyBall(context: Context) {
@@ -186,7 +196,12 @@ class PurchaseGuardService : Service() {
         handler.post(pollRunnable)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_PAY_PAGE) {
+            intent.getStringExtra(EXTRA_PAY_PACKAGE)?.let { nudgeFromDetection(it) }
+        }
+        return START_STICKY
+    }
 
     override fun onDestroy() {
         isRunning = false
@@ -226,6 +241,7 @@ class PurchaseGuardService : Service() {
         if (fg == currentFg && cls == currentCls) return
 
         val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("guard_enabled", false)) return
         val scopeMode = prefs.getString("guard_scope", "payment") ?: "payment"
         val watchedHit = fg in watchedPackages
         val payScreen = watchedHit && isPaymentScreen(fg, cls)
@@ -249,12 +265,7 @@ class PurchaseGuardService : Service() {
             val lastPkg = prefs.getString("guard_last_pkg", "")
             val lastAt = prefs.getLong("guard_last_at", 0L)
             if (fg == lastPkg && now - lastAt < APPROVAL_COOLDOWN_MS) return
-            lastNudgeAt = now
-            prefs.edit()
-                .putString("guard_last_pkg", fg)
-                .putLong("guard_last_at", now)
-                .apply()
-            nudge()
+            nudgeFromDetection(fg)
         } else if (prev in watchedPackages) {
             PurchaseGuardNotifier.cancelThink(this)
         }
@@ -290,7 +301,15 @@ class PurchaseGuardService : Service() {
     }
 
     /** 无障碍通道触发的提醒入口（与 usage 检测共用冷却与浮层逻辑）。 */
-    fun nudgeFromDetection() {
+    fun nudgeFromDetection(pkg: String) {
+        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("guard_enabled", false)) return
+        val now = System.currentTimeMillis()
+        if (prefs.getString("guard_last_pkg", "") == pkg &&
+            now - prefs.getLong("guard_last_at", 0L) < APPROVAL_COOLDOWN_MS) return
+        if (now - lastNudgeAt < 5_000L || overlayView != null) return
+        currentFg = pkg
+        lastNudgeAt = now
         nudgeInternal()
     }
 
@@ -404,7 +423,10 @@ class PurchaseGuardService : Service() {
             val autoRemove = Runnable { removeOverlay() }
             overlayAutoRemove = autoRemove
             handler.postDelayed(autoRemove, 60_000)
-        }.onFailure { overlayView = null }
+        }.onFailure {
+            overlayView = null
+            PurchaseGuardNotifier.notifyThink(applicationContext, spent, budgetPct)
+        }
     }
 
     private fun removeOverlay() {

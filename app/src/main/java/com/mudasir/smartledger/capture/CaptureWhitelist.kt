@@ -33,7 +33,9 @@ object CaptureWhitelist {
         "com.cgbchina.xpt"                // 广发银行
     )
 
-    fun isWatched(pkg: String): Boolean = pkg in packages
+    fun isWatched(pkg: String): Boolean = pkg in packages || pkg in bankPackages
+
+    fun isPageWatched(pkg: String): Boolean = isWatched(pkg)
 
     /** 页面抓取渠道归类：银行 App → 银行卡（未知包名兜底「其他」，收件箱可改） */
     fun channelOf(pkg: String): String = when {

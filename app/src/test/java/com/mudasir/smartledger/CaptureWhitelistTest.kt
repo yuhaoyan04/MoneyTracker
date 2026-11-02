@@ -10,6 +10,12 @@ import org.junit.Test
  * v2.37.0 证据测试：采集白名单收紧（广告噪音源头切断）。
  */
 class CaptureWhitelistTest {
+    @Test
+    fun `page sources require an exact known package`() {
+        assertTrue(CaptureWhitelist.isPageWatched("com.icbc"))
+        assertFalse(CaptureWhitelist.isPageWatched("com.taobao.taobao"))
+        assertFalse(CaptureWhitelist.isPageWatched("com.fake.bank.app"))
+    }
 
     // ===== 白名单内 —— 必须采集 =====
 

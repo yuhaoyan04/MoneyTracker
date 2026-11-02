@@ -9,6 +9,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.mudasir.smartledger.capture.CaptureWhitelist
 import com.mudasir.smartledger.capture.PageAmountExtractor
+import com.mudasir.smartledger.capture.PaymentPageState
 import com.mudasir.smartledger.capture.RecentCaptureRegistry
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
@@ -108,42 +109,37 @@ class AccessibilityCaptureService : AccessibilityService() {
     private fun inspect() {
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString() ?: return
+        if (!CaptureWhitelist.isPageWatched(pkg)) return
         val texts = mutableListOf<String>()
         collectTexts(root, texts, 0)
-        // v2.37.0 多窗口采集：密码弹窗 / 收银台弹层是独立窗口，
-        // rootInActiveWindow 读不到 —— 遍历所有活动窗口补充
-        runCatching {
-            windows.filter { it.isActive }.forEach { w ->
-                w.root?.let { wroot -> collectTexts(wroot, texts, 0) }
-            }
-        }
-        if (texts.size < 2) return
+        if (texts.isEmpty()) return
         val combined = texts.joinToString(" ")
 
         // 强关键词门：页面必须含「付款确认类」表述，且不是支付结果/退款页
         val confirm = confirmWords.any { combined.contains(it) }
-        if (!confirm) return
-        if (combined.contains("退款成功") || combined.contains("支付成功") ||
-            combined.contains("付款成功") || combined.contains("已到账")
-        ) return // 结果页：通知/短信通道已覆盖，避免与结果页重复
+        val completed = PaymentPageState.isSuccessful(combined)
+        val hasOutcome = PaymentPageState.hasOutcome(combined)
 
         // ★ 想好再买浮层：确认页命中即触发（密码输入前的最后干预点），
         //   必须在抓取去重之前——同一页面第二次出现仍要拦截。
         //   90 秒冷却：浮层被关闭后不因页面内容微变而立即再弹（防骚扰循环）。
         val nowMs = System.currentTimeMillis()
-        if (nowMs - lastGuardAt > 90_000) {
-            lastGuardAt = nowMs
+        if (confirm && !hasOutcome && nowMs - lastGuardAt > 5_000) {
             val handled = runCatching {
-                PurchaseGuardService.onExternalPayPage(applicationContext)
+                PurchaseGuardService.onExternalPayPage(applicationContext, pkg)
             }.getOrDefault(false)
-            if (!handled) {
-                // 守护服务未运行（用户只开了增强检测）→ 直接发冷静通知兜底，
-                // 不让「拦截失败」再无声发生
+            if (handled) {
+                lastGuardAt = nowMs
+            } else if (getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                    .getBoolean("guard_enabled", false)) {
+                lastGuardAt = nowMs
                 scope.launch { runCatching { fallbackThinkNotification() } }
             }
         }
 
-        val amount = PageAmountExtractor.extract(combined) ?: return
+        // A checkout is an intention, not evidence that a payment happened.
+        if (!completed) return
+        val amount = PageAmountExtractor.extractConservative(combined) ?: return
         val key = "$pkg|$amount"
         // 90 秒内同一笔（同包同额）只记一次
         if (key == lastCapturedKey && nowMs - lastCapturedAt < 90_000) return
@@ -207,7 +203,9 @@ class AccessibilityCaptureService : AccessibilityService() {
 
     private fun collectTexts(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {
         if (depth > 25 || out.size > 120) return
+        if (node.isPassword) return
         node.text?.let { if (it.isNotBlank()) out.add(it.toString()) }
+        node.contentDescription?.let { if (it.isNotBlank()) out.add(it.toString()) }
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { collectTexts(it, out, depth + 1) }
         }
@@ -217,7 +215,13 @@ class AccessibilityCaptureService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         isRunning = false
-        scope.cancel()
         return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        isRunning = false
+        handler.removeCallbacksAndMessages(null)
+        scope.cancel()
+        super.onDestroy()
     }
 }

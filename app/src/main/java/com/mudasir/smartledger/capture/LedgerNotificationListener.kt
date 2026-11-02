@@ -107,7 +107,8 @@ class LedgerNotificationListener : NotificationListenerService() {
 
         // === Gate 1: 严格白名单 —— 只处理支付/购物 App 的通知 ===
         // 微博、新闻、银行 App 非通知源（银行走短信）等全部忽略
-        if (pkg !in watchedPackages) return
+        if (!CaptureWhitelist.isWatched(pkg)) return
+        if (!NotificationGate.isTrustedSender(pkg, title)) return
 
         // === Gates 2+3: 双信号门 + 完成词主门（逻辑提取至 NotificationGate，可单元测试） ===
         // v2.36.0：广告金额误判收支的根治 —— 无「支付成功/已扣款/已到账」等完成表述
