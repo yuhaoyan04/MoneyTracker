@@ -147,11 +147,6 @@ object BillImporter {
                                 paymentMethod = pending.paymentMethod ?: bill.paymentMethod
                             )
                         )
-                        PersonalTagger.learn(
-                            context, bill.type, bill.timestamp, bill.amount,
-                            sourceChannel, pending.categoryName.ifBlank { suggestion.category }, bill.merchant,
-                            pending.locationName
-                        )
                         mergedPending++
                         continue
                     }
@@ -177,10 +172,6 @@ object BillImporter {
                         status = TransactionRecord.STATUS_CONFIRMED,
                         aiConfidence = suggestion.confidence
                     )
-                )
-                PersonalTagger.learn(
-                    context, bill.type, bill.timestamp, bill.amount,
-                    sourceChannel, suggestion.category, bill.merchant, null
                 )
                 confirmedKeys.add(bill.dedupKey)
                 inserted++

@@ -153,7 +153,7 @@
                         android:id="@+id/tvAiTrustTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="🤖 AI 打标引擎 · 持续进化"
+                        android:text="分类建议 · 本地学习"
                         android:textColor="@color/teal_main"
                         android:textSize="12sp"
                         android:textStyle="bold"

@@ -317,14 +317,12 @@ class StatsActivity : AppCompatActivity() {
     /** AI 打标信任卡片：把自进化引擎的能力可视化（v2.36.0：渐进展示，低样本也显示成长进度）。 */
     private fun renderAiTrustCard() {
         val card = findViewById<View>(R.id.cardAiTrust)
-        val (accepted, corrected) = PersonalTagger.learningStats(this)
-        val learned = accepted + corrected
-        val merchants = PersonalTagger.knownMerchantCount(this)
+        val learned = com.mudasir.smartledger.ml.HabitLearning.sampleCount(this)
         findViewById<TextView>(R.id.tvAiTrustBody).text = if (learned == 0) {
-            "??????????????????????????????"
+            "手动选择分类或确认候选交易后，系统会在本机学习你的时间和金额习惯。"
         } else {
-            "???? $learned ? ? ?? $merchants ???\n" +
-                "?? $corrected ???????????????"
+            "已学习 $learned 笔明确核对的交易。\n" +
+                "建议会参考相近的时间和金额，仍需你核对分类。"
         }
         card.visibility = View.VISIBLE
     }

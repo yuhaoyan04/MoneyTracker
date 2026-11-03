@@ -53,19 +53,16 @@ class CaptureInboxActivity : AppCompatActivity() {
                         val fresh = db.transactionDao().getById(r.id)
                         if (fresh != null && CaptureReviewPolicy.canConfirm(fresh.amount) &&
                             db.transactionDao().confirmPending(fresh.id) > 0) {
+                            withContext(Dispatchers.IO) {
+                                com.mudasir.smartledger.ml.HabitLearning.recordReviewed(
+                                    this@CaptureInboxActivity, fresh.copy(status = TransactionRecord.STATUS_CONFIRMED)
+                                )
+                            }
                             if (fresh.locationName.isNullOrBlank() && (fresh.latitude == null || fresh.latitude == 0.0)) {
                                 val place = withContext(Dispatchers.IO) {
                                     runCatching { com.mudasir.smartledger.util.LocationHelper.lastPlace(this@CaptureInboxActivity) }.getOrNull()
                                 }
                                 if (place != null) db.transactionDao().fillMissingLocation(fresh.id, place.latitude, place.longitude, place.name)
-                            }
-                            if (fresh.categoryName.isNotBlank()) {
-                                runCatching {
-                                    com.mudasir.smartledger.ml.PersonalTagger.learn(
-                                        this@CaptureInboxActivity, fresh.type, fresh.timestamp, fresh.amount,
-                                        fresh.channelName, fresh.categoryName, fresh.merchant, fresh.locationName
-                                    )
-                                }
                             }
                             runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
                         }
@@ -123,9 +120,9 @@ class CaptureInboxActivity : AppCompatActivity() {
                     // 幂等确认：只有第一次生效
                     val changed = db.transactionDao().confirmPending(it.id)
                     if (changed > 0 && it.categoryName.isNotBlank()) {
-                        runCatching {
-                            com.mudasir.smartledger.ml.PersonalTagger.learn(
-                                this@CaptureInboxActivity, it.type, it.timestamp, it.amount, it.channelName, it.categoryName, it.merchant, it.locationName
+                        withContext(Dispatchers.IO) {
+                            com.mudasir.smartledger.ml.HabitLearning.recordReviewed(
+                                this@CaptureInboxActivity, it.copy(status = TransactionRecord.STATUS_CONFIRMED)
                             )
                         }
                     }

@@ -12,7 +12,7 @@ import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.ml.PersonalTagger
 import java.util.concurrent.TimeUnit
 
-/** ??????????????????????????????? */
+/** Optional automatic confirmation; this is not explicit training feedback. */
 class SilentConfirmWorker(
     context: Context,
     params: WorkerParameters
@@ -48,16 +48,6 @@ class SilentConfirmWorker(
                 // 置信度门槛：低置信度预测不参与静默学习（自进化的数据质量防线）
                 if (!CaptureReviewPolicy.canAutoConfirm(record.amount, record.categoryName, record.aiConfidence)) { held++; continue }
                 if (dao.confirmPending(record.id) > 0) {
-                    PersonalTagger.learn(
-                        applicationContext,
-                        record.type,
-                        record.timestamp,
-                        record.amount,
-                        record.channelName,
-                        record.categoryName,
-                        record.merchant,
-                        record.locationName
-                    )
                     learned++
                 }
             }

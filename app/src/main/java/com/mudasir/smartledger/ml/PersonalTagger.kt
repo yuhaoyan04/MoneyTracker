@@ -16,38 +16,9 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
- * 个性化消费打标系统 —— 五层自进化架构（类短视频推荐引擎）：
- *
- * 1) 商户记忆（merchant memory）+ 加速置信度：
- *    Laplace 平滑 + 加速学习：3 次确认 0 纠正 → 0.92，5 次 → 0.97。
- *    2+ 次纠正 → 置信度封顶 0.49（避免重复错误）。
- *    高置信度（>=0.7）直接命中。
- *
- * 2) 商户-时段上下文（merchant × hour context）：
- *    同一商户在不同时段可能对应不同分类
- *    （美团@12→外卖, 美团@14→日用品）。
- *
- * 3) 朴素贝叶斯 + 金额区间（Naive Bayes + amount range）：
- *    四特征边际计数 + 金额均值±标准差对数增益。
- *
- * 4) 规则引擎（rule engine）：关键词 + 金额/时段/位置推断。
- *    4 层优先级：地理位置 > 强商户信号 > 网购平台细分 > 渠道+金额+时段。
- *
- * 5) 冷启动决策表（cold start table）：
- *    day-of-month × hour × weekday × channel × amount → category。
- *    月初房租、月末水电、心理定价(9.9/99/299)、收入时序(工资/红包/退款)。
- *    无关键词、无商户信息时仍能给出合理推断。
- *
- * 自进化机制（越来越准）：
- * - 加速学习：3 次确认即达高置信度，减少用户手动确认次数
- * - 周期性支付检测：同商户+相近金额+月度间隔 → 订阅自动分类
- *   （第 2 次出现 +0.20 弱偏移，第 3 次 +0.50 强偏移）
- * - 分类频率先验：偏好用户常用分类（类短视频个性化默认推荐）
- * - 商户-时段上下文：同商户不同时段不同分类
- * - 纠正惩罚：频繁被纠正的商户置信度降低，让其他层接管
- * - 自适应权重：随数据量增长，merchant/Bayes 权重提升，rules/cold 退居兜底
- * - 时间衰减：90 天半衰期，旧样本权重降低，适应用户习惯变化
- * - 静默确认：用户未修正的 PENDING 记录 7 天后自动 learn()
+ * Compatibility entry point: reviewed examples use [HabitLearning], then the existing
+ * merchant memory and rules provide a fallback. Legacy scores are heuristic, not calibrated
+ * probabilities. See HABIT_LEARNING_DESIGN.md for feedback provenance and limitations.
  */
 object PersonalTagger {
 
@@ -309,6 +280,10 @@ object PersonalTagger {
         rawText: String? = null,
         locationName: String? = null
     ): Recommendation {
+        // Explicitly reviewed examples can override the old heuristics only with repeated local support.
+        HabitLearning.suggest(context, type, timestamp, amount, channel, merchant)?.let {
+            return Recommendation(it.category, 0.49f)
+        }
         val m = synchronized(lock) { loadImpl(context) }
         val norm = normalizeMerchant(merchant)
 

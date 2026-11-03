@@ -692,6 +692,7 @@ class SettingsActivity : AppCompatActivity() {
             .setPositiveButton("清理") { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     db.transactionDao().clearByType(type)
+                    com.mudasir.smartledger.ml.HabitLearning.removeType(this@SettingsActivity, type)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@SettingsActivity, "已清理$label", Toast.LENGTH_SHORT).show()
                     }
@@ -798,7 +799,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun refreshAutoConfirmStatus() {
         val enabled = getSharedPreferences("capture_review_prefs", MODE_PRIVATE).getBoolean("auto_confirm_enabled", false)
-        findViewById<TextView>(R.id.tvAutoConfirmStatus).text = if (enabled) "已开启 · 7 天后按条件确认" else "已关闭 · 需手动核对"
+        findViewById<TextView>(R.id.tvAutoConfirmStatus).text = if (enabled) "已开启 · 7 天前的交易按条件确认" else "已关闭 · 需手动核对"
     }
 
     private fun editAutoConfirm() {
@@ -806,7 +807,7 @@ class SettingsActivity : AppCompatActivity() {
         val enabled = prefs.getBoolean("auto_confirm_enabled", false)
         AlertDialog.Builder(this)
             .setTitle("自动确认候选交易")
-            .setMessage("开启后，超过 7 天未处理、金额和分类完整且建议分数达到门槛的候选交易会自动入账，并用于分类学习。系统建议可能有误；关闭时请在收件箱手动核对。")
+            .setMessage("开启后，交易时间距今超过 7 天、金额和分类完整且建议分数达到门槛的候选交易会自动入账。新采集的旧交易可能很快被确认。自动确认不会作为用户反馈训练新学习器；系统建议仍可能有误。")
             .setPositiveButton(if (enabled) "关闭自动确认" else "开启自动确认") { _, _ ->
                 prefs.edit().putBoolean("auto_confirm_enabled", !enabled).apply()
                 refreshAutoConfirmStatus()

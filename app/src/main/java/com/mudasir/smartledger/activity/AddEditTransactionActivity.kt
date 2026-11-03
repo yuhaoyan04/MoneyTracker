@@ -2,6 +2,8 @@ package com.mudasir.smartledger.activity
 
 import android.app.DatePickerDialog
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -19,10 +21,13 @@ import com.mudasir.smartledger.data.Category
 import com.mudasir.smartledger.data.PaymentChannel
 import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.ml.PersonalTagger
+import com.mudasir.smartledger.ml.HabitLearning
 import com.mudasir.smartledger.util.AutoBackupManager
 import com.mudasir.smartledger.util.FormatUtil
 import com.mudasir.smartledger.util.LocationHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -35,6 +40,8 @@ class AddEditTransactionActivity : AppCompatActivity() {
     private var editingRecord: TransactionRecord? = null
     private var selectedTs: Long = System.currentTimeMillis()
     private var suggestedCategory: String? = null // 打标器给出的初始建议（用于修正学习）
+    private var categoryManuallySelected = false
+    private var suggestionJob: Job? = null
 
     // 表单状态（卡片行式布局，无输入框）
     private var selectedCategory: String = ""
@@ -67,11 +74,13 @@ class AddEditTransactionActivity : AppCompatActivity() {
         btnExpense.setOnClickListener {
             expenseSelected = true
             selectedCategory = ""
+            categoryManuallySelected = false
             maybePrefillSuggestion()
         }
         btnIncome.setOnClickListener {
             expenseSelected = false
             selectedCategory = ""
+            categoryManuallySelected = false
             maybePrefillSuggestion()
         }
         btnExpense.isChecked = true
@@ -82,11 +91,18 @@ class AddEditTransactionActivity : AppCompatActivity() {
         findViewById<View>(R.id.cardCategory).setOnClickListener { pickCategory() }
         findViewById<View>(R.id.cardChannel).setOnClickListener { showChannelSheet() }
         findViewById<View>(R.id.cardPayment).setOnClickListener { showPaymentSheet() }
-        findViewById<View>(R.id.btnSave).setOnClickListener { save() }
+        findViewById<View>(R.id.btnSave).setOnClickListener {
+            lifecycleScope.launch { suggestionJob?.join(); save() }
+        }
         val btnDelete = findViewById<MaterialButton>(R.id.btnDelete)
 
         editingId = intent.getLongExtra(EXTRA_ID, 0)
         pendingId = intent.getLongExtra(EXTRA_PENDING_ID, 0)
+        etAmount.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) { maybePrefillSuggestion() }
+        })
         maybePrefillSuggestion()
 
         if (editingId > 0) {
@@ -101,23 +117,23 @@ class AddEditTransactionActivity : AppCompatActivity() {
     /** 手动新记账时，用打标器给个默认分类建议。位置反查是网络请求，必须异步，绝不能阻塞主线程。 */
     private fun maybePrefillSuggestion() {
         if (editingId > 0 || pendingId > 0) return
-        if (selectedCategory.isNotBlank()) return
+        if (categoryManuallySelected) return
         val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
         val amount = etAmount.text?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
-        lifecycleScope.launch(Dispatchers.IO) {
-            val place = runCatching { LocationHelper.lastPlace(this@AddEditTransactionActivity) }.getOrNull()
-            val suggested = PersonalTagger.recommend(
-                this@AddEditTransactionActivity, type, selectedTs, amount, selectedChannel,
-                null, etNote.text?.toString(), place?.name
-            )
-            withContext(Dispatchers.Main) {
-                // 期间用户可能已手动选择分类/记录已加载
-                if (selectedCategory.isBlank() && editingId == 0L && pendingId == 0L) {
-                    suggestedCategory = suggested
-                    selectedCategory = suggested
-                    tvCategoryValue.text = suggested
-                    tvCategoryValue.setTextColor(getColor(R.color.text_primary))
-                }
+        val timestamp = selectedTs
+        val channel = selectedChannel
+        val note = etNote.text?.toString()
+        suggestionJob?.cancel()
+        suggestionJob = lifecycleScope.launch {
+            delay(250)
+            val suggested = withContext(Dispatchers.IO) {
+                PersonalTagger.recommend(this@AddEditTransactionActivity, type, timestamp, amount, channel, null, note, null)
+            }
+            if (!categoryManuallySelected && editingId == 0L && pendingId == 0L) {
+                suggestedCategory = suggested
+                selectedCategory = suggested
+                tvCategoryValue.text = suggested
+                tvCategoryValue.setTextColor(getColor(R.color.text_primary))
             }
         }
     }
@@ -141,6 +157,8 @@ class AddEditTransactionActivity : AppCompatActivity() {
     }
 
     private fun applyCategory(name: String) {
+        categoryManuallySelected = true
+        suggestionJob?.cancel()
         selectedCategory = name
         tvCategoryValue.text = name
         tvCategoryValue.setTextColor(getColor(R.color.text_primary))
@@ -283,11 +301,13 @@ class AddEditTransactionActivity : AppCompatActivity() {
                             selectedChannel = custom
                             tvChannelValue.text = custom
                             tvChannelValue.setTextColor(getColor(R.color.text_primary))
+                            maybePrefillSuggestion()
                         }
                     } else {
                         selectedChannel = pick
                         tvChannelValue.text = pick
                         tvChannelValue.setTextColor(getColor(R.color.text_primary))
+                        maybePrefillSuggestion()
                     }
                 }
             }
@@ -447,6 +467,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
             cal.set(y, m, d)
             selectedTs = cal.timeInMillis
             tvDate.text = FormatUtil.date(selectedTs)
+            maybePrefillSuggestion()
         }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
     }
 
@@ -471,6 +492,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
             return
         }
         saving = true
+        val explicitCategoryFeedback = categoryManuallySelected || pendingId > 0
         val channel = selectedChannel.ifBlank { "其他" }
         val pm = selectedPayment
         val note = etNote.text?.toString()?.trim()?.takeIf { it.isNotBlank() }
@@ -518,19 +540,10 @@ class AddEditTransactionActivity : AppCompatActivity() {
                     db.transactionDao().insert(saved)
                 }
                 savedToDb = true
+                HabitLearning.recordReviewed(this@AddEditTransactionActivity, saved,
+                    requireExisting = !explicitCategoryFeedback)
                 // 待确认数量可能变化（确认了一条 PENDING），刷新常驻通知
                 com.mudasir.smartledger.util.PendingNotifier.update(this@AddEditTransactionActivity)
-
-                // 个性化打标学习：确认/修正即训练（位置参与特征，越用越准）
-                if (resolvedCategory.isNotBlank()) {
-                    val old = suggestedCategory
-                    val locForLearn = saved.locationName ?: place?.name
-                    if (old != null && old != resolvedCategory) {
-                        PersonalTagger.correct(this@AddEditTransactionActivity, type, selectedTs, amount, channel, old, resolvedCategory, existing?.merchant, locForLearn)
-                    } else {
-                        PersonalTagger.learn(this@AddEditTransactionActivity, type, selectedTs, amount, channel, resolvedCategory, existing?.merchant, locForLearn)
-                    }
-                }
 
                 // 自动备份（增量触发）
                 runCatching { AutoBackupManager.backup(this@AddEditTransactionActivity) }
@@ -560,6 +573,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
         val r = editingRecord ?: return
         lifecycleScope.launch(Dispatchers.IO) {
             db.transactionDao().moveToTrash(r.id)
+            HabitLearning.remove(this@AddEditTransactionActivity, r.stableId)
             com.mudasir.smartledger.util.PendingNotifier.update(this@AddEditTransactionActivity)
             withContext(Dispatchers.Main) { finish() }
         }

@@ -14,9 +14,9 @@ class CaptureReviewPolicyTest {
     }
     @Test fun automaticConfirmationRequiresCategoryAndUsableSuggestion() {
         assertFalse(CaptureReviewPolicy.canAutoConfirm(20.0, "", 0.9f))
-        assertFalse(CaptureReviewPolicy.canAutoConfirm(20.0, "??", null))
-        assertFalse(CaptureReviewPolicy.canAutoConfirm(20.0, "??", Float.NaN))
-        assertFalse(CaptureReviewPolicy.canAutoConfirm(20.0, "??", 0.49f))
-        assertTrue(CaptureReviewPolicy.canAutoConfirm(20.0, "??", 0.5f))
+        assertFalse(CaptureReviewPolicy.canAutoConfirm(20.0, "food", null))
+        assertFalse(CaptureReviewPolicy.canAutoConfirm(20.0, "food", Float.NaN))
+        assertFalse(CaptureReviewPolicy.canAutoConfirm(20.0, "food", 0.49f))
+        assertTrue(CaptureReviewPolicy.canAutoConfirm(20.0, "food", 0.5f))
     }
 }
