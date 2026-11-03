@@ -10,6 +10,10 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.mudasir.smartledger.capture.CaptureWhitelist
 import com.mudasir.smartledger.capture.PageAmountExtractor
 import com.mudasir.smartledger.capture.PaymentPageState
+import com.mudasir.smartledger.capture.PaymentScreenClassifier
+import com.mudasir.smartledger.capture.CheckoutNode
+import com.mudasir.smartledger.capture.CheckoutPageParser
+import com.mudasir.smartledger.capture.CheckoutResult
 import com.mudasir.smartledger.capture.RecentCaptureRegistry
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
@@ -78,6 +82,7 @@ class AccessibilityCaptureService : AccessibilityService() {
     private var lastCapturedKey = ""
     private var lastCapturedAt = 0L
     private var lastGuardAt = 0L
+    private var lastGuardDiagnostic = ""
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -91,8 +96,23 @@ class AccessibilityCaptureService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
         val now = android.os.SystemClock.uptimeMillis()
+        if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = e.packageName?.toString().orEmpty()
+            val cls = e.className?.toString().orEmpty()
+            if (CheckoutPageParser.isSupported(pkg)) {
+                PurchaseGuardService.onObservedForeground(pkg)
+            }
+            if (CheckoutPageParser.isSupported(pkg)) {
+                PurchaseGuardService.recordDetection(pkg, cls, "收到无障碍窗口事件")
+            }
+            val includeCheckout = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                .getString("guard_scope", "payment") == "checkout"
+            if (PaymentScreenClassifier.matches(pkg, cls, includeCheckout)) {
+                PurchaseGuardService.recordDetection(pkg, cls, "窗口候选，等待付款页面和金额")
+            }
+        }
         when (e.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
                 if (now - lastProcessAt < POLL_DEBOUNCE_MS) return
                 lastProcessAt = now
                 handler.postDelayed({ runCatching { inspect() } }, 350)
@@ -109,33 +129,47 @@ class AccessibilityCaptureService : AccessibilityService() {
     private fun inspect() {
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString() ?: return
+        if (!CheckoutPageParser.isSupported(pkg)) return
+        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("guard_enabled", false)) {
+            val nodes = mutableListOf<CheckoutNode>()
+            collectCheckoutNodes(root, nodes, 0, -1, intArrayOf(0))
+            val threshold = java.math.BigDecimal(prefs.getFloat("big_spend_threshold", 500f).toString())
+            val result = CheckoutPageParser.analyze(pkg, nodes, threshold)
+            PurchaseGuardService.onCheckoutEvaluated(pkg,
+                if (result.status == CheckoutResult.Status.QUALIFIED) result.amount?.toDouble() else null)
+            val diagnostic = "$pkg|${result.status}"
+            if (diagnostic != lastGuardDiagnostic) {
+                lastGuardDiagnostic = diagnostic
+                val message = when (result.status) {
+                    CheckoutResult.Status.NOT_CHECKOUT -> "页面未识别为付款确认页"
+                    CheckoutResult.Status.NO_ACCESSIBLE_TEXT -> "当前窗口没有可读取的文字节点"
+                    CheckoutResult.Status.NO_AMOUNT -> "付款页候选：未识别到明确实付金额"
+                    CheckoutResult.Status.AMBIGUOUS -> "付款页候选：金额冲突，未提醒"
+                    CheckoutResult.Status.BELOW_THRESHOLD -> "付款金额未超过门槛，未提醒"
+                    CheckoutResult.Status.QUALIFIED -> "付款金额超过门槛，请求冷静提醒"
+                }
+                PurchaseGuardService.recordDetection(pkg, "", "$message；可读节点数=${nodes.size}")
+            }
+            val now = System.currentTimeMillis()
+            if (result.status == CheckoutResult.Status.QUALIFIED && now - lastGuardAt > 5_000) {
+                lastGuardAt = now
+                val handled = PurchaseGuardService.onExternalPayPage(applicationContext, pkg, result.amount!!.toDouble())
+                if (!handled && prefs.getBoolean("guard_enabled", false) &&
+                    CheckoutPageParser.exceedsThreshold(result.amount.toDouble(), prefs.getFloat("big_spend_threshold", 500f))) {
+                    scope.launch { runCatching { fallbackThinkNotification() } }
+                }
+            }
+        }
+        // Shopping pages are only used for the guard; transaction capture has its own whitelist.
         if (!CaptureWhitelist.isPageWatched(pkg)) return
         val texts = mutableListOf<String>()
         collectTexts(root, texts, 0)
         if (texts.isEmpty()) return
         val combined = texts.joinToString(" ")
 
-        // 强关键词门：页面必须含「付款确认类」表述，且不是支付结果/退款页
-        val confirm = confirmWords.any { combined.contains(it) }
         val completed = PaymentPageState.isSuccessful(combined)
-        val hasOutcome = PaymentPageState.hasOutcome(combined)
-
-        // ★ 想好再买浮层：确认页命中即触发（密码输入前的最后干预点），
-        //   必须在抓取去重之前——同一页面第二次出现仍要拦截。
-        //   90 秒冷却：浮层被关闭后不因页面内容微变而立即再弹（防骚扰循环）。
         val nowMs = System.currentTimeMillis()
-        if (confirm && !hasOutcome && nowMs - lastGuardAt > 5_000) {
-            val handled = runCatching {
-                PurchaseGuardService.onExternalPayPage(applicationContext, pkg)
-            }.getOrDefault(false)
-            if (handled) {
-                lastGuardAt = nowMs
-            } else if (getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-                    .getBoolean("guard_enabled", false)) {
-                lastGuardAt = nowMs
-                scope.launch { runCatching { fallbackThinkNotification() } }
-            }
-        }
 
         // A checkout is an intention, not evidence that a payment happened.
         if (!completed) return
@@ -195,7 +229,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         val spent = dao.sumByType(
             TransactionRecord.TYPE_EXPENSE, cal.timeInMillis, end.timeInMillis
         )
-        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("budget_prefs", Context.MODE_PRIVATE)
         val budget = prefs.getFloat("monthly_budget", 0f).toDouble()
         val pct = if (budget > 0) ((spent / budget) * 100).toInt().coerceIn(0, 100) else null
         PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
@@ -208,6 +242,22 @@ class AccessibilityCaptureService : AccessibilityService() {
         node.contentDescription?.let { if (it.isNotBlank()) out.add(it.toString()) }
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { collectTexts(it, out, depth + 1) }
+        }
+    }
+
+    private fun collectCheckoutNodes(node: AccessibilityNodeInfo, out: MutableList<CheckoutNode>, depth: Int, parent: Int, count: IntArray) {
+        if (depth > 25 || out.size >= 160 || count[0] >= 600 || node.isPassword) return
+        val id = count[0]++
+        if (node.isVisibleToUser) {
+            val bounds = android.graphics.Rect().also { node.getBoundsInScreen(it) }
+            val text = node.text?.toString().orEmpty().trim()
+            val desc = node.contentDescription?.toString().orEmpty().trim()
+            listOf(text, desc).filter { it.isNotBlank() }.distinct().forEach {
+                if (out.size < 160) out.add(CheckoutNode(it.take(240), parent, bounds.left, bounds.top, bounds.right, bounds.bottom))
+            }
+        }
+        for (i in 0 until node.childCount) {
+            node.getChild(i)?.let { collectCheckoutNodes(it, out, depth + 1, id, count) }
         }
     }
 

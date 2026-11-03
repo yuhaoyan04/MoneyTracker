@@ -319,27 +319,12 @@ class StatsActivity : AppCompatActivity() {
         val card = findViewById<View>(R.id.cardAiTrust)
         val (accepted, corrected) = PersonalTagger.learningStats(this)
         val learned = accepted + corrected
-        if (learned <= 0) {
-            card.visibility = View.GONE
-            return
-        }
         val merchants = PersonalTagger.knownMerchantCount(this)
-        findViewById<TextView>(R.id.tvAiTrustBody).text = when {
-            learned < 5 ->
-                "已学习 $learned 笔 · 掌握 $merchants 个商户\n" +
-                    "多确认/修正几笔，AI 就能开始自动命中你的习惯"
-            learned < 20 -> {
-                val rate = (accepted * 100f / learned).toInt()
-                "已学习 $learned 笔 · 掌握 $merchants 个商户 · 采纳率 $rate%\n" +
-                    "同一商户确认 3 次后，AI 将直接精准命中，无需你再选"
-            }
-            else -> {
-                val rate = (accepted * 100f / learned).toInt()
-                "已学习 $learned 笔 · 掌握 $merchants 个商户 · 你的采纳率 $rate%" +
-                    "（其余 ${corrected} 笔已按你的纠正调整）\n" +
-                    "本月自动分类 ${records.count { it.aiConfidence != null }} 笔 · " +
-                    "引擎正随你的习惯持续进化"
-            }
+        findViewById<TextView>(R.id.tvAiTrustBody).text = if (learned == 0) {
+            "??????????????????????????????"
+        } else {
+            "???? $learned ? ? ?? $merchants ???\n" +
+                "?? $corrected ???????????????"
         }
         card.visibility = View.VISIBLE
     }

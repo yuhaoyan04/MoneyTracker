@@ -2,5 +2,5 @@
     <string name="app_name">MoneyTracker</string>
     <string name="acc_pay_capture_desc">监控微信/支付宝的「支付成功」结果页，自动记录付款码、扫一扫支付的金额、时间与地点（通知监听无法覆盖这类前台支付）。数据仅保存在本机，绝不上传。</string>
     <string name="widget_desc">今日支出与快速记账入口</string>
-    <string name="a11y_capture_desc">识别支持的支付应用中的付款页面以提供冷静提醒，并尝试从支付成功页面读取金额生成待确认记录。部分页面无法读取；内容仅在本机处理。</string>
+    <string name="a11y_capture_desc">在支持的购物和支付应用中读取可访问的付款页节点，识别付款金额与操作；金额高于设定门槛时提醒。也会尝试识别支付成功页面生成待确认记录。部分页面无法读取；页面内容仅在本机处理。</string>
 </resources>

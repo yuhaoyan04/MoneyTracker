@@ -64,7 +64,7 @@
                         android:drawableStart="@drawable/ic_notifications"
                         android:drawablePadding="8dp"
                         android:drawableTint="@color/teal_main"
-                        android:text="开启自动抓取以记录每一笔收支"
+                        android:text="开启自动采集"
                         android:textColor="?attr/colorOnSurface"
                         android:textSize="15sp"
                         android:textStyle="bold" />
@@ -73,7 +73,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="授权通知使用权后，可自动抓取微信、支付宝、京东、淘宝及银行 App 的支付通知；授权短信权限后可抓取银行卡交易短信。"
+                        android:text="通知权限可采集支持的支付通知；短信权限用于银行卡交易短信。实际覆盖取决于应用和系统。"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
 

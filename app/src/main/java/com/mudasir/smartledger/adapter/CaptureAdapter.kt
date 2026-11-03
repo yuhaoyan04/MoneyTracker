@@ -49,7 +49,8 @@ class CaptureAdapter(
             val semanticColor = ContextCompat.getColor(itemView.context, if (isIncome) R.color.color_income else R.color.color_expense)
             tvType.text = if (isIncome) "收入" else "支出"
             tvType.setTextColor(semanticColor)
-            tvAmount.text = FormatUtil.money(r.amount)
+            val hasAmount = r.amount.isFinite() && r.amount > 0.0
+            tvAmount.text = if (hasAmount) FormatUtil.money(r.amount) else "金额待补充"
             tvAmount.setTextColor(semanticColor)
             accentBar.setBackgroundColor(semanticColor)
 
@@ -69,7 +70,7 @@ class CaptureAdapter(
 
             val conf = r.aiConfidence
             if (conf != null && conf > 0f && r.categoryName.isNotBlank()) {
-                tvAiConf.text = "AI ${"%.0f".format(conf * 100)}%"
+                tvAiConf.text = "建议分 ${"%.0f".format(conf * 100)}"
                 tvAiConf.visibility = View.VISIBLE
             } else {
                 tvAiConf.visibility = View.GONE
@@ -87,7 +88,8 @@ class CaptureAdapter(
                 capLocationRow.visibility = View.GONE
             }
 
-            btnConfirm.setOnClickListener { onConfirm(r) }
+            btnConfirm.text = if (hasAmount) "确认" else "补充金额"
+            btnConfirm.setOnClickListener { if (hasAmount) onConfirm(r) else onEdit(r) }
             btnEdit.setOnClickListener { onEdit(r) }
             btnDismiss.setOnClickListener { onDismiss(r) }
         }

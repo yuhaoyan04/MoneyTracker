@@ -1,6 +1,5 @@
 package com.mudasir.smartledger.activity
 
-import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -10,7 +9,6 @@ import android.view.View
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -39,35 +37,6 @@ class HomeActivity : AppCompatActivity() {
     private var searchQuery: String = ""
     private var currentExpense: Double = 0.0
 
-    private val locationLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        // 前台定位（粗略/精确任一）已授 → 引导后台定位（支付发生在后台，必需）
-        if (grants.values.any { it }) maybeRequestBackgroundLocation()
-    }
-
-    private val bgLocationLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
-
-    private val notifPermLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) {
-        refreshPendingNotification()
-    }
-
-    /** 后台定位只主动引导一次，避免反复打扰；之后可在设置 → 自动抓取中开启。 */
-    private fun maybeRequestBackgroundLocation() {
-        if (android.os.Build.VERSION.SDK_INT < 29) return
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (granted) return
-        val prefs = getSharedPreferences("perm_prefs", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("bg_loc_asked", false)) return
-        prefs.edit().putBoolean("bg_loc_asked", true).apply()
-        bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-    }
-
     private fun refreshPendingNotification() {
         lifecycleScope.launch {
             runCatching { com.mudasir.smartledger.util.PendingNotifier.update(this@HomeActivity) }
@@ -87,16 +56,7 @@ class HomeActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_home)
 
-        locationLauncher.launch(
-            arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
-        )
-        // Android 13+ 通知权限（待确认常驻通知需要）
-        if (android.os.Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+        // 可选权限由相关功能和设置页按需请求，打开账本时不连续弹授权框。
         // 自愈：启动时若有待确认交易，确保常驻通知存在
         refreshPendingNotification()
         // 想好再买：开启过则自动拉起守护服务（系统杀掉后自愈）
@@ -126,6 +86,10 @@ class HomeActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.tvSeeStats).setOnClickListener {
             startActivity(Intent(this, StatsActivity::class.java))
+        }
+        findViewById<View>(R.id.btnBudget).setOnClickListener { showBudgetDialog() }
+        findViewById<View>(R.id.pendingShortcut).setOnClickListener {
+            startActivity(Intent(this, CaptureInboxActivity::class.java))
         }
 
         findViewById<TextInputEditText>(R.id.etSearch).addTextChangedListener(object : TextWatcher {
@@ -164,8 +128,6 @@ class HomeActivity : AppCompatActivity() {
             db.transactionDao().observeRecent(100).collectLatest { list ->
                 allRecords = list
                 applySearch()
-                findViewById<View>(R.id.tvEmptyRecent).visibility =
-                    if (list.isEmpty()) View.VISIBLE else View.GONE
                 refreshSummary()
             }
         }
@@ -202,6 +164,11 @@ class HomeActivity : AppCompatActivity() {
             }
         }
         adapter.submitList(filtered.take(40))
+        val searching = searchQuery.isNotBlank()
+        findViewById<View>(R.id.tvEmptyRecent).visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
+        findViewById<TextView>(R.id.tvEmptyRecentTitle).text = if (searching) "没有找到匹配的交易" else "还没有交易记录"
+        findViewById<TextView>(R.id.tvEmptyRecentHint).text = if (searching) "试试其他关键词，搜索范围为最近 100 笔" else "点击「记一笔」添加，或在设置中开启自动抓取"
+        findViewById<TextView>(R.id.tvRecentLabel).text = if (searching) "搜索最近 100 笔" else "最近交易"
     }
 
     private suspend fun refreshSummary() = withContext(Dispatchers.IO) {
@@ -337,7 +304,7 @@ class HomeActivity : AppCompatActivity() {
         }
         AlertDialog.Builder(this)
             .setTitle("设置月度支出预算")
-            .setMessage("长按余额卡片可随时修改。设置后将显示进度条。")
+            .setMessage("设置后将在账本首页显示本月支出进度。")
             .setView(container)
             .setPositiveButton("保存") { _, _ ->
                 val value = et.text?.toString()?.trim()?.toDoubleOrNull() ?: 0.0

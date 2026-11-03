@@ -34,6 +34,12 @@ import com.mudasir.smartledger.activity.CaptureInboxActivity
 import com.mudasir.smartledger.activity.SettingsActivity
 import com.mudasir.smartledger.activity.WishlistAddActivity
 import com.mudasir.smartledger.data.AppDatabase
+import com.mudasir.smartledger.capture.PaymentScreenClassifier
+import com.mudasir.smartledger.capture.ResumedPage
+import com.mudasir.smartledger.capture.UsagePaymentEvents
+import com.mudasir.smartledger.capture.GuardPromptPolicy
+import com.mudasir.smartledger.capture.PaymentAppLaunchTracker
+import com.mudasir.smartledger.capture.CheckoutPageParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +65,7 @@ class PurchaseGuardService : Service() {
         const val CHANNEL_ACTIVE = PurchaseGuardNotifier.CHANNEL_ACTIVE
         private const val ACTION_PAY_PAGE = "com.mudasir.smartledger.PAY_PAGE"
         private const val EXTRA_PAY_PACKAGE = "pay_package"
+        private const val EXTRA_PAY_AMOUNT = "pay_amount"
 
         @Volatile
         var isRunning = false
@@ -75,6 +82,22 @@ class PurchaseGuardService : Service() {
         var debugUpdatedAt: Long = 0
         @Volatile
         var debugHistory: List<String> = emptyList()
+        @Volatile
+        var debugFailure: String = ""
+
+        fun recordFailure(stage: String, error: Throwable) {
+            debugFailure = "阶段：$stage\n${GuardFailureDetails.format(error)}"
+            Log.w("PurchaseGuard", "Failure at $stage", error)
+        }
+
+        @Synchronized
+        fun recordDetection(pkg: String, cls: String, result: String) {
+            val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+            debugPkg = pkg
+            debugCls = cls
+            debugUpdatedAt = System.currentTimeMillis()
+            debugHistory = (debugHistory + "$stamp $pkg ${cls.substringAfterLast('.')} | $result").takeLast(16)
+        }
 
         @Volatile
         private var instance: PurchaseGuardService? = null
@@ -95,24 +118,45 @@ class PurchaseGuardService : Service() {
             instance?.handler?.post { instance?.updateBallBadge() }
         }
 
+        /** A different foreground app invalidates an uncompleted prompt. */
+        fun onObservedForeground(pkg: String) {
+            instance?.let { svc -> svc.handler.post { svc.observeForeground(pkg, System.currentTimeMillis()) } }
+        }
+
+        fun onCheckoutEvaluated(pkg: String, amount: Double?) {
+            instance?.let { svc -> svc.handler.post {
+                if (svc.requestPackage == pkg && (amount == null ||
+                        kotlin.math.abs(svc.requestAmount - amount) >= 0.005)) {
+                    svc.requestGeneration++
+                    svc.requestPackage = null
+                    if (svc.overlayView != null) svc.removeOverlay()
+                    recordDetection(pkg, "", "付款页面或金额已变化，关闭过期提醒")
+                }
+            } }
+        }
+
         /**
          * 无障碍通道检测到支付页 → 触发想好再买浮层/通知（遵守 2 分钟授权冷却）。
          * v2.36.0 返回 true=守护服务在线已接手；false=服务未运行，调用方可做兜底提醒。
          */
-        fun onExternalPayPage(context: Context, pkg: String): Boolean {
+        fun onExternalPayPage(context: Context, pkg: String, amount: Double): Boolean {
             val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-            if (!prefs.getBoolean("guard_enabled", false)) return false
+            if (!prefs.getBoolean("guard_enabled", false)) {
+                recordDetection(pkg, "", "提醒未开启")
+                return false
+            }
+            if (!CheckoutPageParser.exceedsThreshold(amount, prefs.getFloat("big_spend_threshold", 500f))) return false
             val svc = instance
             if (svc != null) {
-                svc.handler.post { runCatching { svc.nudgeFromDetection(pkg) } }
+                svc.handler.post { runCatching { svc.nudgeFromDetection(pkg, amount) } }
                 return true
             }
             return runCatching {
                 androidx.core.content.ContextCompat.startForegroundService(context,
                     Intent(context, PurchaseGuardService::class.java)
-                        .setAction(ACTION_PAY_PAGE).putExtra(EXTRA_PAY_PACKAGE, pkg))
+                        .setAction(ACTION_PAY_PAGE).putExtra(EXTRA_PAY_PACKAGE, pkg).putExtra(EXTRA_PAY_AMOUNT, amount))
                 true
-            }.getOrDefault(false)
+            }.onFailure { recordDetection(pkg, "", "后台启动服务失败：${it.javaClass.simpleName}") }.getOrDefault(false)
         }
 
         fun applyBall(context: Context) {
@@ -151,6 +195,14 @@ class PurchaseGuardService : Service() {
     private var lastNudgeAt = 0L
     private var screenOn = true
     private var pollCount = 0
+    private val seenUsageHints = LinkedHashSet<String>()
+    private val launchTracker by lazy { PaymentAppLaunchTracker(packageName) }
+    private var requestGeneration = 0L
+    private var requestPackage: String? = null
+    private var requestStartedAt = 0L
+    private var requestAmount = Double.NaN
+    private var overlayPackage: String? = null
+    private var overlayTick: Runnable? = null
 
     private val screenReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -198,7 +250,7 @@ class PurchaseGuardService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_PAY_PAGE) {
-            intent.getStringExtra(EXTRA_PAY_PACKAGE)?.let { nudgeFromDetection(it) }
+            intent.getStringExtra(EXTRA_PAY_PACKAGE)?.let { nudgeFromDetection(it, intent.getDoubleExtra(EXTRA_PAY_AMOUNT, Double.NaN)) }
         }
         return START_STICKY
     }
@@ -208,6 +260,7 @@ class PurchaseGuardService : Service() {
         instance = null
         removePanel()
         removeBall()
+        removeOverlay()
         runCatching { unregisterReceiver(screenReceiver) }
         handler.removeCallbacksAndMessages(null)
         PurchaseGuardNotifier.cancelThink(this)
@@ -225,6 +278,7 @@ class PurchaseGuardService : Service() {
         var latestPkg: String? = null
         var latestCls: String? = null
         var maxTs = 0L
+        val resumedPages = mutableListOf<ResumedPage>()
         val events = usm.queryEvents(begin, now)
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
@@ -232,22 +286,39 @@ class PurchaseGuardService : Service() {
             if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
                 latestPkg = event.packageName
                 latestCls = event.className ?: ""
+                resumedPages.add(ResumedPage(event.packageName.orEmpty(), latestCls, event.timeStamp))
                 maxTs = maxOf(maxTs, event.timeStamp)
             }
         }
         lastPoll = if (maxTs > 0) maxTs else (now - 1500L)
+        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("guard_enabled", false)) return
+        val includeCheckout = prefs.getString("guard_scope", "payment") == "checkout"
+        val latest = resumedPages.lastOrNull()
+        for (page in resumedPages) {
+            if (page.timestamp in (now - 5_000L)..now && launchTracker.observe(page.pkg, page.timestamp) &&
+                page.pkg == latest?.pkg) {
+                recordDetection(page.pkg, page.cls, "检测到支付应用切换，等待页面金额")
+            }
+        }
+        resumedPages.lastOrNull()?.let { last ->
+            if (last.timestamp >= requestStartedAt) handleForegroundChange(last.pkg)
+        }
+        UsagePaymentEvents.candidate(resumedPages, now, seenUsageHints, includeCheckout)?.let { hint ->
+            seenUsageHints.add(hint.key)
+            if (seenUsageHints.size > 100) seenUsageHints.remove(seenUsageHints.first())
+            recordDetection(hint.pkg, hint.cls, "支付页面候选，等待页面金额")
+        }
         val fg = latestPkg ?: currentFg ?: return
         val cls = latestCls ?: currentCls ?: ""
         if (fg == currentFg && cls == currentCls) return
 
-        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("guard_enabled", false)) return
         val scopeMode = prefs.getString("guard_scope", "payment") ?: "payment"
         val watchedHit = fg in watchedPackages
-        val payScreen = watchedHit && isPaymentScreen(fg, cls)
+        val payScreen = watchedHit && PaymentScreenClassifier.matches(fg, cls, includeCheckout)
         if (watchedHit) {
             Log.d("PurchaseGuard", "fg=$fg cls=$cls payScreen=$payScreen")
-            pushHistory(fg, cls, payScreen)
+            recordDetection(fg, cls, if (payScreen) "使用情况类名匹配" else "使用情况类名未匹配")
         }
         val newKey = "$fg|$cls|$payScreen"
         if (newKey == lastKey) return
@@ -260,62 +331,79 @@ class PurchaseGuardService : Service() {
             "app" -> watchedHit
             else -> payScreen
         }
-        if (shouldNudge) {
-            // 2 分钟授权冷却：确认放行后同一支付意图不重复拦截（持久化，跨进程重启有效）
-            val lastPkg = prefs.getString("guard_last_pkg", "")
-            val lastAt = prefs.getLong("guard_last_at", 0L)
-            if (fg == lastPkg && now - lastAt < APPROVAL_COOLDOWN_MS) return
-            nudgeFromDetection(fg)
-        } else if (prev in watchedPackages) {
+        if (!shouldNudge && prev in watchedPackages && prev != fg) {
             PurchaseGuardNotifier.cancelThink(this)
         }
         debugPkg = fg
         debugCls = cls
         debugPay = payScreen
         debugUpdatedAt = now
-        debugHistory = historyDeque.toList()
     }
 
-    private fun isPaymentScreen(pkg: String, cls: String): Boolean {
-        val c = cls.lowercase()
-        if (c.contains("alipay") && (c.contains("pay") || c.contains("cashier"))) return true
-        if (c.contains("cashier")) return true
-        return when {
-            pkg == "com.tencent.mm" ->
-                listOf("offline", "remittance", "wallet.pay", "pay").any { c.contains(it) }
-            pkg.startsWith("com.eg.android.AlipayGphone") ->
-                listOf("payui", "payment", "pay").any { c.contains(it) }
-            else -> listOf("pay", "trade").any { c.contains(it) }
+    private fun observeForeground(pkg: String, at: Long) {
+        handleForegroundChange(pkg)
+        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        if (launchTracker.observe(pkg, at) && prefs.getBoolean("guard_enabled", false)) {
+            recordDetection(pkg, "", "检测到支付应用切换，等待页面金额")
         }
     }
 
-    private fun pushHistory(pkg: String, cls: String, pay: Boolean) {
-        val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
-            .format(java.util.Date())
-        historyDeque.addLast("$stamp ${pkg.substringAfterLast('.')} | ${cls.substringAfterLast('.')} | ${if (pay) "✓支付页" else "—"}")
-        while (historyDeque.size > 12) historyDeque.removeFirst()
-    }
-
-    private fun nudge() {
-        nudgeInternal()
-    }
-
     /** 无障碍通道触发的提醒入口（与 usage 检测共用冷却与浮层逻辑）。 */
-    fun nudgeFromDetection(pkg: String) {
+    fun nudgeFromDetection(pkg: String, amount: Double) {
         val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("guard_enabled", false)) return
+        if (!prefs.getBoolean("guard_enabled", false)) {
+            recordDetection(pkg, "", "提醒未开启")
+            return
+        }
+        if (!CheckoutPageParser.exceedsThreshold(amount, prefs.getFloat("big_spend_threshold", 500f))) {
+            recordDetection(pkg, "", "金额未超过提醒门槛")
+            return
+        }
         val now = System.currentTimeMillis()
+        if (GuardPromptPolicy.canUseTaobaoHandoff(pkg, prefs.getBoolean("guard_handoff_pending", false),
+                prefs.getLong("guard_handoff_at", 0L), now, APPROVAL_COOLDOWN_MS) &&
+            kotlin.math.abs(prefs.getFloat("guard_handoff_amount", -1f).toDouble() - amount) < 0.005) {
+            prefs.edit().putBoolean("guard_handoff_pending", false)
+                .putString("guard_last_pkg", pkg).putLong("guard_last_at", now)
+                .putFloat("guard_last_amount", amount.toFloat()).apply()
+            recordDetection(pkg, "", "已沿用刚确认的淘宝付款提醒")
+            return
+        }
         if (prefs.getString("guard_last_pkg", "") == pkg &&
-            now - prefs.getLong("guard_last_at", 0L) < APPROVAL_COOLDOWN_MS) return
-        if (now - lastNudgeAt < 5_000L || overlayView != null) return
+            kotlin.math.abs(prefs.getFloat("guard_last_amount", -1f).toDouble() - amount) < 0.005 &&
+            now - prefs.getLong("guard_last_at", 0L) < APPROVAL_COOLDOWN_MS) {
+            recordDetection(pkg, "", "近期已放行，处于冷却期")
+            return
+        }
+        if (now - lastNudgeAt < 5_000L || overlayView != null) {
+            recordDetection(pkg, "", "短时去重或浮层已存在")
+            return
+        }
         currentFg = pkg
         lastNudgeAt = now
-        nudgeInternal()
+        requestPackage = pkg
+        requestAmount = amount
+        requestStartedAt = now
+        requestGeneration++
+        nudgeInternal(pkg, requestGeneration, amount)
     }
 
-    private fun nudgeInternal() {
+    private fun handleForegroundChange(pkg: String) {
+        val origin = overlayPackage ?: requestPackage ?: return
+        if (!GuardPromptPolicy.shouldCloseOnForeground(origin, pkg, packageName)) return
+        requestGeneration++
+        requestPackage = null
+        if (overlayView != null) {
+            recordDetection(origin, "", "离开原应用，关闭未完成的冷静页面")
+            removeOverlay()
+        } else {
+            recordDetection(origin, "", "离开原应用，取消待显示提醒")
+        }
+    }
+
+    private fun nudgeInternal(pkg: String, generation: Long, amount: Double) {
         scope.launch {
-            runCatching {
+            val spent = runCatching {
                 val dao = AppDatabase.getDatabase(applicationContext).transactionDao()
                 val cal = Calendar.getInstance().apply {
                     set(Calendar.DAY_OF_MONTH, 1)
@@ -324,20 +412,43 @@ class PurchaseGuardService : Service() {
                 }
                 val end = cal.clone() as Calendar
                 end.add(Calendar.MONTH, 1)
-                val spent = dao.sumByType(
+                dao.sumByType(
                     com.mudasir.smartledger.data.TransactionRecord.TYPE_EXPENSE,
                     cal.timeInMillis, end.timeInMillis
                 )
+            }.onFailure { Log.w("PurchaseGuard", "Unable to load spending total", it) }.getOrDefault(0.0)
+            runCatching {
                 val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-                val budget = prefs.getFloat("monthly_budget", 0f).toDouble()
+                val budget = getSharedPreferences("budget_prefs", Context.MODE_PRIVATE).getFloat("monthly_budget", 0f).toDouble()
                 val pct = if (budget > 0) ((spent / budget) * 100).toInt().coerceIn(0, 100) else null
                 val mode = prefs.getString("guard_mode", "overlay") ?: "overlay"
                 withContext(Dispatchers.Main) {
+                    if (requestGeneration != generation || requestPackage != pkg) {
+                        recordDetection(pkg, "", "页面已切换，取消过期提醒")
+                        return@withContext
+                    }
+                    if (!prefs.getBoolean("guard_enabled", false) ||
+                        !CheckoutPageParser.exceedsThreshold(amount, prefs.getFloat("big_spend_threshold", 500f))) {
+                        recordDetection(pkg, "", "提醒开关或门槛已变化，取消提醒")
+                        return@withContext
+                    }
                     if (mode == "overlay" && Settings.canDrawOverlays(this@PurchaseGuardService)) {
-                        showCooldownOverlay(spent, pct)
+                        showCooldownOverlay(spent, pct, pkg, amount)
                     } else {
+                        recordDetection(currentFg.orEmpty(), "", if (mode == "overlay") "无悬浮窗权限，尝试通知" else "通知模式")
                         PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
                     }
+                }
+            }.onFailure {
+                Log.w("PurchaseGuard", "Unable to show reminder", it)
+                recordFailure("创建或显示付款提醒", it)
+                val causes = generateSequence(it) { error -> error.cause }
+                    .take(5).joinToString(" → ") { error -> error.javaClass.simpleName }
+                recordDetection(currentFg.orEmpty(), "", "提醒失败：$causes；尝试通知")
+                val current = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                if (current.getBoolean("guard_enabled", false) && CheckoutPageParser.exceedsThreshold(
+                        amount, current.getFloat("big_spend_threshold", 500f))) {
+                    runCatching { PurchaseGuardNotifier.notifyThink(applicationContext, spent, null) }
                 }
             }
         }
@@ -348,14 +459,13 @@ class PurchaseGuardService : Service() {
     private var overlayView: View? = null
     private var overlayAutoRemove: Runnable? = null
 
-    private fun showCooldownOverlay(spent: Double, budgetPct: Int?) {
+    private fun showCooldownOverlay(spent: Double, budgetPct: Int?, pkg: String, amount: Double) {
         if (overlayView != null) return
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-        val view = android.view.LayoutInflater.from(this)
-            .inflate(R.layout.view_cooldown_overlay, null)
+        val view = CooldownOverlayFactory.create(this)
 
         val spendText = buildString {
-            append("本月已支出 ¥${"%.0f".format(spent)}")
+            append("本次待付 ¥${"%.2f".format(amount)} · 本月已支出 ¥${"%.0f".format(spent)}")
             budgetPct?.let { append(" · 预算已用 $it%") }
         }
         view.findViewById<TextView>(R.id.tvCooldownSpend).text = spendText
@@ -363,8 +473,8 @@ class PurchaseGuardService : Service() {
         val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         val cooldown = prefs.getInt("guard_cooldown_seconds", 5).coerceIn(3, 30)
         val tvCountdown = view.findViewById<TextView>(R.id.tvCountdown)
-        val btnContinue = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnContinue)
-        val btnWishlist = view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnWishlist)
+        val btnContinue = view.findViewById<android.widget.Button>(R.id.btnContinue)
+        val btnWishlist = view.findViewById<android.widget.Button>(R.id.btnWishlist)
 
         var remain = cooldown
         tvCountdown.text = remain.toString()
@@ -381,23 +491,27 @@ class PurchaseGuardService : Service() {
                     tvCountdown.text = "🧘"
                     btnContinue.isEnabled = true
                     btnContinue.alpha = 1f
-                    btnContinue.text = "我已三思，继续付款"
+                    btnContinue.text = "我已三思，继续操作"
                 }
             }
         }
-        handler.postDelayed(tick, 1000)
-
         btnContinue.setOnClickListener {
             getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
-                .putString("guard_last_pkg", currentFg ?: "")
+                .putString("guard_last_pkg", pkg)
                 .putLong("guard_last_at", System.currentTimeMillis())
+                .putFloat("guard_last_amount", amount.toFloat())
+                .putBoolean("guard_handoff_pending", pkg == "com.taobao.taobao")
+                .putLong("guard_handoff_at", System.currentTimeMillis())
+                .putFloat("guard_handoff_amount", amount.toFloat())
                 .apply()
             removeOverlay()
         }
         btnWishlist.setOnClickListener {
             getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
-                .putString("guard_last_pkg", currentFg ?: "")
+                .putString("guard_last_pkg", pkg)
                 .putLong("guard_last_at", System.currentTimeMillis())
+                .putFloat("guard_last_amount", amount.toFloat())
+                .putBoolean("guard_handoff_pending", false)
                 .apply()
             removeOverlay()
             runCatching {
@@ -420,16 +534,33 @@ class PurchaseGuardService : Service() {
         runCatching {
             wm.addView(view, params)
             overlayView = view
+            overlayPackage = pkg
+            overlayTick = tick
+            handler.postDelayed(tick, 1000)
+            recordDetection(currentFg.orEmpty(), "", "系统已接受悬浮窗请求；可见性和触控尚未验证")
+            view.postDelayed({
+                if (overlayView === view) {
+                    recordDetection(currentFg.orEmpty(), "", "浮层状态：attached=${view.isAttachedToWindow}, shown=${view.isShown}, windowVisibility=${view.windowVisibility}；不能证明屏幕显示或触控拦截")
+                }
+            }, 500L)
             val autoRemove = Runnable { removeOverlay() }
             overlayAutoRemove = autoRemove
             handler.postDelayed(autoRemove, 60_000)
         }.onFailure {
             overlayView = null
-            PurchaseGuardNotifier.notifyThink(applicationContext, spent, budgetPct)
+            recordFailure("添加悬浮窗", it)
+            recordDetection(currentFg.orEmpty(), "", "悬浮窗创建失败：${it.javaClass.simpleName}，尝试通知")
+            val current = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            if (current.getBoolean("guard_enabled", false) && CheckoutPageParser.exceedsThreshold(
+                    amount, current.getFloat("big_spend_threshold", 500f))) {
+                PurchaseGuardNotifier.notifyThink(applicationContext, spent, budgetPct)
+            }
         }
     }
 
     private fun removeOverlay() {
+        overlayTick?.let { handler.removeCallbacks(it) }
+        overlayTick = null
         overlayAutoRemove?.let { handler.removeCallbacks(it) }
         overlayAutoRemove = null
         overlayView?.let { v ->
@@ -438,6 +569,8 @@ class PurchaseGuardService : Service() {
             }
         }
         overlayView = null
+        overlayPackage = null
+        requestPackage = null
     }
 
     // ===== 悬浮球 =====
@@ -832,19 +965,4 @@ class PurchaseGuardService : Service() {
         }
     }
 
-    // ===== 检测自检数据 =====
-
-    private val historyDeque = ArrayDeque<String>()
-
-    /** 检测自检：守护服务最近一次识别到的前台页面与判定（设置页展示用）。 */
-    @Volatile
-    var debugPkg: String = ""
-    @Volatile
-    var debugCls: String = ""
-    @Volatile
-    var debugPay: Boolean = false
-    @Volatile
-    var debugUpdatedAt: Long = 0
-    @Volatile
-    var debugHistory: List<String> = emptyList()
 }

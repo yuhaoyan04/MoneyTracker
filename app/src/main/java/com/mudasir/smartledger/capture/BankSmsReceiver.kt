@@ -133,7 +133,7 @@ class BankSmsReceiver : BroadcastReceiver() {
                     val threshold = context.applicationContext
                         .getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
                         .getFloat("big_spend_threshold", 500f)
-                    if (parsed.amount >= threshold) {
+                    if (CheckoutPageParser.exceedsThreshold(parsed.amount, threshold)) {
                         com.mudasir.smartledger.util.PurchaseGuardNotifier.notifyBigSpend(
                             context.applicationContext, parsed.amount, parsed.merchant ?: "银行卡消费"
                         )

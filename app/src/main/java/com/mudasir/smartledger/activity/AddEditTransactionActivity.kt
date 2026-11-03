@@ -456,8 +456,9 @@ class AddEditTransactionActivity : AppCompatActivity() {
     private fun save() {
         if (saving) return
         val amount = etAmount.text?.toString()?.trim()?.toDoubleOrNull()
-        if (amount == null || amount <= 0.0) {
-            Toast.makeText(this, "请输入金额", Toast.LENGTH_SHORT).show()
+        if (amount == null || !amount.isFinite() || amount <= 0.0) {
+            etAmount.error = "请输入大于 0 的金额"
+            etAmount.requestFocus()
             return
         }
         if (selectedCategory.isBlank()) {
@@ -476,6 +477,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
         val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
 
         lifecycleScope.launch(Dispatchers.IO) {
+            var savedToDb = false
             try {
                 val resolvedCategory = ensureCategory(selectedCategory, type)
                 ensureChannel(channel)
@@ -515,6 +517,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
                     )
                     db.transactionDao().insert(saved)
                 }
+                savedToDb = true
                 // 待确认数量可能变化（确认了一条 PENDING），刷新常驻通知
                 com.mudasir.smartledger.util.PendingNotifier.update(this@AddEditTransactionActivity)
 
@@ -542,11 +545,13 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 // 后台异常不静默：提示用户并记录（数据可能未保存）
                 android.util.Log.w("AddEdit", "save failed", t)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@AddEditTransactionActivity, "保存失败，请重试", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@AddEditTransactionActivity,
+                        if (savedToDb) "记录已保存，部分后续处理未完成" else "保存失败，请重试", Toast.LENGTH_LONG).show()
                 }
             } finally {
-                // 对标「记一笔」：无论成功失败，保存即退出本页回到上一级
-                withContext(Dispatchers.Main) { finish() }
+                withContext(Dispatchers.Main) {
+                    if (savedToDb) finish() else saving = false
+                }
             }
         }
     }

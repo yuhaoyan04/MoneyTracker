@@ -80,6 +80,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
+        setupSettingsSections(savedInstanceState)
 
         findViewById<MaterialToolbar>(R.id.topAppBar).setNavigationOnClickListener { finish() }
 
@@ -146,6 +147,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnCooldown).setOnClickListener { editCooldown() }
         findViewById<View>(R.id.btnGuardScope).setOnClickListener { editGuardScope() }
         findViewById<View>(R.id.btnGuardDebug).setOnClickListener { showGuardDebug() }
+        findViewById<View>(R.id.btnAutoConfirm).setOnClickListener { editAutoConfirm() }
         findViewById<View>(R.id.btnBall).setOnClickListener { toggleBall() }
         findViewById<View>(R.id.btnWishlist).setOnClickListener {
             startActivity(Intent(this, WishlistActivity::class.java))
@@ -177,6 +179,42 @@ class SettingsActivity : AppCompatActivity() {
         BottomNavHelper.setup(this, findViewById(R.id.bottomNav), R.id.nav_tab_settings)
     }
 
+    private data class SettingsSection(
+        val key: String, val title: String, val header: Int, val body: Int, val chevron: Int,
+        val expandedByDefault: Boolean = false
+    )
+
+    private val settingsSections = listOf(
+        SettingsSection("guard", "想好再买", R.id.headerGuard, R.id.bodyGuard, R.id.chevronGuard),
+        SettingsSection("capture", "自动记账与权限", R.id.headerCapture, R.id.bodyCapture, R.id.chevronCapture),
+        SettingsSection("data", "数据与备份", R.id.headerData, R.id.bodyData, R.id.chevronData),
+        SettingsSection("pro", "MoneyTracker Pro", R.id.headerPro, R.id.bodyPro, R.id.chevronPro),
+        SettingsSection("about", "关于与隐私", R.id.headerAbout, R.id.bodyAbout, R.id.chevronAbout)
+    )
+
+    private fun setupSettingsSections(savedInstanceState: Bundle?) {
+        settingsSections.forEach { section ->
+            val header = findViewById<View>(section.header)
+            val body = findViewById<View>(section.body)
+            val chevron = findViewById<TextView>(section.chevron)
+            fun setExpanded(expanded: Boolean) {
+                body.visibility = if (expanded) View.VISIBLE else View.GONE
+                chevron.text = if (expanded) "⌃" else "⌄"
+                header.contentDescription = "${section.title}，${if (expanded) "已展开" else "已折叠"}"
+            }
+            setExpanded(savedInstanceState?.getBoolean("settings_section_${section.key}", section.expandedByDefault)
+                ?: section.expandedByDefault)
+            header.setOnClickListener { setExpanded(body.visibility != View.VISIBLE) }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        settingsSections.forEach { section ->
+            outState.putBoolean("settings_section_${section.key}", findViewById<View>(section.body).visibility == View.VISIBLE)
+        }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onResume() {
         super.onResume()
         com.mudasir.smartledger.util.BottomNavHelper.sync(
@@ -187,6 +225,7 @@ class SettingsActivity : AppCompatActivity() {
         refreshBackupStatus()
         refreshGuardStatus()
         refreshAccCaptureStatus()
+        refreshAutoConfirmStatus()
         refreshProStatus()
         BackupWorker.schedulePeriodic(this)
     }
@@ -197,12 +236,16 @@ class SettingsActivity : AppCompatActivity() {
         val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnGuardToggle)
         val usageOk = PermissionHelper.hasUsageAccess(this)
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
-        val running = com.mudasir.smartledger.util.PurchaseGuardService.isRunning &&
-            prefs.getBoolean("guard_enabled", false)
+        val enabled = prefs.getBoolean("guard_enabled", false)
+        val running = com.mudasir.smartledger.util.PurchaseGuardService.isRunning
         when {
-            running && usageOk -> {
-                tv.text = "已开启"
-                tv.setTextColor(getColorCompat(R.color.color_income))
+            enabled -> {
+                tv.text = when {
+                    !running -> "已开启 · 守护服务未运行"
+                    !usageOk -> "已开启 · 使用情况权限未授予"
+                    else -> "已开启"
+                }
+                tv.setTextColor(getColorCompat(if (running && usageOk) R.color.color_income else R.color.color_warning))
                 btn.visibility = View.VISIBLE
                 btn.text = "关闭提醒"
             }
@@ -221,7 +264,10 @@ class SettingsActivity : AppCompatActivity() {
         }
         // 门槛显示
         val threshold = prefs.getFloat("big_spend_threshold", 500f)
-        findViewById<TextView>(R.id.tvThreshold).text = "¥${threshold.toInt()}"
+        findViewById<TextView>(R.id.tvThreshold).text = "¥${java.math.BigDecimal(threshold.toString()).stripTrailingZeros().toPlainString()}"
+        val thresholdText = java.math.BigDecimal(threshold.toString()).stripTrailingZeros().toPlainString()
+        findViewById<TextView>(R.id.tvGuardOverview).text =
+            "${if (enabled) "已开启" else "未开启"} · 提醒门槛 ¥$thresholdText"
 
         // WebDAV 配置状态
         findViewById<TextView>(R.id.tvWebdavStatus).text =
@@ -245,26 +291,16 @@ class SettingsActivity : AppCompatActivity() {
             } else "仅通知"
         val cooldown = prefs.getInt("guard_cooldown_seconds", 5)
         findViewById<TextView>(R.id.tvCooldown).text = "$cooldown 秒"
-        val scope = prefs.getString("guard_scope", "payment") ?: "payment"
         findViewById<TextView>(R.id.tvGuardScope).text =
-            if (scope == "payment") "进入支付页面时" else "打开支付应用时"
+            "付款页且金额超过门槛"
     }
 
     /** 提醒范围：精确（进入付款页面）/ 宽松（打开支付应用）。 */
     private fun editGuardScope() {
-        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
-        val current = prefs.getString("guard_scope", "payment") ?: "payment"
-        val options = arrayOf("进入支付页面时（推荐，聊天/浏览不打扰）", "打开支付应用时（宽松）")
-        var picked = if (current == "app") 1 else 0
         AlertDialog.Builder(this)
-            .setTitle("提醒范围")
-            .setSingleChoiceItems(options, picked) { _, which -> picked = which }
-            .setPositiveButton("保存") { _, _ ->
-                val scope = if (picked == 0) "payment" else "app"
-                prefs.edit().putString("guard_scope", scope).apply()
-                refreshGuardStatus()
-            }
-            .setNegativeButton("取消", null)
+            .setTitle("付款页识别说明")
+            .setMessage("监测支持的购物与支付应用，只在可读取的付款确认页中识别到明确实付金额，且金额严格大于门槛时提醒。无法读取或金额冲突时不会提醒。")
+            .setPositiveButton("知道了", null)
             .show()
     }
 
@@ -325,11 +361,19 @@ class SettingsActivity : AppCompatActivity() {
         val usageOk = PermissionHelper.hasUsageAccess(this)
         val running = prefs.getBoolean("guard_enabled", false)
         when {
+            running -> {
+                prefs.edit().putBoolean("guard_enabled", false).apply()
+                if (!prefs.getBoolean("ball_enabled", false)) {
+                    stopService(Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java))
+                }
+                Toast.makeText(this, "想好再买已关闭", Toast.LENGTH_SHORT).show()
+                refreshGuardStatus()
+            }
             !usageOk -> {
                 PermissionHelper.openUsageAccessSettings(this)
                 Toast.makeText(this, "请允许 SmartLedger 的「使用情况访问权限」，返回后再次点击开启", Toast.LENGTH_LONG).show()
             }
-            !running -> {
+            else -> {
                 // 全屏冷静模式需要悬浮窗权限（未授权时服务自动退回通知模式）
                 val mode = prefs.getString("guard_mode", "overlay") ?: "overlay"
                 if (mode == "overlay" && !android.provider.Settings.canDrawOverlays(this)) {
@@ -343,23 +387,16 @@ class SettingsActivity : AppCompatActivity() {
                     }
                     Toast.makeText(this, "建议允许「显示在其他应用上层」以启用全屏冷静，否则将使用通知提醒", Toast.LENGTH_LONG).show()
                 }
-                runCatching {
+                val started = runCatching {
                     androidx.core.content.ContextCompat.startForegroundService(
                         this, Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java)
                     )
                 }.onFailure {
                     Toast.makeText(this, "启动守护服务失败：${it.message}", Toast.LENGTH_LONG).show()
-                }
+                }.isSuccess
+                if (!started) return
                 prefs.edit().putBoolean("guard_enabled", true).apply()
                 Toast.makeText(this, "想好再买已开启 · 进入支付应用时会提醒你", Toast.LENGTH_LONG).show()
-                refreshGuardStatus()
-            }
-            else -> {
-                prefs.edit().putBoolean("guard_enabled", false).apply()
-                if (!prefs.getBoolean("ball_enabled", false)) {
-                    stopService(Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java))
-                }
-                Toast.makeText(this, "想好再买已关闭", Toast.LENGTH_SHORT).show()
                 refreshGuardStatus()
             }
         }
@@ -371,12 +408,18 @@ class SettingsActivity : AppCompatActivity() {
             textSize = 13f
             setPadding(0, 16, 0, 0)
             typeface = android.graphics.Typeface.MONOSPACE
+            setTextIsSelectable(true)
         }
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         val dialog = AlertDialog.Builder(this)
             .setTitle("检测自检（实时）")
-            .setMessage("打开微信/支付宝/淘宝的付款页面，下面的识别结果会实时刷新。\n\n把识别不到的页面截图发给我们，即可精确补规则。")
+            .setMessage("先打开付款页面，再返回这里查看最近事件。诊断不读取页面正文、金额或密码；异常信息可能包含系统路径和设备信息，请检查后再分享。匹配不等于成功拦截。")
             .setView(tv)
+            .setNeutralButton("复制诊断") { _, _ ->
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("支付提醒诊断", tv.text))
+                Toast.makeText(this, "诊断信息已复制", Toast.LENGTH_SHORT).show()
+            }
             .setPositiveButton("关闭", null)
             .show()
         dialog.setOnDismissListener { handler.removeCallbacksAndMessages(null) }
@@ -384,22 +427,27 @@ class SettingsActivity : AppCompatActivity() {
             override fun run() {
                 if (!dialog.isShowing) return
                 val svc = com.mudasir.smartledger.util.PurchaseGuardService
-                if (!com.mudasir.smartledger.util.PurchaseGuardService.isRunning) {
-                    tv.text = "守护服务未运行——请先在上方开启"
-                } else if (svc.debugUpdatedAt == 0L) {
+                if (svc.debugUpdatedAt == 0L) {
                     tv.text = "等待页面事件…\n（请切换到微信/支付宝/淘宝的任意页面）"
                 } else {
                 val age = ((System.currentTimeMillis() - svc.debugUpdatedAt) / 1000).toInt()
                 tv.text = buildString {
+                    append("守护服务：${if (svc.isRunning) "运行中" else "未运行"}\n")
+                    append("无障碍服务：${if (com.mudasir.smartledger.util.AccessibilityCaptureService.isRunning) "运行中" else "未运行"}\n")
+                    append("系统：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}，API ${android.os.Build.VERSION.SDK_INT}\n")
+                    val guardPrefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+                    append("开关：${guardPrefs.getBoolean("guard_enabled", false)}，模式：${guardPrefs.getString("guard_mode", "overlay")}，范围：${guardPrefs.getString("guard_scope", "payment")}\n")
+                    append("权限：使用情况=${PermissionHelper.hasUsageAccess(this@SettingsActivity)}，无障碍=${PermissionHelper.isAccessibilityCaptureEnabled(this@SettingsActivity)}，悬浮窗=${android.provider.Settings.canDrawOverlays(this@SettingsActivity)}\n")
                     append("前台应用：${svc.debugPkg}\n")
                     append("当前页面：${svc.debugCls}\n")
-                    append("判定：${if (svc.debugPay) "✓ 支付页面（已拦截）" else "非支付页面"}\n")
+                    append("最近处理状态见下方记录；匹配不等于已拦截。\n")
                     append("更新于 ${age} 秒前")
                     val hist = svc.debugHistory
                     if (hist.isNotEmpty()) {
                         append("\n\n最近页面：\n")
                         append(hist.joinToString("\n") { "· $it" })
                     }
+                    if (svc.debugFailure.isNotBlank()) append("\n\n最近异常详情：\n${svc.debugFailure}")
                 }
                 }
                 handler.postDelayed(this, 1000)
@@ -433,8 +481,8 @@ class SettingsActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
         val input = android.widget.EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-            hint = "金额（元），最低 10"
-            setText(prefs.getFloat("big_spend_threshold", 500f).toInt().toString())
+            hint = "金额（元），最低 0"
+            setText(java.math.BigDecimal(prefs.getFloat("big_spend_threshold", 500f).toString()).stripTrailingZeros().toPlainString())
         }
         val pad = (16 * resources.displayMetrics.density).toInt()
         val wrap = LinearLayout(this).apply {
@@ -442,12 +490,16 @@ class SettingsActivity : AppCompatActivity() {
             addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         AlertDialog.Builder(this)
-            .setTitle("大额消费提醒门槛")
-            .setMessage("超过此金额的消费被抓取时，立即弹出「想好再买」冷静提醒。")
+            .setTitle("付款提醒金额门槛")
+            .setMessage("付款页识别到明确实付金额且严格大于此值时提醒；支付后的大额提醒也使用此门槛。无法识别金额时不会提醒。")
             .setView(wrap)
             .setPositiveButton("保存") { _, _ ->
-                val v = input.text?.toString()?.trim()?.toDoubleOrNull() ?: 500.0
-                prefs.edit().putFloat("big_spend_threshold", v.coerceAtLeast(10.0).toFloat()).apply()
+                val v = input.text?.toString()?.trim()?.toDoubleOrNull()
+                if (v == null || !v.isFinite() || v < 0 || v > 10_000_000) {
+                    Toast.makeText(this, "请输入 0 至 10000000 之间的金额", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                prefs.edit().putFloat("big_spend_threshold", v.toFloat()).apply()
                 refreshGuardStatus()
             }
             .setNegativeButton("取消", null)
@@ -737,8 +789,30 @@ class SettingsActivity : AppCompatActivity() {
         val btn = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnAccCapture)
         val enabled = PermissionHelper.isAccessibilityCaptureEnabled(this)
         tv.text = if (enabled) "已开启" else "未开启"
+        val captureCount = listOf(PermissionHelper.isNotificationListenerEnabled(this),
+            PermissionHelper.hasSmsPermission(this), enabled).count { it }
+        findViewById<TextView>(R.id.tvCaptureOverview).text = "通知 · 短信 · 支付页检测（$captureCount/3 已开启）"
         tv.setTextColor(getColorCompat(if (enabled) R.color.color_income else R.color.color_expense))
         btn.visibility = if (enabled) View.GONE else View.VISIBLE
+    }
+
+    private fun refreshAutoConfirmStatus() {
+        val enabled = getSharedPreferences("capture_review_prefs", MODE_PRIVATE).getBoolean("auto_confirm_enabled", false)
+        findViewById<TextView>(R.id.tvAutoConfirmStatus).text = if (enabled) "已开启 · 7 天后按条件确认" else "已关闭 · 需手动核对"
+    }
+
+    private fun editAutoConfirm() {
+        val prefs = getSharedPreferences("capture_review_prefs", MODE_PRIVATE)
+        val enabled = prefs.getBoolean("auto_confirm_enabled", false)
+        AlertDialog.Builder(this)
+            .setTitle("自动确认候选交易")
+            .setMessage("开启后，超过 7 天未处理、金额和分类完整且建议分数达到门槛的候选交易会自动入账，并用于分类学习。系统建议可能有误；关闭时请在收件箱手动核对。")
+            .setPositiveButton(if (enabled) "关闭自动确认" else "开启自动确认") { _, _ ->
+                prefs.edit().putBoolean("auto_confirm_enabled", !enabled).apply()
+                refreshAutoConfirmStatus()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** Pro 授权状态刷新 + WebDAV 配置状态。 */

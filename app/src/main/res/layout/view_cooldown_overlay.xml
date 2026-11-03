@@ -43,12 +43,13 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="深呼吸 · 想想它是否真的必要"
+            android:text="深呼吸，想想是否真的需要。倒计时后再选择下一步。"
             android:textColor="#B3FFFFFF"
             android:textSize="13sp" />
 
-        <com.google.android.material.button.MaterialButton
+        <Button
             android:id="@+id/btnContinue"
+            style="@android:style/Widget.Material.Button"
             android:layout_width="match_parent"
             android:layout_height="52dp"
             android:layout_marginTop="32dp"
@@ -59,15 +60,13 @@
             android:textSize="15sp"
             android:textStyle="bold" />
 
-        <com.google.android.material.button.MaterialButton
+        <Button
             android:id="@+id/btnWishlist"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            style="@android:style/Widget.Material.Button.Borderless"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="先不买了 · 记入愿望清单"
-            android:textColor="#FFFFFF"
-            app:strokeColor="#80FFFFFF"
-            xmlns:app="http://schemas.android.com/apk/res-auto" />
+            android:text="暂时离开 · 记入愿望清单"
+            android:textColor="#FFFFFF" />
     </LinearLayout>
 </FrameLayout>

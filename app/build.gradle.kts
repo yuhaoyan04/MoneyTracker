@@ -16,8 +16,8 @@ android {
         targetSdk = 36
         // Compatibility rollback: v2.22.0 behavior with a higher version code so
         // devices already on v2.23.x can install it without uninstalling.
-        versionCode = 74
-        versionName = "2.38.0"
+        versionCode = 75
+        versionName = "2.39.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -61,9 +61,19 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Opt-in local diagnostics can be installed over the release without changing keys.
+            if (providers.gradleProperty("diagnosticReleaseSigning").orNull == "true") {
+                require(hasReleaseSigning) { "Diagnostic build requires the release signing configuration" }
+                signingConfig = signingConfigs.getByName("release")
+                versionNameSuffix = "-diagnostic"
+            }
+        }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // A non-debuggable, unminified build is available for device evaluation.
+            val unminifiedPrerelease = providers.gradleProperty("unminifiedPrerelease").orNull == "true"
+            isMinifyEnabled = !unminifiedPrerelease
+            isShrinkResources = !unminifiedPrerelease
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

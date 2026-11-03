@@ -191,7 +191,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                 if (rec.type == TransactionRecord.TYPE_EXPENSE && rec.amount > 0) {
                     val threshold = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
                         .getFloat("big_spend_threshold", 500f)
-                    if (rec.amount >= threshold) {
+                    if (CheckoutPageParser.exceedsThreshold(rec.amount, threshold)) {
                         com.mudasir.smartledger.util.PurchaseGuardNotifier.notifyBigSpend(
                             applicationContext, rec.amount, enrichedMerchant ?: "支付"
                         )
