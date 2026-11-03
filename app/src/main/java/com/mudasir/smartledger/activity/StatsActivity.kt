@@ -51,6 +51,7 @@ import com.mudasir.smartledger.util.ReportCardBuilder
 import com.mudasir.smartledger.ml.PersonalTagger
 import android.content.Intent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -93,6 +94,8 @@ class StatsActivity : AppCompatActivity() {
     private var currentDataAgg: DataAgg = DataAgg.DAY
     private var trendLoaded = false
     private var suppressAgg = false
+    private var monthLoadJob: Job? = null
+    private var trendLoadJob: Job? = null
 
     // 语义化色板：低饱和高级暖色系（饼图/柱状图/明细共用）
     private val rootColorMap = mapOf(
@@ -277,32 +280,51 @@ class StatsActivity : AppCompatActivity() {
     // ===== Data loading =====
 
     private fun load() {
-        findViewById<TextView>(R.id.tvMonth).text = FormatUtil.monthLabel(year, month)
-        lifecycleScope.launch(Dispatchers.IO) {
-            val (start, end) = FormatUtil.monthRange(year, month)
-            records = db.transactionDao().getInRange(start, end)
+        val requestedYear = year
+        val requestedMonth = month
+        findViewById<TextView>(R.id.tvMonth).text = FormatUtil.monthLabel(requestedYear, requestedMonth)
+        findViewById<View>(R.id.btnReportCard).isEnabled = false
+        monthLoadJob?.cancel()
+        monthLoadJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+            val (start, end) = FormatUtil.monthRange(requestedYear, requestedMonth)
+            val loadedRecords = db.transactionDao().getInRange(start, end)
             // 上月数据（环比洞察用）
-            val lastCal = Calendar.getInstance().apply { set(year, month, 1) }
+            val lastCal = Calendar.getInstance().apply { set(requestedYear, requestedMonth, 1) }
             lastCal.add(Calendar.MONTH, -1)
             val (lastStart, lastEnd) = FormatUtil.monthRange(lastCal.get(Calendar.YEAR), lastCal.get(Calendar.MONTH))
-            val lastExpense = db.transactionDao().sumByType(TransactionRecord.TYPE_EXPENSE, lastStart, lastEnd)
+            val now = Calendar.getInstance()
+            val isCurrentMonth = requestedYear == now.get(Calendar.YEAR) && requestedMonth == now.get(Calendar.MONTH)
+            val comparisonEnd = if (isCurrentMonth) {
+                (now.clone() as Calendar).apply { add(Calendar.MONTH, -1) }.timeInMillis.coerceAtMost(lastEnd)
+            } else lastEnd
+            val lastExpense = db.transactionDao().sumByType(TransactionRecord.TYPE_EXPENSE, lastStart, comparisonEnd)
             val cats = db.categoryDao().getAll()
             val catByName = cats.associateBy { it.name }
-            totalIncome = records.filter { it.type == TransactionRecord.TYPE_INCOME }.sumOf { it.amount }
-            totalExpense = records.filter { it.type == TransactionRecord.TYPE_EXPENSE }.sumOf { it.amount }
-            expenseByCat = records.filter { it.type == TransactionRecord.TYPE_EXPENSE }
+            val income = loadedRecords.filter { it.type == TransactionRecord.TYPE_INCOME }.sumOf { it.amount }
+            val expense = loadedRecords.filter { it.type == TransactionRecord.TYPE_EXPENSE }.sumOf { it.amount }
+            val expenseGroups = loadedRecords.filter { it.type == TransactionRecord.TYPE_EXPENSE }
                 .groupBy { parentOf(catByName, it.categoryName) }
                 .map { (k, v) -> k to v.sumOf { it.amount } }.sortedByDescending { it.second }
-            incomeByCat = records.filter { it.type == TransactionRecord.TYPE_INCOME }
+            val incomeGroups = loadedRecords.filter { it.type == TransactionRecord.TYPE_INCOME }
                 .groupBy { parentOf(catByName, it.categoryName) }
                 .map { (k, v) -> k to v.sumOf { it.amount } }.sortedByDescending { it.second }
-            val pieRoots = (expenseByCat.map { it.first } + incomeByCat.map { it.first }).distinct()
-            catColors = buildSemanticColors(pieRoots)
-            subByRootExpense = buildSubBreakdown(records.filter { it.type == TransactionRecord.TYPE_EXPENSE }, catByName)
-            subByRootIncome = buildSubBreakdown(records.filter { it.type == TransactionRecord.TYPE_INCOME }, catByName)
-            val insights = buildInsights(lastExpense, catByName)
+            val pieRoots = (expenseGroups.map { it.first } + incomeGroups.map { it.first }).distinct()
+            val colors = buildSemanticColors(pieRoots)
+            val expenseBreakdown = buildSubBreakdown(loadedRecords.filter { it.type == TransactionRecord.TYPE_EXPENSE }, catByName)
+            val incomeBreakdown = buildSubBreakdown(loadedRecords.filter { it.type == TransactionRecord.TYPE_INCOME }, catByName)
             withContext(Dispatchers.Main) {
-                if (isFinishing || isDestroyed) return@withContext
+                if (isFinishing || isDestroyed || year != requestedYear || month != requestedMonth) return@withContext
+                records = loadedRecords
+                totalIncome = income
+                totalExpense = expense
+                expenseByCat = expenseGroups
+                incomeByCat = incomeGroups
+                catColors = colors
+                subByRootExpense = expenseBreakdown
+                subByRootIncome = incomeBreakdown
+                val insights = buildInsights(lastExpense, catByName, isCurrentMonth)
+                findViewById<View>(R.id.btnReportCard).isEnabled = true
                 findViewById<TextView>(R.id.tvSumIncome).text = FormatUtil.money(totalIncome)
                 findViewById<TextView>(R.id.tvSumExpense).text = FormatUtil.money(totalExpense)
                 findViewById<TextView>(R.id.tvSumBalance).text = FormatUtil.money(totalIncome - totalExpense)
@@ -310,6 +332,16 @@ class StatsActivity : AppCompatActivity() {
                 renderAiTrustCard()
                 renderInsights(insights)
                 renderPie(); renderBreakdown()
+            }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("StatsActivity", "Unable to load monthly statistics", e)
+                withContext(Dispatchers.Main) {
+                    if (!isFinishing && !isDestroyed && year == requestedYear && month == requestedMonth) {
+                        Toast.makeText(this@StatsActivity, "统计加载失败，请返回后重试", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }
@@ -331,7 +363,7 @@ class StatsActivity : AppCompatActivity() {
     private fun showReportCardDialog() {
         AlertDialog.Builder(this)
             .setTitle("月报卡片")
-            .setMessage("将生成本月账单卡片（收支概览 + 支出构成 TOP5 + 已省下统计），可分享给微信好友或保存到相册。")
+            .setMessage("将生成所选月份的收支概览、支出构成和已放弃心愿，可分享或保存到相册。")
             .setPositiveButton("分享") { _, _ -> makeReportCard(share = true) }
             .setNeutralButton("保存到相册") { _, _ -> makeReportCard(share = false) }
             .setNegativeButton("取消", null)
@@ -339,14 +371,18 @@ class StatsActivity : AppCompatActivity() {
     }
 
     private fun makeReportCard(share: Boolean) {
+        val reportYear = year
+        val reportMonth = month
+        val reportRecords = records.toList()
         // 想好再买本月「已省下」统计
         val savedStart = Calendar.getInstance().apply {
-            set(year, month, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0)
+            set(reportYear, reportMonth, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         val savedEnd = Calendar.getInstance().apply {
-            set(year, month, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0)
+            set(reportYear, reportMonth, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0)
         }.apply { add(Calendar.MONTH, 1) }.timeInMillis
         lifecycleScope.launch(Dispatchers.IO) {
+            try {
             val catByName = db.categoryDao().getAll().associateBy { it.name }
             val droppedAll = db.wishlistDao().getAll()
                 .filter { it.status == com.mudasir.smartledger.data.WishlistItem.STATUS_DROPPED }
@@ -355,15 +391,37 @@ class StatsActivity : AppCompatActivity() {
             }
             val savedTotal = dropped.sumOf { it.amount }
             val bmp = ReportCardBuilder.build(
-                year, month, FormatUtil.monthLabel(year, month),
-                records, catByName, savedTotal, dropped.size
+                reportYear, reportMonth, FormatUtil.monthLabel(reportYear, reportMonth),
+                reportRecords, catByName, savedTotal, dropped.size
             )
             // 写入缓存供分享
             val dir = java.io.File(cacheDir, "share").apply { mkdirs() }
-            val file = java.io.File(dir, "MoneyTracker_${year}年${month + 1}月账单.png")
-            file.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            val file = java.io.File(dir, "MoneyTracker_${reportYear}年${reportMonth + 1}月账单.png")
+            file.outputStream().use { check(bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
+            bmp.recycle()
+            if (!share) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, file.name)
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
+                        put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                            android.os.Environment.DIRECTORY_PICTURES + "/MoneyTracker")
+                }
+                val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: error("无法创建相册文件")
+                try {
+                    val stream = contentResolver.openOutputStream(uri) ?: error("无法写入相册文件")
+                    stream.use { output -> file.inputStream().use { it.copyTo(output) } }
+                } catch (e: Exception) {
+                    runCatching { contentResolver.delete(uri, null, null) }
+                    throw e
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@StatsActivity, "已保存到相册", Toast.LENGTH_LONG).show()
+                }
+                return@launch
+            }
             withContext(Dispatchers.Main) {
-                if (share) {
                     val uri = androidx.core.content.FileProvider.getUriForFile(
                         this@StatsActivity, "com.mudasir.smartledger.fileprovider", file
                     )
@@ -373,32 +431,20 @@ class StatsActivity : AppCompatActivity() {
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     startActivity(Intent.createChooser(send, "分享月报卡片"))
-                } else {
-                    // 保存到相册（Pictures/MoneyTracker）
-                    val values = android.content.ContentValues().apply {
-                        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, file.name)
-                        put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q)
-                            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                                android.os.Environment.DIRECTORY_PICTURES + "/MoneyTracker")
-                    }
-                    runCatching {
-                        val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                            ?: error("无法写入相册")
-                        contentResolver.openOutputStream(uri)?.use {
-                            bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
-                        }
-                        Toast.makeText(this@StatsActivity, "已保存到 相册/Pictures/MoneyTracker", Toast.LENGTH_LONG).show()
-                    }.onFailure {
-                        Toast.makeText(this@StatsActivity, "保存失败：${it.message}", Toast.LENGTH_LONG).show()
-                    }
+            }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("StatsActivity", "Unable to create report", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@StatsActivity, "月报生成或保存失败，请重试", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 
     /** 本地规则洞察：环比 / 头部分类 / 日均 / 最大单笔 / 笔数。纯离线，无 AI 依赖。 */
-    private fun buildInsights(lastExpense: Double, catByName: Map<String, Category>): List<String> {
+    private fun buildInsights(lastExpense: Double, catByName: Map<String, Category>, isCurrentMonth: Boolean): List<String> {
         val expenses = records.filter { it.type == TransactionRecord.TYPE_EXPENSE }
         if (expenses.isEmpty()) return emptyList()
         val out = mutableListOf<String>()
@@ -408,8 +454,8 @@ class StatsActivity : AppCompatActivity() {
             val diff = totalExpense - lastExpense
             val pct = (diff / lastExpense * 100).toInt()
             out.add(
-                if (diff >= 0) "支出比上月增长 ${pct}%（${FormatUtil.money(diff)}）"
-                else "支出比上月节省 ${-pct}%（${FormatUtil.money(-diff)}）"
+                if (diff >= 0) "支出比${if (isCurrentMonth) "上月同期" else "上月"}增长 ${pct}%（${FormatUtil.money(diff)}）"
+                else "支出比${if (isCurrentMonth) "上月同期" else "上月"}减少 ${-pct}%（${FormatUtil.money(-diff)}）"
             )
         }
 
@@ -420,9 +466,11 @@ class StatsActivity : AppCompatActivity() {
             out.add("最大支出：${top.first} ${FormatUtil.money(top.second)}（占 ${share}%）")
         }
 
-        // 日均（仅当月有意义，其他月份按 30 天算）
+        // Current month uses elapsed days; past months use their actual calendar length.
         val days = if (year == Calendar.getInstance().get(Calendar.YEAR) && month == Calendar.getInstance().get(Calendar.MONTH))
-            Calendar.getInstance().get(Calendar.DAY_OF_MONTH) else 30
+            Calendar.getInstance().get(Calendar.DAY_OF_MONTH) else Calendar.getInstance().apply {
+                set(year, month, 1)
+            }.getActualMaximum(Calendar.DAY_OF_MONTH)
         if (days > 0) out.add("日均支出 ${FormatUtil.money(totalExpense / days)}")
 
         // 最大单笔
@@ -510,101 +558,48 @@ class StatsActivity : AppCompatActivity() {
     }
 
     private fun loadTrend() {
-        val range = currentTimeRange; val agg = currentDataAgg
-        lifecycleScope.launch(Dispatchers.IO) {
-            val now = Calendar.getInstance(); val start = Calendar.getInstance()
-            when (range) {
-                TimeRange.YEAR -> start.add(Calendar.DAY_OF_YEAR, -365)
-                TimeRange.QUARTER -> start.add(Calendar.DAY_OF_YEAR, -90)
-                TimeRange.MONTH -> start.add(Calendar.DAY_OF_YEAR, -30)
-                TimeRange.WEEK -> start.add(Calendar.DAY_OF_YEAR, -7)
-                TimeRange.DAY -> start.add(Calendar.HOUR_OF_DAY, -24)
-            }
-            start.set(Calendar.HOUR_OF_DAY, 0); start.set(Calendar.MINUTE, 0)
-            start.set(Calendar.SECOND, 0); start.set(Calendar.MILLISECOND, 0)
-            val startMs = start.timeInMillis
-            val recs = db.transactionDao().getInRange(startMs, now.timeInMillis + 1)
-            val expenses = recs.filter { it.type == TransactionRecord.TYPE_EXPENSE }
-
+        val range = currentTimeRange
+        val agg = currentDataAgg
+        trendLoadJob?.cancel()
+        trendLoadJob = lifecycleScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val start = com.mudasir.smartledger.util.TrendMath.start(now, range.days)
+            val expenses = db.transactionDao().getInRange(start, now + 1)
+                .filter { it.type == TransactionRecord.TYPE_EXPENSE }
             if (range == TimeRange.DAY) {
                 val byHour = FloatArray(24)
                 expenses.forEach { r ->
-                    val c = Calendar.getInstance().apply { timeInMillis = r.timestamp }
-                    byHour[c.get(Calendar.HOUR_OF_DAY)] += r.amount.toFloat()
+                    val hour = Calendar.getInstance().apply { timeInMillis = r.timestamp }.get(Calendar.HOUR_OF_DAY)
+                    byHour[hour] += r.amount.toFloat()
                 }
                 val total = byHour.sum()
                 withContext(Dispatchers.Main) {
-                    if (isFinishing || isDestroyed) return@withContext
-                    tvTrendSummary.text = "过去24小时共支出 ${FormatUtil.money(total.toDouble())}"
+                    if (isFinishing || isDestroyed || currentTimeRange != range) return@withContext
+                    tvTrendSummary.text = "\u8fc7\u53bb24\u5c0f\u65f6\u5171\u652f\u51fa ${FormatUtil.money(total.toDouble())}"
                     renderHourly(byHour, total)
                 }
                 return@launch
             }
-
-            val dayMs = 86400000L
-            val entries: List<Entry>; val labels: List<String>; val total: Float
-
-            when (agg) {
-                DataAgg.DAY -> {
-                    val days = range.days
-                    val arr = FloatArray(days)
-                    expenses.forEach { r ->
-                        val idx = ((r.timestamp - startMs) / dayMs).toInt()
-                        if (idx in 0 until days) arr[idx] += r.amount.toFloat()
-                    }
-                    val sdf = SimpleDateFormat("M/d", Locale.getDefault())
-                    labels = (0 until days).map { i -> val c = (start.clone() as Calendar); c.add(Calendar.DAY_OF_YEAR, i); sdf.format(c.time) }
-                    entries = (0 until days).map { Entry(it.toFloat(), arr[it]) }
-                    total = arr.sum()
-                }
-                DataAgg.WEEK -> {
-                    val weeks = (range.days + 6) / 7
-                    val arr = FloatArray(weeks)
-                    expenses.forEach { r ->
-                        val idx = ((r.timestamp - startMs) / (7 * dayMs)).toInt()
-                        if (idx in 0 until weeks) arr[idx] += r.amount.toFloat()
-                    }
-                    val sdf = SimpleDateFormat("M/d", Locale.getDefault())
-                    labels = (0 until weeks).map { i -> val c = (start.clone() as Calendar); c.add(Calendar.DAY_OF_YEAR, i * 7); sdf.format(c.time) }
-                    entries = (0 until weeks).map { Entry(it.toFloat(), arr[it]) }
-                    total = arr.sum()
-                }
-                DataAgg.MONTH -> {
-                    val startM = start.get(Calendar.YEAR) * 12 + start.get(Calendar.MONTH)
-                    val endM = now.get(Calendar.YEAR) * 12 + now.get(Calendar.MONTH)
-                    val months = (endM - startM + 1).coerceAtLeast(1)
-                    val arr = FloatArray(months)
-                    expenses.forEach { r ->
-                        val c = Calendar.getInstance().apply { timeInMillis = r.timestamp }
-                        val m = c.get(Calendar.YEAR) * 12 + c.get(Calendar.MONTH) - startM
-                        if (m in 0 until months) arr[m] += r.amount.toFloat()
-                    }
-                    labels = (0 until months).map { i -> val c = (start.clone() as Calendar); c.add(Calendar.MONTH, i); "${c.get(Calendar.MONTH) + 1}月" }
-                    entries = (0 until months).map { Entry(it.toFloat(), arr[it]) }
-                    total = arr.sum()
-                }
-                DataAgg.QUARTER -> {
-                    val startQ = start.get(Calendar.YEAR) * 4 + start.get(Calendar.MONTH) / 3
-                    val endQ = now.get(Calendar.YEAR) * 4 + now.get(Calendar.MONTH) / 3
-                    val quarters = (endQ - startQ + 1).coerceAtLeast(1)
-                    val arr = FloatArray(quarters)
-                    expenses.forEach { r ->
-                        val c = Calendar.getInstance().apply { timeInMillis = r.timestamp }
-                        val q = c.get(Calendar.YEAR) * 4 + c.get(Calendar.MONTH) / 3 - startQ
-                        if (q in 0 until quarters) arr[q] += r.amount.toFloat()
-                    }
-                    labels = (0 until quarters).map { i -> val c = (start.clone() as Calendar); c.add(Calendar.MONTH, i * 3); "Q${c.get(Calendar.MONTH) / 3 + 1}" }
-                    entries = (0 until quarters).map { Entry(it.toFloat(), arr[it]) }
-                    total = arr.sum()
-                }
+            val group = when (agg) {
+                DataAgg.DAY -> com.mudasir.smartledger.util.TrendMath.Group.DAY
+                DataAgg.WEEK -> com.mudasir.smartledger.util.TrendMath.Group.WEEK
+                DataAgg.MONTH -> com.mudasir.smartledger.util.TrendMath.Group.MONTH
+                DataAgg.QUARTER -> com.mudasir.smartledger.util.TrendMath.Group.QUARTER
             }
-
-            val avg = if (entries.isNotEmpty()) total / entries.size else 0f
-            val aggLabel = when (agg) { DataAgg.DAY -> "日均"; DataAgg.WEEK -> "周均"; DataAgg.MONTH -> "月均"; DataAgg.QUARTER -> "季均" }
+            val points = expenses.map { com.mudasir.smartledger.util.TrendPoint(it.timestamp, it.amount) }
+            val series = com.mudasir.smartledger.util.TrendMath.aggregate(points, now, range.days, group)
+            val entries = series.values.mapIndexed { i, value -> Entry(i.toFloat(), value.toFloat()) }
+            val total = series.values.sum()
+            val avg = if (series.values.isNotEmpty()) total / series.values.size else 0.0
+            val aggLabel = when (agg) {
+                DataAgg.DAY -> "\u65e5\u5747"; DataAgg.WEEK -> "\u5468\u5747"
+                DataAgg.MONTH -> "\u6708\u5747"; DataAgg.QUARTER -> "\u5b63\u5747"
+            }
             withContext(Dispatchers.Main) {
-                if (isFinishing || isDestroyed) return@withContext
-                tvTrendSummary.text = "过去${range.days}天共支出 ${FormatUtil.money(total.toDouble())} · ${aggLabel} ${FormatUtil.money(avg.toDouble())}"
-                renderLineChart(entries, labels, total, agg)
+                if (isFinishing || isDestroyed || currentTimeRange != range || currentDataAgg != agg) return@withContext
+                val partial = if (agg == DataAgg.DAY) "" else "（含不足整期的分段）"
+                tvTrendSummary.text = "\u8fc7\u53bb${range.days}\u5929\u5171\u652f\u51fa ${FormatUtil.money(total)} \u00b7 $aggLabel ${FormatUtil.money(avg)}$partial"
+                renderLineChart(entries, series.labels, total.toFloat(), agg)
             }
         }
     }
@@ -817,7 +812,7 @@ class StatsActivity : AppCompatActivity() {
                 setDrawFilled(true)
                 fillDrawable = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(trendFillTop, trendFillBottom))
-                mode = if (isManyPoints) LineDataSet.Mode.LINEAR else LineDataSet.Mode.CUBIC_BEZIER
+                mode = LineDataSet.Mode.LINEAR
                 cubicIntensity = 0.2f
                 setHighlightEnabled(true)
                 setHighLightColor(Color.parseColor("#80FF5252"))

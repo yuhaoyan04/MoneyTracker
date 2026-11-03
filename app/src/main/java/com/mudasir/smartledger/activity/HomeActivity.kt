@@ -185,11 +185,11 @@ class HomeActivity : AppCompatActivity() {
         currentExpense = expense
         // 迷你趋势：本月每日支出
         val monthRecords = db.transactionDao().getInRange(start, end)
-        val daily = IntArray(31)
+        val daily = DoubleArray(31)
         monthRecords.filter { it.type == TransactionRecord.TYPE_EXPENSE }.forEach {
             val c = java.util.Calendar.getInstance().apply { timeInMillis = it.timestamp }
             val d = c.get(java.util.Calendar.DAY_OF_MONTH)
-            if (d in 1..31) daily[d - 1] += it.amount.toInt()
+            if (d in 1..31) daily[d - 1] += it.amount
         }
         val now = java.util.Calendar.getInstance()
         withContext(Dispatchers.Main) {
@@ -204,7 +204,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     /** 余额卡内的迷你支出趋势线：极简风格（无轴/无图例/细线+渐变填充），点击跳统计页。 */
-    private fun renderMiniTrend(daily: IntArray, todayDom: Int, monthExpense: Double) {
+    private fun renderMiniTrend(daily: DoubleArray, todayDom: Int, monthExpense: Double) {
         val section = findViewById<View>(R.id.miniTrendSection)
         val chart = findViewById<com.github.mikephil.charting.charts.LineChart>(R.id.miniTrendChart)
         val days = todayDom.coerceIn(1, 31)

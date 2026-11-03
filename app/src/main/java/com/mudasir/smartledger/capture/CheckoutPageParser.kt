@@ -16,10 +16,15 @@ object CheckoutPageParser {
     fun exceedsThreshold(amount: Double, threshold: Float): Boolean =
         amount.isFinite() && threshold.isFinite() && threshold >= 0f &&
             BigDecimal(amount.toString()) > BigDecimal(threshold.toString())
+    fun exceedsThreshold(amount: Double, threshold: BigDecimal): Boolean =
+        amount.isFinite() && threshold >= BigDecimal.ZERO && BigDecimal(amount.toString()) > threshold
 
-    private val actions = listOf("提交订单", "确认订单", "确认付款", "立即付款", "确认支付", "立即支付", "去付款", "去支付", "支付订单", "订单支付", "确认并支付")
+    private val actions = listOf("提交订单", "确认付款", "立即付款", "确认支付", "立即支付", "去付款", "去支付", "支付订单", "订单支付", "确认并支付")
+    private val orderListTitles = setOf("全部订单", "我的订单", "订单列表", "历史订单", "订单记录")
+    private val orderListTabs = setOf("待付款", "待发货", "待收货", "待评价", "已完成")
     private val outcomes = listOf("支付成功", "付款成功", "交易成功", "扣款成功", "支付失败", "付款失败", "交易失败", "订单已取消", "退款成功")
-    private val labels = "(?:实付款|实付金额|实际支付|实际付款|应付金额|应付款|应付|需付款|需付|支付金额|付款金额|合计金额|合计|总计)"
+    // Generic subtotals may precede discounts or shipping, so they are not proof of the final payable amount.
+    private val labels = "(?:实付款|实付金额|实际支付|实际付款|应付金额|应付款|应付|需付款|需付|支付金额|付款金额)"
     private val labelOnly = Regex("^\\s*$labels\\s*[:：]?\\s*$")
     private val amount = "(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]{1,2})?"
     private val labelledAmount = Regex("(?:^|\\s|[：:])$labels\\s*[:：]?\\s*[¥￥]?\\s*($amount)(?![0-9.])\\s*元?")
@@ -29,7 +34,15 @@ object CheckoutPageParser {
         if (!isSupported(pkg)) return CheckoutResult(CheckoutResult.Status.NOT_CHECKOUT)
         if (nodes.isEmpty()) return CheckoutResult(CheckoutResult.Status.NO_ACCESSIBLE_TEXT)
         val text = nodes.joinToString(" ") { it.text }
-        if (outcomes.any(text::contains) || actions.none(text::contains)) return CheckoutResult(CheckoutResult.Status.NOT_CHECKOUT)
+        val hasAction = nodes.any { node ->
+            val value = node.text.trim()
+            value.length <= 32 && actions.any(value::contains)
+        }
+        if (outcomes.any(text::contains) || !hasAction) return CheckoutResult(CheckoutResult.Status.NOT_CHECKOUT)
+        // Order-history pages can show multiple independent totals and pay buttons. They are
+        // not a single active checkout and must not trigger a full-screen interruption.
+        if (nodes.any { it.text.trim() in orderListTitles }) return CheckoutResult(CheckoutResult.Status.NOT_CHECKOUT)
+        if (nodes.map { it.text.trim() }.toSet().intersect(orderListTabs).size >= 2) return CheckoutResult(CheckoutResult.Status.NOT_CHECKOUT)
         val amounts = linkedSetOf<BigDecimal>()
         nodes.forEachIndexed { index, node ->
             labelledAmount.findAll(node.text).forEach { match -> parse(match.groupValues[1])?.let(amounts::add) }

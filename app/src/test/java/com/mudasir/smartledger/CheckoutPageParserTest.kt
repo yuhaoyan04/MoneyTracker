@@ -25,17 +25,28 @@ class CheckoutPageParserTest {
     }
 
     @Test fun `requires checkout action and a labelled payment amount`() {
-        assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze(pkg, listOf(n("确认订单"), n("实付款 ¥501.00")), threshold).status)
+        assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("实付款 ¥501.00")), threshold).status)
         assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, listOf(n("实付款 ¥501.00")), threshold).status)
         assertEquals(Status.NO_AMOUNT, CheckoutPageParser.analyze(pkg, listOf(n("立即付款"), n("优惠 ¥20"), n("原价 ¥999")), threshold).status)
         assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze("com.example.ad", listOf(n("确认订单"), n("实付款 ¥501")), threshold).status)
         assertEquals(Status.NO_ACCESSIBLE_TEXT, CheckoutPageParser.analyze(pkg, emptyList(), threshold).status)
     }
 
+    @Test fun `order list and title alone do not trigger an interruption`() {
+        assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, listOf(n("我的订单"), n("去付款"), n("合计 ¥800")), threshold).status)
+        assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, listOf(n("待付款"), n("待发货"), n("去付款"), n("合计 ¥800")), threshold).status)
+        assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, listOf(n("确认订单"), n("合计 ¥800")), threshold).status)
+        assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("立即付款"), n("应付款 ¥3.50")), threshold).status)
+        assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("立即付款"), n("应付 ¥3.50"), n("合计 ¥800")), threshold).status)
+        assertEquals(Status.NO_AMOUNT, CheckoutPageParser.analyze(pkg, listOf(n("立即付款"), n("合计 ¥800"), n("优惠 ¥796.50")), threshold).status)
+        assertFalse(CheckoutPageParser.exceedsThreshold(1000000.01, BigDecimal("1000000.01")))
+        assertTrue(CheckoutPageParser.exceedsThreshold(1000000.02, BigDecimal("1000000.01")))
+    }
+
     @Test fun `amount must be strictly greater and outcome pages are excluded`() {
-        assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("合计 ¥500.00")), threshold).status)
-        assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("合计 ¥499.99")), threshold).status)
-        assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("合计 ¥500.01")), threshold).status)
+        assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("应付 ¥500.00")), threshold).status)
+        assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("应付 ¥499.99")), threshold).status)
+        assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("应付 ¥500.01")), threshold).status)
         assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, listOf(n("支付成功"), n("确认订单"), n("实付款 ¥600")), threshold).status)
     }
 
@@ -43,7 +54,7 @@ class CheckoutPageParserTest {
         val split = listOf(n("确认付款"), n("实付款", 2, 0), n("¥", 2, 130), n("1,234.56", 2, 150))
         assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze(pkg, split, threshold).status)
         assertEquals(Status.NO_AMOUNT, CheckoutPageParser.analyze(pkg, listOf(n("确认付款"), n("实付款", 2), n("¥999", 3)), threshold).status)
-        assertEquals(Status.AMBIGUOUS, CheckoutPageParser.analyze(pkg, listOf(n("确认付款"), n("实付款 ¥600"), n("合计 ¥900")), threshold).status)
+        assertEquals(Status.AMBIGUOUS, CheckoutPageParser.analyze(pkg, listOf(n("确认付款"), n("实付款 ¥600"), n("应付 ¥900")), threshold).status)
         assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze("com.MobileTicket", listOf(n("提交订单"), n("应付金额 800元")), threshold).status)
     }
 }

@@ -45,3 +45,10 @@
 - https://developer.android.com/security/fraud-prevention/activities
 - https://developer.android.com/guide/components/activities/secure-bal
 - https://consumer.huawei.com/cn/support/content/zh-cn15997564/
+# 2026-11-03: conservative checkout and threshold review
+
+The guard requires a supported package, a short actionable checkout label, one unambiguous explicitly labelled payable amount, and an amount strictly above the configured threshold. Generic totals such as "合计" are excluded because they can be pre-discount subtotals. Order-list titles or multiple order-status tabs are excluded. Unknown text, conflicting amounts, completed payments and equal/below-threshold amounts are not interrupted. Thresholds are now saved as decimal strings; existing float settings are read for compatibility. Notification and SMS post-payment reminders also respect the guard switch.
+
+These are conservative, synthetic-testable rules, not a catalog of verified production checkout layouts. Requiring an explicit action and total may miss secure views, web canvases, payment apps whose text is not accessible, or checkout variants not represented by the rules. It also cannot prove a full-screen overlay stayed above another app or received touch. Test on the target HarmonyOS device with small, exactly-at-threshold, above-threshold, order-list, multi-amount, payment-success, exit, and cross-app flows before treating the feature as reliable. Do not make a real payment merely to test it.
+
+[Android documentation](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#TYPE_APPLICATION_OVERLAY) states that the system can change overlay visibility and placement; accepted window requests are not evidence of successful user-visible interception.

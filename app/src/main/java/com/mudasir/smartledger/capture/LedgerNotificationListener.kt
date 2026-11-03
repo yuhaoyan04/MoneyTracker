@@ -189,8 +189,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                 com.mudasir.smartledger.util.PendingNotifier.update(applicationContext)
                 // 想好再买：超过门槛的大额消费 → 立即冷静提醒
                 if (rec.type == TransactionRecord.TYPE_EXPENSE && rec.amount > 0) {
-                    val threshold = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-                        .getFloat("big_spend_threshold", 500f)
+                    val threshold = GuardThreshold.read(getSharedPreferences("guard_prefs", Context.MODE_PRIVATE))
                     if (CheckoutPageParser.exceedsThreshold(rec.amount, threshold)) {
                         com.mudasir.smartledger.util.PurchaseGuardNotifier.notifyBigSpend(
                             applicationContext, rec.amount, enrichedMerchant ?: "支付"

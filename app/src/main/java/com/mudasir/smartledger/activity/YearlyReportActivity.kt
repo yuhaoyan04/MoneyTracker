@@ -24,6 +24,7 @@ import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.util.FormatUtil
 import com.mudasir.smartledger.util.ProManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -33,6 +34,7 @@ class YearlyReportActivity : AppCompatActivity() {
 
     private val db by lazy { AppDatabase.getDatabase(this) }
     private var year = Calendar.getInstance().get(Calendar.YEAR)
+    private var loadJob: Job? = null
 
     private lateinit var adapter: MonthAdapter
 
@@ -65,33 +67,37 @@ class YearlyReportActivity : AppCompatActivity() {
     }
 
     private fun load() {
-        findViewById<TextView>(R.id.tvYear).text = year.toString()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val cal = Calendar.getInstance().apply { set(year, 0, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
+        val selectedYear = year
+        findViewById<TextView>(R.id.tvYear).text = selectedYear.toString()
+        loadJob?.cancel()
+        loadJob = lifecycleScope.launch(Dispatchers.IO) {
+            val cal = Calendar.getInstance().apply { set(selectedYear, 0, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
             val start = cal.timeInMillis
             val endCal = cal.clone() as Calendar
             endCal.add(Calendar.YEAR, 1)
             val recs = db.transactionDao().getInRange(start, endCal.timeInMillis)
 
-            val monthExpense = FloatArray(12)
+            val monthExpense = DoubleArray(12)
             val monthIncome = DoubleArray(12)
             recs.forEach { r ->
                 val c = Calendar.getInstance().apply { timeInMillis = r.timestamp }
-                if (c.get(Calendar.YEAR) == year) {
+                if (c.get(Calendar.YEAR) == selectedYear) {
                     val m = c.get(Calendar.MONTH)
-                    if (r.type == TransactionRecord.TYPE_EXPENSE) monthExpense[m] += r.amount.toFloat()
+                    if (r.type == TransactionRecord.TYPE_EXPENSE) monthExpense[m] += r.amount
                     else monthIncome[m] += r.amount
                 }
             }
-            val yearExpense = monthExpense.sum().toDouble()
+            val yearExpense = monthExpense.sum()
             val yearIncome = monthIncome.sum().toDouble()
-            val avg = yearExpense / 12.0
+            val today = Calendar.getInstance()
+            val months = if (selectedYear == today.get(Calendar.YEAR)) today.get(Calendar.MONTH) + 1 else 12
+            val avg = yearExpense / months
 
             val rows = (0 until 12).map { m ->
                 MonthRow("${m + 1}月", monthIncome[m].toDouble(), monthExpense[m].toDouble())
             }
             withContext(Dispatchers.Main) {
-                if (isFinishing || isDestroyed) return@withContext
+                if (isFinishing || isDestroyed || year != selectedYear) return@withContext
                 findViewById<TextView>(R.id.tvYearExpense).text = FormatUtil.money(yearExpense)
                 findViewById<TextView>(R.id.tvYearIncome).text = FormatUtil.money(yearIncome)
                 findViewById<TextView>(R.id.tvYearAvg).text = FormatUtil.money(avg)
@@ -103,8 +109,8 @@ class YearlyReportActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderBarChart(values: FloatArray) {
-        val entries = values.mapIndexed { i, v -> com.github.mikephil.charting.data.BarEntry(i.toFloat(), v) }
+    private fun renderBarChart(values: DoubleArray) {
+        val entries = values.mapIndexed { i, v -> com.github.mikephil.charting.data.BarEntry(i.toFloat(), v.toFloat()) }
         val set = com.github.mikephil.charting.data.BarDataSet(entries, "").apply {
             color = Color.parseColor("#C15F3C")
             setDrawValues(false)

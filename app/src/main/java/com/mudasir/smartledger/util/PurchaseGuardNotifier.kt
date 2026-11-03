@@ -34,7 +34,7 @@ object PurchaseGuardNotifier {
         )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_THINK, "想好再买 · 支付提醒", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "进入支付应用时的冷静提醒"
+                description = "识别到超过门槛的付款页面时提醒"
             }
         )
         nm.createNotificationChannel(
@@ -55,7 +55,7 @@ object PurchaseGuardNotifier {
         return NotificationCompat.Builder(context, CHANNEL_ACTIVE)
             .setSmallIcon(R.drawable.ic_inbox)
             .setContentTitle("想好再买 · 守护中")
-            .setContentText("进入支付应用时会提醒你三思")
+            .setContentText("识别到超过门槛的付款金额时提醒")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -94,6 +94,7 @@ object PurchaseGuardNotifier {
 
     /** 大额消费抓取 → 立即冷静提醒。 */
     fun notifyBigSpend(context: Context, amount: Double, merchant: String) {
+        if (!context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).getBoolean("guard_enabled", false)) return
         ensureChannels(context)
         if (!hasPermission(context)) return
         val intent = Intent(context, CaptureInboxActivity::class.java).apply {
@@ -105,10 +106,10 @@ object PurchaseGuardNotifier {
         )
         val n = NotificationCompat.Builder(context, CHANNEL_BIG_SPEND)
             .setSmallIcon(R.drawable.ic_inbox)
-            .setContentTitle("💰 大额消费 · 想好再买")
-            .setContentText("¥${"%.2f".format(amount)} · $merchant — 已进收件箱，冷静一下再确认")
+            .setContentTitle("大额交易待核对")
+            .setContentText("¥${"%.2f".format(amount)} · $merchant — 请在收件箱核对记录")
             .setStyle(NotificationCompat.BigTextStyle()
-                .bigText("¥${"%.2f".format(amount)} · $merchant\n已进入收件箱。冲动是魔鬼，冷静 10 分钟再确认也不迟。"))
+                .bigText("¥${"%.2f".format(amount)} · $merchant\n这是一条支付后的记账候选，请核对后再入账。"))
             .setContentIntent(pi)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

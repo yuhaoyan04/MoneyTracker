@@ -33,8 +33,11 @@
 
             <ImageView
                 android:id="@+id/btnPrevYear"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="8dp"
+                android:clickable="true"
+                android:focusable="true"
                 android:src="@drawable/ic_chevron_left"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="上一年" />
@@ -52,8 +55,11 @@
 
             <ImageView
                 android:id="@+id/btnNextYear"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="8dp"
+                android:clickable="true"
+                android:focusable="true"
                 android:src="@drawable/ic_chevron_right"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="下一年" />

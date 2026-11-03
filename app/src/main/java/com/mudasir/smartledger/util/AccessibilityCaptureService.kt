@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 增强模式（可选，无障碍）：在支付确认页面出现时（密码输入之前）读取订单
@@ -134,7 +135,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (prefs.getBoolean("guard_enabled", false)) {
             val nodes = mutableListOf<CheckoutNode>()
             collectCheckoutNodes(root, nodes, 0, -1, intArrayOf(0))
-            val threshold = java.math.BigDecimal(prefs.getFloat("big_spend_threshold", 500f).toString())
+            val threshold = com.mudasir.smartledger.capture.GuardThreshold.read(prefs)
             val result = CheckoutPageParser.analyze(pkg, nodes, threshold)
             PurchaseGuardService.onCheckoutEvaluated(pkg,
                 if (result.status == CheckoutResult.Status.QUALIFIED) result.amount?.toDouble() else null)
@@ -156,8 +157,8 @@ class AccessibilityCaptureService : AccessibilityService() {
                 lastGuardAt = now
                 val handled = PurchaseGuardService.onExternalPayPage(applicationContext, pkg, result.amount!!.toDouble())
                 if (!handled && prefs.getBoolean("guard_enabled", false) &&
-                    CheckoutPageParser.exceedsThreshold(result.amount.toDouble(), prefs.getFloat("big_spend_threshold", 500f))) {
-                    scope.launch { runCatching { fallbackThinkNotification() } }
+                    CheckoutPageParser.exceedsThreshold(result.amount.toDouble(), com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) {
+                    scope.launch { runCatching { fallbackThinkNotification(pkg, result.amount.toDouble()) } }
                 }
             }
         }
@@ -217,7 +218,7 @@ class AccessibilityCaptureService : AccessibilityService() {
     }
 
     /** 守护服务未运行时的兜底：直接发「想好再买」冷静通知（无浮层）。 */
-    private suspend fun fallbackThinkNotification() {
+    private suspend fun fallbackThinkNotification(pkg: String, amount: Double) {
         val dao = AppDatabase.getDatabase(applicationContext).transactionDao()
         val cal = java.util.Calendar.getInstance().apply {
             set(java.util.Calendar.DAY_OF_MONTH, 1)
@@ -232,7 +233,18 @@ class AccessibilityCaptureService : AccessibilityService() {
         val prefs = getSharedPreferences("budget_prefs", Context.MODE_PRIVATE)
         val budget = prefs.getFloat("monthly_budget", 0f).toDouble()
         val pct = if (budget > 0) ((spent / budget) * 100).toInt().coerceIn(0, 100) else null
-        PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
+        withContext(Dispatchers.Main) {
+            val guard = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            val root = rootInActiveWindow ?: return@withContext
+            if (!guard.getBoolean("guard_enabled", false) || root.packageName?.toString() != pkg) return@withContext
+            val nodes = mutableListOf<CheckoutNode>()
+            collectCheckoutNodes(root, nodes, 0, -1, intArrayOf(0))
+            val current = CheckoutPageParser.analyze(pkg, nodes, com.mudasir.smartledger.capture.GuardThreshold.read(guard))
+            if (current.status == CheckoutResult.Status.QUALIFIED && current.amount != null &&
+                kotlin.math.abs(current.amount.toDouble() - amount) < 0.005) {
+                PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
+            }
+        }
     }
 
     private fun collectTexts(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {

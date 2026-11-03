@@ -145,7 +145,7 @@ class PurchaseGuardService : Service() {
                 recordDetection(pkg, "", "提醒未开启")
                 return false
             }
-            if (!CheckoutPageParser.exceedsThreshold(amount, prefs.getFloat("big_spend_threshold", 500f))) return false
+            if (!CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) return false
             val svc = instance
             if (svc != null) {
                 svc.handler.post { runCatching { svc.nudgeFromDetection(pkg, amount) } }
@@ -355,7 +355,7 @@ class PurchaseGuardService : Service() {
             recordDetection(pkg, "", "提醒未开启")
             return
         }
-        if (!CheckoutPageParser.exceedsThreshold(amount, prefs.getFloat("big_spend_threshold", 500f))) {
+        if (!CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) {
             recordDetection(pkg, "", "金额未超过提醒门槛")
             return
         }
@@ -428,7 +428,7 @@ class PurchaseGuardService : Service() {
                         return@withContext
                     }
                     if (!prefs.getBoolean("guard_enabled", false) ||
-                        !CheckoutPageParser.exceedsThreshold(amount, prefs.getFloat("big_spend_threshold", 500f))) {
+                        !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) {
                         recordDetection(pkg, "", "提醒开关或门槛已变化，取消提醒")
                         return@withContext
                     }
@@ -445,10 +445,13 @@ class PurchaseGuardService : Service() {
                 val causes = generateSequence(it) { error -> error.cause }
                     .take(5).joinToString(" → ") { error -> error.javaClass.simpleName }
                 recordDetection(currentFg.orEmpty(), "", "提醒失败：$causes；尝试通知")
-                val current = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-                if (current.getBoolean("guard_enabled", false) && CheckoutPageParser.exceedsThreshold(
-                        amount, current.getFloat("big_spend_threshold", 500f))) {
-                    runCatching { PurchaseGuardNotifier.notifyThink(applicationContext, spent, null) }
+                handler.post {
+                    val current = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                    if (requestGeneration == generation && requestPackage == pkg &&
+                        current.getBoolean("guard_enabled", false) && CheckoutPageParser.exceedsThreshold(
+                            amount, com.mudasir.smartledger.capture.GuardThreshold.read(current))) {
+                        runCatching { PurchaseGuardNotifier.notifyThink(applicationContext, spent, null) }
+                    }
                 }
             }
         }
@@ -552,7 +555,7 @@ class PurchaseGuardService : Service() {
             recordDetection(currentFg.orEmpty(), "", "悬浮窗创建失败：${it.javaClass.simpleName}，尝试通知")
             val current = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
             if (current.getBoolean("guard_enabled", false) && CheckoutPageParser.exceedsThreshold(
-                    amount, current.getFloat("big_spend_threshold", 500f))) {
+                    amount, com.mudasir.smartledger.capture.GuardThreshold.read(current))) {
                 PurchaseGuardNotifier.notifyThink(applicationContext, spent, budgetPct)
             }
         }

@@ -263,9 +263,8 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         // 门槛显示
-        val threshold = prefs.getFloat("big_spend_threshold", 500f)
-        findViewById<TextView>(R.id.tvThreshold).text = "¥${java.math.BigDecimal(threshold.toString()).stripTrailingZeros().toPlainString()}"
-        val thresholdText = java.math.BigDecimal(threshold.toString()).stripTrailingZeros().toPlainString()
+        val thresholdText = com.mudasir.smartledger.capture.GuardThreshold.read(prefs).stripTrailingZeros().toPlainString()
+        findViewById<TextView>(R.id.tvThreshold).text = "¥$thresholdText"
         findViewById<TextView>(R.id.tvGuardOverview).text =
             "${if (enabled) "已开启" else "未开启"} · 提醒门槛 ¥$thresholdText"
 
@@ -482,28 +481,36 @@ class SettingsActivity : AppCompatActivity() {
         val input = android.widget.EditText(this).apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
             hint = "金额（元），最低 0"
-            setText(java.math.BigDecimal(prefs.getFloat("big_spend_threshold", 500f).toString()).stripTrailingZeros().toPlainString())
+            setText(com.mudasir.smartledger.capture.GuardThreshold.read(prefs).stripTrailingZeros().toPlainString())
         }
         val pad = (16 * resources.displayMetrics.density).toInt()
         val wrap = LinearLayout(this).apply {
             setPadding(pad, pad / 2, pad, 0)
             addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("付款提醒金额门槛")
             .setMessage("付款页识别到明确实付金额且严格大于此值时提醒；支付后的大额提醒也使用此门槛。无法识别金额时不会提醒。")
             .setView(wrap)
-            .setPositiveButton("保存") { _, _ ->
-                val v = input.text?.toString()?.trim()?.toDoubleOrNull()
-                if (v == null || !v.isFinite() || v < 0 || v > 10_000_000) {
-                    Toast.makeText(this, "请输入 0 至 10000000 之间的金额", Toast.LENGTH_LONG).show()
-                    return@setPositiveButton
-                }
-                prefs.edit().putFloat("big_spend_threshold", v.toFloat()).apply()
-                refreshGuardStatus()
-            }
+            .setPositiveButton("保存", null)
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val raw = input.text?.toString()?.trim().orEmpty()
+                val value = raw.toBigDecimalOrNull()
+                if (!raw.matches(Regex("[0-9]+(?:\\.[0-9]{1,2})?")) || value == null ||
+                    value < java.math.BigDecimal.ZERO || value > java.math.BigDecimal("10000000")) {
+                    input.error = "请输入 0 至 10000000 元，最多两位小数"
+                    input.requestFocus()
+                    return@setOnClickListener
+                }
+                prefs.edit().putString("big_spend_threshold_decimal", value.toPlainString()).apply()
+                refreshGuardStatus()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun refreshAiStatus() {

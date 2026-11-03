@@ -59,7 +59,7 @@ object ReportCardBuilder {
         val c = Canvas(bmp)
         c.drawColor(Color.parseColor("#F5F4ED"))
 
-        fun text(s: String, x: Float, y: Float, size: Float, color: Int, bold: Boolean = false, align: Paint.Align = Paint.Align.LEFT): Paint {
+        fun text(s: String, x: Float, y: Float, size: Float, color: Int, bold: Boolean = false, align: Paint.Align = Paint.Align.LEFT, maxWidth: Float = Float.MAX_VALUE): Paint {
             val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 this.color = color
                 textSize = size
@@ -67,6 +67,7 @@ object ReportCardBuilder {
                 if (bold) typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
                 isFakeBoldText = bold
             }
+            if (p.measureText(s) > maxWidth) p.textSize = (size * maxWidth / p.measureText(s)).coerceAtLeast(20f)
             c.drawText(s, x, y, p)
             return p
         }
@@ -90,7 +91,7 @@ object ReportCardBuilder {
         cols.forEachIndexed { i, (label, v, color) ->
             val cx = PAD + colW * i + colW / 2
             text(label, cx, ovY, 34f, Color.parseColor("#6B6B6B"), align = Paint.Align.CENTER)
-            text("¥${fmt(v)}", cx, ovY + 78f, 56f, color, bold = true, align = Paint.Align.CENTER)
+            text("¥${fmt(v)}", cx, ovY + 78f, 56f, color, bold = true, align = Paint.Align.CENTER, maxWidth = colW - 18f)
         }
 
         // ---- 支出构成 ----
@@ -104,7 +105,7 @@ object ReportCardBuilder {
         top.forEachIndexed { i, (name, amt, cnt) ->
             y += 130f
             val color = Color.parseColor(rootColors[name] ?: String.format("#%06X", 0xFFFFFF and palette[i % palette.size]))
-            text(name, PAD.toFloat(), y, 40f, Color.parseColor("#1A1A1A"), bold = true)
+            text(name, PAD.toFloat(), y, 40f, Color.parseColor("#1A1A1A"), bold = true, maxWidth = 390f)
             text("${cnt}笔", (W - PAD) * 0.72f, y, 32f, Color.parseColor("#8A8A8A"), align = Paint.Align.RIGHT)
             text("¥${fmt(amt)}", (W - PAD).toFloat(), y, 40f, Color.parseColor("#1A1A1A"), bold = true, align = Paint.Align.RIGHT)
             // 条形
@@ -116,7 +117,7 @@ object ReportCardBuilder {
             val fgBar = Paint().apply { this.color = color }
             c.drawRoundRect(RectF(PAD.toFloat(), y, PAD + barW * frac, y + 20f), 10f, 10f, fgBar)
             val pct = if (expense > 0) (amt / expense * 100).toInt() else 0
-            text("$pct%", PAD + barW + 8f, y + 20f, 30f, Color.parseColor("#6B6B6B"))
+            text("$pct%", (W - PAD).toFloat(), y + 55f, 30f, Color.parseColor("#6B6B6B"), align = Paint.Align.RIGHT)
         }
 
         // ---- 已省下（想好再买）----
@@ -124,15 +125,15 @@ object ReportCardBuilder {
         if (droppedCount > 0) {
             val box = Paint().apply { color = Color.parseColor("#EFF5EC") }
             c.drawRoundRect(RectF(PAD.toFloat(), y, (W - PAD).toFloat(), y + 130f), 24f, 24f, box)
-            text("🧘 已省下 ¥${fmt(savedTotal)}", PAD + 36f, y + 58f, 40f, Color.parseColor("#5C8A47"), bold = true)
-            text("想好再买拦下 $droppedCount 个冲动", PAD + 36f, y + 104f, 30f, Color.parseColor("#6B6B6B"))
+            text("已放弃的心愿 ¥${fmt(savedTotal)}", PAD + 36f, y + 58f, 40f, Color.parseColor("#5C8A47"), bold = true)
+            text("本月标记放弃 $droppedCount 项心愿", PAD + 36f, y + 104f, 30f, Color.parseColor("#6B6B6B"))
             y += 170f
         }
 
         // ---- 页脚 ----
         y = h - 110f
         c.drawRect(PAD.toFloat(), y - 40f, (W - PAD).toFloat(), y - 38f, Paint().apply { color = Color.parseColor("#E8E6E1") })
-        text("记录 ${records.size} 笔 · 全部数据仅存于本机", PAD.toFloat(), y, 30f, Color.parseColor("#8A8A8A"))
+        text("记录 ${records.size} 笔 · 月度回顾", PAD.toFloat(), y, 30f, Color.parseColor("#8A8A8A"))
         text("MoneyTracker 智能账本", (W - PAD).toFloat(), y, 32f, Color.parseColor("#C15F3C"), bold = true, align = Paint.Align.RIGHT)
 
         return bmp

@@ -130,9 +130,8 @@ class BankSmsReceiver : BroadcastReceiver() {
                 com.mudasir.smartledger.util.PendingNotifier.update(context.applicationContext)
                 // 想好再买：超过门槛的大额消费 → 立即冷静提醒
                 if (parsed.type == TransactionRecord.TYPE_EXPENSE && parsed.amount > 0) {
-                    val threshold = context.applicationContext
-                        .getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-                        .getFloat("big_spend_threshold", 500f)
+                    val threshold = GuardThreshold.read(context.applicationContext
+                        .getSharedPreferences("guard_prefs", Context.MODE_PRIVATE))
                     if (CheckoutPageParser.exceedsThreshold(parsed.amount, threshold)) {
                         com.mudasir.smartledger.util.PurchaseGuardNotifier.notifyBigSpend(
                             context.applicationContext, parsed.amount, parsed.merchant ?: "银行卡消费"
