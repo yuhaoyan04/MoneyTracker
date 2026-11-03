@@ -217,6 +217,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.mudasir.smartledger.util.PurchaseGuardService.dismissForSettings()
         com.mudasir.smartledger.util.BottomNavHelper.sync(
             findViewById(R.id.bottomNav), R.id.nav_tab_settings
         )
@@ -401,58 +402,76 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** 检测自检：实时显示守护服务识别到的前台页面与判定，用于排查漏拦截。 */
+    /** A stable, scrollable snapshot: explicit refresh never interrupts text selection. */
     private fun showGuardDebug() {
         val tv = TextView(this).apply {
             textSize = 13f
-            setPadding(0, 16, 0, 0)
             typeface = android.graphics.Typeface.MONOSPACE
             setTextIsSelectable(true)
         }
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val dp = resources.displayMetrics.density
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(tv)
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val horizontal = (24 * dp).toInt()
+            setPadding(horizontal, (4 * dp).toInt(), horizontal, 0)
+            addView(TextView(this@SettingsActivity).apply {
+                text = "记录是固定快照，点击刷新可更新；可滚动、选择或复制。诊断不保存页面原文或付款金额，异常详情可能包含设备信息。"
+                textSize = 13f
+            })
+            addView(scroll, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.40f).toInt().coerceAtLeast((160 * dp).toInt())
+            ).apply { topMargin = (12 * dp).toInt() })
+        }
+        fun snapshot(): String {
+            val svc = com.mudasir.smartledger.util.PurchaseGuardService
+            val guardPrefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+            return buildString {
+                append("版本：${BuildConfig.VERSION_NAME}\n")
+                append("守护服务：${if (svc.isRunning) "运行中" else "未运行"}\n")
+                append("无障碍服务：${if (com.mudasir.smartledger.util.AccessibilityCaptureService.isRunning) "运行中" else "未运行"}\n")
+                append("系统：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}，API ${android.os.Build.VERSION.SDK_INT}\n")
+                append("开关：${guardPrefs.getBoolean("guard_enabled", false)}，模式：${guardPrefs.getString("guard_mode", "overlay")}，范围：${guardPrefs.getString("guard_scope", "payment")}\n")
+                append("提醒门槛：${com.mudasir.smartledger.capture.GuardThreshold.read(guardPrefs).toPlainString()} 元\n")
+                append("权限：使用情况=${PermissionHelper.hasUsageAccess(this@SettingsActivity)}，无障碍=${PermissionHelper.isAccessibilityCaptureEnabled(this@SettingsActivity)}，悬浮窗=${android.provider.Settings.canDrawOverlays(this@SettingsActivity)}\n")
+                if (svc.debugUpdatedAt == 0L) {
+                    append("\n尚无页面事件；请进入付款页面后返回刷新。")
+                } else {
+                    val age = ((System.currentTimeMillis() - svc.debugUpdatedAt) / 1000).coerceAtLeast(0)
+                    append("前台应用：${svc.debugPkg}\n当前页面：${svc.debugCls}\n")
+                    append("最近更新：${age} 秒前；匹配不等于成功拦截。")
+                    if (svc.debugHistory.isNotEmpty()) {
+                        append("\n\n最近页面：\n")
+                        append(svc.debugHistory.joinToString("\n") { "· $it" })
+                    }
+                    if (svc.debugFailure.isNotBlank()) append("\n\n最近异常详情：\n${svc.debugFailure}")
+                }
+            }
+        }
+        tv.text = snapshot()
         val dialog = AlertDialog.Builder(this)
-            .setTitle("检测自检（实时）")
-            .setMessage("先打开付款页面，再返回这里查看最近事件。诊断不读取页面正文、金额或密码；异常信息可能包含系统路径和设备信息，请检查后再分享。匹配不等于成功拦截。")
-            .setView(tv)
-            .setNeutralButton("复制诊断") { _, _ ->
+            .setTitle("检测自检")
+            .setView(container)
+            .setNeutralButton("刷新", null)
+            .setNegativeButton("复制诊断", null)
+            .setPositiveButton("关闭", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                tv.text = snapshot()
+                scroll.scrollTo(0, 0)
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("支付提醒诊断", tv.text))
                 Toast.makeText(this, "诊断信息已复制", Toast.LENGTH_SHORT).show()
             }
-            .setPositiveButton("关闭", null)
-            .show()
-        dialog.setOnDismissListener { handler.removeCallbacksAndMessages(null) }
-        val updater = object : Runnable {
-            override fun run() {
-                if (!dialog.isShowing) return
-                val svc = com.mudasir.smartledger.util.PurchaseGuardService
-                if (svc.debugUpdatedAt == 0L) {
-                    tv.text = "等待页面事件…\n（请切换到微信/支付宝/淘宝的任意页面）"
-                } else {
-                val age = ((System.currentTimeMillis() - svc.debugUpdatedAt) / 1000).toInt()
-                tv.text = buildString {
-                    append("守护服务：${if (svc.isRunning) "运行中" else "未运行"}\n")
-                    append("无障碍服务：${if (com.mudasir.smartledger.util.AccessibilityCaptureService.isRunning) "运行中" else "未运行"}\n")
-                    append("系统：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}，API ${android.os.Build.VERSION.SDK_INT}\n")
-                    val guardPrefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
-                    append("开关：${guardPrefs.getBoolean("guard_enabled", false)}，模式：${guardPrefs.getString("guard_mode", "overlay")}，范围：${guardPrefs.getString("guard_scope", "payment")}\n")
-                    append("权限：使用情况=${PermissionHelper.hasUsageAccess(this@SettingsActivity)}，无障碍=${PermissionHelper.isAccessibilityCaptureEnabled(this@SettingsActivity)}，悬浮窗=${android.provider.Settings.canDrawOverlays(this@SettingsActivity)}\n")
-                    append("前台应用：${svc.debugPkg}\n")
-                    append("当前页面：${svc.debugCls}\n")
-                    append("最近处理状态见下方记录；匹配不等于已拦截。\n")
-                    append("更新于 ${age} 秒前")
-                    val hist = svc.debugHistory
-                    if (hist.isNotEmpty()) {
-                        append("\n\n最近页面：\n")
-                        append(hist.joinToString("\n") { "· $it" })
-                    }
-                    if (svc.debugFailure.isNotBlank()) append("\n\n最近异常详情：\n${svc.debugFailure}")
-                }
-                }
-                handler.postDelayed(this, 1000)
-            }
         }
-        updater.run()
+        dialog.show()
     }
 
     /** 悬浮球开关：需悬浮窗权限；守护服务未运行时自动拉起。 */

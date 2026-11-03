@@ -84,6 +84,8 @@ class AccessibilityCaptureService : AccessibilityService() {
     private var lastCapturedAt = 0L
     private var lastGuardAt = 0L
     private var lastGuardDiagnostic = ""
+    private var lastGuardDiagnosticAt = 0L
+    private var lastObservedPackage = ""
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -97,6 +99,11 @@ class AccessibilityCaptureService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
         val now = android.os.SystemClock.uptimeMillis()
+        val eventPackage = e.packageName?.toString().orEmpty()
+        if (eventPackage.isNotBlank() && eventPackage != lastObservedPackage) {
+            lastObservedPackage = eventPackage
+            lastGuardDiagnostic = ""
+        }
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = e.packageName?.toString().orEmpty()
             val cls = e.className?.toString().orEmpty()
@@ -116,19 +123,46 @@ class AccessibilityCaptureService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
                 if (now - lastProcessAt < POLL_DEBOUNCE_MS) return
                 lastProcessAt = now
-                handler.postDelayed({ runCatching { inspect() } }, 350)
+                handler.postDelayed({ inspectSafely() }, 350)
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 // H5 收银台同页渲染：内容变化兜底（独立节流，防高频）
                 if (now - lastContentAt < CONTENT_MIN_INTERVAL_MS) return
                 lastContentAt = now
-                handler.postDelayed({ runCatching { inspect() } }, 350)
+                handler.postDelayed({ inspectSafely() }, 350)
             }
         }
     }
 
+    private fun inspectSafely() {
+        try {
+            inspect()
+        } catch (error: Exception) {
+            // Exception messages can contain page content; record only the exception type.
+            val pkg = lastObservedPackage
+            if (CheckoutPageParser.isSupported(pkg)) {
+                PurchaseGuardService.recordDetection(pkg, "", "无障碍检查异常：${error.javaClass.simpleName}")
+            }
+        }
+    }
+
+    private fun logGuardDiagnostic(pkg: String, key: String, message: String) {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (key != lastGuardDiagnostic || now - lastGuardDiagnosticAt >= 15_000L) {
+            lastGuardDiagnostic = key
+            lastGuardDiagnosticAt = now
+            PurchaseGuardService.recordDetection(pkg, "", message)
+        }
+    }
+
     private fun inspect() {
-        val root = rootInActiveWindow ?: return
+        val root = rootInActiveWindow ?: run {
+            if (CheckoutPageParser.isSupported(lastObservedPackage) &&
+                getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).getBoolean("guard_enabled", false)) {
+                logGuardDiagnostic(lastObservedPackage, "$lastObservedPackage|NO_ROOT", "当前活动窗口根节点不可读取")
+            }
+            return
+        }
         val pkg = root.packageName?.toString() ?: return
         if (!CheckoutPageParser.isSupported(pkg)) return
         val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
@@ -139,19 +173,17 @@ class AccessibilityCaptureService : AccessibilityService() {
             val result = CheckoutPageParser.analyze(pkg, nodes, threshold)
             PurchaseGuardService.onCheckoutEvaluated(pkg,
                 if (result.status == CheckoutResult.Status.QUALIFIED) result.amount?.toDouble() else null)
-            val diagnostic = "$pkg|${result.status}"
-            if (diagnostic != lastGuardDiagnostic) {
-                lastGuardDiagnostic = diagnostic
-                val message = when (result.status) {
-                    CheckoutResult.Status.NOT_CHECKOUT -> "页面未识别为付款确认页"
-                    CheckoutResult.Status.NO_ACCESSIBLE_TEXT -> "当前窗口没有可读取的文字节点"
-                    CheckoutResult.Status.NO_AMOUNT -> "付款页候选：未识别到明确实付金额"
-                    CheckoutResult.Status.AMBIGUOUS -> "付款页候选：金额冲突，未提醒"
-                    CheckoutResult.Status.BELOW_THRESHOLD -> "付款金额未超过门槛，未提醒"
-                    CheckoutResult.Status.QUALIFIED -> "付款金额超过门槛，请求冷静提醒"
-                }
-                PurchaseGuardService.recordDetection(pkg, "", "$message；可读节点数=${nodes.size}")
+            val evidence = CheckoutPageParser.diagnosticSummary(nodes)
+            val diagnostic = "$pkg|${result.status}|$evidence"
+            val message = when (result.status) {
+                CheckoutResult.Status.NOT_CHECKOUT -> "页面未识别为付款确认页"
+                CheckoutResult.Status.NO_ACCESSIBLE_TEXT -> "当前窗口没有可读取的文字节点"
+                CheckoutResult.Status.NO_AMOUNT -> "付款页候选：未识别到明确实付金额"
+                CheckoutResult.Status.AMBIGUOUS -> "付款页候选：金额冲突，未提醒"
+                CheckoutResult.Status.BELOW_THRESHOLD -> "付款金额未超过门槛，未提醒"
+                CheckoutResult.Status.QUALIFIED -> "付款金额超过门槛，请求冷静提醒"
             }
+            logGuardDiagnostic(pkg, diagnostic, "$message；$evidence")
             val now = System.currentTimeMillis()
             if (result.status == CheckoutResult.Status.QUALIFIED && now - lastGuardAt > 5_000) {
                 lastGuardAt = now

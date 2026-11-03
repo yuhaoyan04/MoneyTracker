@@ -29,6 +29,21 @@ object CheckoutPageParser {
     private val amount = "(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]{1,2})?"
     private val labelledAmount = Regex("(?:^|\\s|[：:])$labels\\s*[:：]?\\s*[¥￥]?\\s*($amount)(?![0-9.])\\s*元?")
     private val amountOnly = Regex("^\\s*[¥￥]?\\s*($amount)\\s*元?\\s*$")
+    // Only accept an amount embedded in the payment action itself, not a nearby subtotal.
+    private val actionAmount = Regex("^\\s*(?:确认付款|立即付款|确认支付|立即支付|确认并支付)\\s*[:：]?\\s*[¥￥]\\s*($amount)\\s*元?\\s*$")
+
+    /** Aggregate evidence only. Never returns page text, amounts, or merchant information. */
+    fun diagnosticSummary(nodes: List<CheckoutNode>): String {
+        val actionNodes = nodes.count { node -> node.text.trim().let { it.length <= 32 && actions.any(it::contains) } }
+        val labelled = nodes.count { labelledAmount.containsMatchIn(it.text) || labelOnly.matches(it.text) }
+        val split = nodes.count { labelOnly.matches(it.text) }
+        val subtotal = nodes.count { Regex("合计|总计|小计").containsMatchIn(it.text) }
+        val buttonAmount = nodes.count { actionAmount.matches(it.text) }
+        val listTitle = nodes.any { it.text.trim() in orderListTitles }
+        val listTabs = nodes.map { it.text.trim() }.toSet().intersect(orderListTabs).size
+        val result = nodes.any { node -> outcomes.any(node.text::contains) }
+        return "节点=${nodes.size}, 操作=$actionNodes, 应付标签=$labelled, 标签独立=$split, 合计标签=$subtotal, 按钮含金额=$buttonAmount, 订单列表=$listTitle, 列表标签=$listTabs, 结果页=$result"
+    }
 
     fun analyze(pkg: String, nodes: List<CheckoutNode>, threshold: BigDecimal): CheckoutResult {
         if (!isSupported(pkg)) return CheckoutResult(CheckoutResult.Status.NOT_CHECKOUT)
@@ -46,6 +61,7 @@ object CheckoutPageParser {
         val amounts = linkedSetOf<BigDecimal>()
         nodes.forEachIndexed { index, node ->
             labelledAmount.findAll(node.text).forEach { match -> parse(match.groupValues[1])?.let(amounts::add) }
+            actionAmount.matchEntire(node.text)?.let { parse(it.groupValues[1])?.let(amounts::add) }
             if (labelOnly.matches(node.text)) {
                 // Only the immediately following sibling can supply a split label's amount.
                 val next = nodes.getOrNull(index + 1)

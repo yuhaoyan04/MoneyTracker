@@ -43,6 +43,22 @@ class CheckoutPageParserTest {
         assertTrue(CheckoutPageParser.exceedsThreshold(1000000.02, BigDecimal("1000000.01")))
     }
 
+    @Test fun `explicit amount on payment button is usable but ambiguous values are not`() {
+        assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze(pkg, listOf(n("立即付款 ¥501.00")), threshold).status)
+        assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("立即付款 ¥3.50"), n("合计 ¥800")), threshold).status)
+        assertEquals(Status.AMBIGUOUS, CheckoutPageParser.analyze(pkg, listOf(n("立即付款 ¥501"), n("应付 ¥3.50")), threshold).status)
+        assertEquals(Status.NO_AMOUNT, CheckoutPageParser.analyze(pkg, listOf(n("立即付款 501")), threshold).status)
+    }
+
+    @Test fun `diagnostic summary never exposes page amounts or content`() {
+        val summary = CheckoutPageParser.diagnosticSummary(listOf(n("立即付款 ¥501.00"), n("秘密商户"), n("合计 ¥999")))
+        assertTrue(summary.contains("按钮含金额=1"))
+        assertTrue(summary.contains("合计标签=1"))
+        assertFalse(summary.contains("501"))
+        assertFalse(summary.contains("999"))
+        assertFalse(summary.contains("秘密商户"))
+    }
+
     @Test fun `amount must be strictly greater and outcome pages are excluded`() {
         assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("应付 ¥500.00")), threshold).status)
         assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("提交订单"), n("应付 ¥499.99")), threshold).status)

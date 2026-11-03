@@ -96,7 +96,7 @@ class PurchaseGuardService : Service() {
             debugPkg = pkg
             debugCls = cls
             debugUpdatedAt = System.currentTimeMillis()
-            debugHistory = (debugHistory + "$stamp $pkg ${cls.substringAfterLast('.')} | $result").takeLast(16)
+            debugHistory = (debugHistory + "$stamp $pkg ${cls.substringAfterLast('.')} | $result").takeLast(40)
         }
 
         @Volatile
@@ -121,6 +121,18 @@ class PurchaseGuardService : Service() {
         /** A different foreground app invalidates an uncompleted prompt. */
         fun onObservedForeground(pkg: String) {
             instance?.let { svc -> svc.handler.post { svc.observeForeground(pkg, System.currentTimeMillis()) } }
+        }
+
+        /** Settings must remain usable even if the source payment app was covered by an overlay. */
+        fun dismissForSettings() {
+            instance?.let { svc -> svc.handler.post {
+                if (svc.requestPackage != null || svc.overlayView != null) {
+                    val origin = svc.overlayPackage ?: svc.requestPackage.orEmpty()
+                    svc.requestGeneration++
+                    svc.removeOverlay()
+                    recordDetection(origin, "", "已进入设置，关闭付款提醒")
+                }
+            } }
         }
 
         fun onCheckoutEvaluated(pkg: String, amount: Double?) {
