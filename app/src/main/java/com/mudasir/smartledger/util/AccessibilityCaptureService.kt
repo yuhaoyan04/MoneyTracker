@@ -56,6 +56,11 @@ class AccessibilityCaptureService : AccessibilityService() {
         var isRunning = false
             private set
 
+        @Volatile private var connectedInstance: AccessibilityCaptureService? = null
+        fun overlayWindowManager(): android.view.WindowManager? =
+            connectedInstance?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
+        fun activeRootPackage(): String? = connectedInstance?.rootInActiveWindow?.packageName?.toString()
+
         private const val POLL_DEBOUNCE_MS = 400L
         private const val CONTENT_MIN_INTERVAL_MS = 1200L
 
@@ -87,10 +92,14 @@ class AccessibilityCaptureService : AccessibilityService() {
     private var lastGuardDiagnosticAt = 0L
     private var lastObservedPackage = ""
     private var lastLoggedContentAt = 0L
+    private val visualMonitor by lazy {
+        if (android.os.Build.VERSION.SDK_INT >= 30) VisualCheckoutMonitor(this) else null
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         isRunning = true
+        connectedInstance = this
         GuardDiagnosticLog.lifecycle("A11Y_CONNECTED")
         // 开机/重授权后自愈：待确认常驻通知刷新
         scope.launch {
@@ -126,6 +135,9 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = e.packageName?.toString().orEmpty()
             val cls = e.className?.toString().orEmpty()
+            if (pkg == "com.taobao.taobao" && cls.endsWith("UltronTradeHybridActivity")) visualMonitor?.checkoutWindow()
+            else if (pkg == "com.taobao.taobao" && cls.endsWith("Activity")) visualMonitor?.leaveCheckout(cls.endsWith("CashDeskActivity"))
+            VisualPaymentHandoff.observe(pkg, cls)?.let { PurchaseGuardService.onVisualPaymentHandoff(applicationContext, pkg, it) }
             if (CheckoutPageParser.isSupported(pkg)) {
                 PurchaseGuardService.onObservedForeground(pkg)
             }
@@ -187,6 +199,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (!CheckoutPageParser.isSupported(pkg)) return
         val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         if (prefs.getBoolean("guard_enabled", false)) {
+            visualMonitor?.inspect(pkg)
             val nodes = mutableListOf<CheckoutNode>()
             collectCheckoutNodes(root, nodes, 0, -1, intArrayOf(0))
             val threshold = com.mudasir.smartledger.capture.GuardThreshold.read(prefs)
@@ -344,12 +357,15 @@ class AccessibilityCaptureService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         GuardDiagnosticLog.lifecycle("A11Y_UNBOUND")
         isRunning = false
+        connectedInstance = null
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         GuardDiagnosticLog.lifecycle("A11Y_DESTROYED")
         isRunning = false
+        connectedInstance = null
+        visualMonitor?.close()
         handler.removeCallbacksAndMessages(null)
         scope.cancel()
         super.onDestroy()

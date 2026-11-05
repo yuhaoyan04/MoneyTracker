@@ -1,0 +1,42 @@
+package com.mudasir.smartledger.capture
+
+import java.math.BigDecimal
+
+/** OCR data is used in memory only. Bounds are in screenshot pixels. */
+data class VisualText(val text: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
+
+object VisualCheckoutParser {
+    private val action = Regex("继续付款|确认付款|立即付款|确认支付|立即支付|提交订单")
+    private val outcome = Regex("支付成功|付款成功|支付失败|付款失败|订单已取消")
+    private val label = Regex("实付款|实付金额|实际支付|实际付款|应付金额|应付款|应付|需付款|需付|支付金额|付款金额")
+    private val amount = Regex("(?<![0-9.,])(?:[¥￥]\\s*)?([0-9]{1,6}(?:\\.[0-9]{1,2})?)(?![0-9.,])")
+    private val exclusions = Regex("订单号|交易号|编号|优惠|立减|红包|折扣|运费|邮费|原价|小计|合计|总计")
+
+    /** A payment label is mandatory; arbitrary small numbers are never treated as amounts. */
+    fun amount(lines: List<VisualText>, width: Int, height: Int): BigDecimal? {
+        if (width <= 0 || height <= 0 || lines.isEmpty()) return null
+        val normalized = lines.map { it.copy(text = it.text.replace(Regex("\\s+"), "")) }
+        if (normalized.any { outcome.containsMatchIn(it.text) }) return null
+        if (normalized.none { action.containsMatchIn(it.text) && it.top >= height / 2 }) return null
+        val candidates = mutableListOf<BigDecimal>()
+        normalized.forEach { line ->
+            val match = label.find(line.text) ?: return@forEach
+            if (exclusions.containsMatchIn(line.text.substring(0, match.range.first))) return@forEach
+            val tail = line.text.substring(match.range.last + 1)
+            val explicit = Regex("^[:：]?[¥￥]?([0-9]{1,6}(?:\\.[0-9]{1,2})?)(?![0-9.,])").find(tail)
+            explicit?.groupValues?.get(1)?.let { parse(it)?.let(candidates::add) }
+            if (explicit == null && tail.trim(':', '：', '¥', '￥').isEmpty()) {
+                val h = (line.bottom - line.top).coerceAtLeast(1)
+                normalized.asSequence().filter { it !== line && it.left >= line.right - h &&
+                    it.left - line.right <= width / 3 && kotlin.math.abs(it.top - line.top) <= h * 2 &&
+                    !exclusions.containsMatchIn(it.text) }
+                    .mapNotNull { next -> amount.matchEntire(next.text)?.groupValues?.get(1)?.let(::parse) }
+                    .forEach(candidates::add)
+            }
+        }
+        return candidates.minOrNull()
+    }
+
+    private fun parse(s: String): BigDecimal? = runCatching { BigDecimal(s) }.getOrNull()
+        ?.takeIf { it > BigDecimal.ZERO && it <= BigDecimal("1000000") }
+}

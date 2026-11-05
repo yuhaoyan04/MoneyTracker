@@ -159,6 +159,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnCooldown).setOnClickListener { editCooldown() }
         findViewById<View>(R.id.btnGuardScope).setOnClickListener { editGuardScope() }
         findViewById<View>(R.id.btnGuardDebug).setOnClickListener { showGuardDebug() }
+        findViewById<View>(R.id.btnVisualGuard).setOnClickListener { editVisualGuard() }
         findViewById<View>(R.id.btnAutoConfirm).setOnClickListener { editAutoConfirm() }
         findViewById<View>(R.id.btnBall).setOnClickListener { toggleBall() }
         findViewById<View>(R.id.btnWishlist).setOnClickListener {
@@ -306,6 +307,19 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvCooldown).text = "$cooldown 秒"
         findViewById<TextView>(R.id.tvGuardScope).text =
             "付款页且金额超过门槛"
+    }
+
+    private fun editVisualGuard() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val enabled = prefs.getBoolean("guard_visual_enabled", false)
+        AlertDialog.Builder(this)
+            .setTitle("屏幕识别（测试）")
+            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。开启后，仅在淘宝订单确认页尝试截取屏幕并在本机识别付款信息，画面和识别文字不保存、不上传。识别组件由 Google ML Kit 提供，可能向 Google 发送设备和性能等使用指标。截图可能包含屏幕上显示的个人信息；安全窗口无法保证读取。识别不确定时不会提醒。功能仍在测试，可能漏检或误判。")
+            .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
+                prefs.edit().putBoolean("guard_visual_enabled", !enabled).apply()
+                Toast.makeText(this, if (enabled) "屏幕识别已关闭" else "屏幕识别已开启；请确认无障碍服务仍然启用", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("取消", null).show()
     }
 
     /** 提醒范围：精确（进入付款页面）/ 宽松（打开支付应用）。 */

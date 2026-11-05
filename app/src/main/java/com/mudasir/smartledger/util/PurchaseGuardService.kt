@@ -139,13 +139,23 @@ class PurchaseGuardService : Service() {
 
         fun onCheckoutEvaluated(pkg: String, amount: Double?) {
             instance?.let { svc -> svc.handler.post {
-                if (svc.requestPackage == pkg && (amount == null ||
+                if (!svc.visualHandoffRequest && svc.requestPackage == pkg && (amount == null ||
                         kotlin.math.abs(svc.requestAmount - amount) >= 0.005)) {
                     svc.requestGeneration++
                     svc.requestPackage = null
                     if (svc.overlayView != null) svc.removeOverlay()
                     recordDetection(pkg, "", "付款页面或金额已变化，关闭过期提醒")
                 }
+            } }
+        }
+
+        fun onVisualPaymentHandoff(context: Context, pkg: String, amount: Double) {
+            if (pkg != "com.tencent.mm") return
+            val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("guard_enabled", false) || !prefs.getBoolean("guard_visual_enabled", false) ||
+                !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) return
+            instance?.let { svc -> svc.handler.post {
+                if (svc.rootPackageIsWechat()) svc.nudgeFromDetection(pkg, amount, visualHandoff = true)
             } }
         }
 
@@ -225,6 +235,8 @@ class PurchaseGuardService : Service() {
     private var requestPackage: String? = null
     private var requestStartedAt = 0L
     private var requestAmount = Double.NaN
+    private var visualHandoffRequest = false
+    private var overlayWindowManager: WindowManager? = null
     private var overlayPackage: String? = null
     private var overlayTick: Runnable? = null
     private var lastPollErrorAt = 0L
@@ -329,6 +341,9 @@ class PurchaseGuardService : Service() {
         val includeCheckout = prefs.getString("guard_scope", "payment") == "checkout"
         val latest = resumedPages.lastOrNull()
         for (page in resumedPages) {
+            if (page.timestamp in (now - 5_000L)..now && page.pkg == latest?.pkg) {
+                VisualPaymentHandoff.observe(page.pkg, page.cls)?.let { onVisualPaymentHandoff(applicationContext, page.pkg, it) }
+            }
             if (page.timestamp in (now - 5_000L)..now && launchTracker.observe(page.pkg, page.timestamp) &&
                 page.pkg == latest?.pkg) {
                 recordDetection(page.pkg, page.cls, "检测到支付应用切换，等待页面金额")
@@ -382,7 +397,9 @@ class PurchaseGuardService : Service() {
     }
 
     /** 无障碍通道触发的提醒入口（与 usage 检测共用冷却与浮层逻辑）。 */
-    fun nudgeFromDetection(pkg: String, amount: Double) {
+    private fun rootPackageIsWechat(): Boolean = AccessibilityCaptureService.activeRootPackage() == "com.tencent.mm"
+
+    fun nudgeFromDetection(pkg: String, amount: Double, visualHandoff: Boolean = false) {
         val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("guard_enabled", false)) {
             recordDetection(pkg, "", "提醒未开启")
@@ -416,6 +433,7 @@ class PurchaseGuardService : Service() {
         lastNudgeAt = now
         requestPackage = pkg
         requestAmount = amount
+        visualHandoffRequest = visualHandoff
         requestStartedAt = now
         requestGeneration++
         nudgeInternal(pkg, requestGeneration, amount)
@@ -497,7 +515,8 @@ class PurchaseGuardService : Service() {
 
     private fun showCooldownOverlay(spent: Double, budgetPct: Int?, pkg: String, amount: Double) {
         if (overlayView != null) return
-        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        val a11yWm = if (visualHandoffRequest) AccessibilityCaptureService.overlayWindowManager() else null
+        val wm = a11yWm ?: getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         val view = CooldownOverlayFactory.create(this)
 
         val spendText = buildString {
@@ -565,13 +584,14 @@ class PurchaseGuardService : Service() {
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            if (a11yWm != null) WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY else WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             android.graphics.PixelFormat.TRANSLUCENT
         )
         runCatching {
             wm.addView(view, params)
+            overlayWindowManager = wm
             overlayView = view
             overlayPackage = pkg
             overlayTick = tick
@@ -607,10 +627,12 @@ class PurchaseGuardService : Service() {
         overlayAutoRemove = null
         overlayView?.let { v ->
             runCatching {
-                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v)
+                (overlayWindowManager ?: getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v)
             }
         }
         overlayView = null
+        overlayWindowManager = null
+        visualHandoffRequest = false
         overlayPackage = null
         requestPackage = null
     }

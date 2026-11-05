@@ -64,6 +64,7 @@
             </LinearLayout>
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/divider"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnGuardDebug" style="@style/SettingsListAction" android:text="检测自检"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualGuard" style="@style/SettingsListAction" android:text="屏幕识别（测试）"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnWishlist" style="@style/SettingsListAction" android:text="愿望清单"/>
             <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="18dp" android:paddingEnd="18dp" android:paddingTop="4dp" android:paddingBottom="10dp" android:text="仅在可读取的付款页识别到明确金额且超过门槛时提醒；部分页面无法识别，安全页面也可能隐藏浮层。"/>
           </LinearLayout>

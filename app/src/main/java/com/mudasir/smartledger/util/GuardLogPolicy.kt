@@ -37,6 +37,10 @@ object GuardLogPolicy {
 
     fun status(message: String): String = when {
         message.startsWith("收到无障碍窗口事件") -> "ACCESSIBILITY_WINDOW"
+        message.startsWith("屏幕识别截图失败") -> "OCR_SCREENSHOT_FAILED"
+        message.startsWith("屏幕识别：识别到超门槛付款候选") -> "OCR_QUALIFIED"
+        message.startsWith("屏幕识别：无可靠超门槛金额") -> "OCR_NOT_QUALIFIED"
+        message.startsWith("屏幕识别失败") -> "OCR_ERROR"
         message.startsWith("窗口候选") -> "WINDOW_CANDIDATE"
         message.startsWith("无障碍检查异常") -> "INSPECTION_ERROR"
         message.startsWith("当前活动窗口根节点不可读取") -> "NO_ACTIVE_ROOT"
