@@ -30,7 +30,7 @@ object GuardLogPolicy {
     /** Recognize only fixed labels, never returning the supplied text. */
     fun clickRole(texts: List<String>): String = when {
         texts.any { it.trim() == "提交订单" } -> "SUBMIT_ORDER"
-        texts.any { it.trim() in setOf("确认付款", "立即付款", "确认支付", "立即支付", "确认并支付") } -> "PAY_ACTION"
+        texts.any { it.trim() in setOf("确认付款", "立即付款", "继续付款", "确认支付", "立即支付", "确认并支付") } -> "PAY_ACTION"
         texts.any { it.trim() in setOf("去付款", "去支付") } -> "GO_TO_PAY"
         else -> "OTHER"
     }

@@ -32,6 +32,13 @@ class CheckoutPageParserTest {
         assertEquals(Status.NO_ACCESSIBLE_TEXT, CheckoutPageParser.analyze(pkg, emptyList(), threshold).status)
     }
 
+    @Test fun `continue payment still requires final amount above threshold`() {
+        assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze(pkg, listOf(n("继续付款"), n("应付 ¥501")), threshold).status)
+        assertEquals(Status.BELOW_THRESHOLD, CheckoutPageParser.analyze(pkg, listOf(n("继续付款"), n("应付 ¥3.50")), threshold).status)
+        assertEquals(Status.NO_AMOUNT, CheckoutPageParser.analyze(pkg, listOf(n("继续付款"), n("合计 ¥800")), threshold).status)
+        assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, listOf(n("我的订单"), n("继续付款"), n("应付 ¥501")), threshold).status)
+    }
+
     @Test fun `order list and title alone do not trigger an interruption`() {
         assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, listOf(n("我的订单"), n("去付款"), n("合计 ¥800")), threshold).status)
         assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, listOf(n("待付款"), n("待发货"), n("去付款"), n("合计 ¥800")), threshold).status)

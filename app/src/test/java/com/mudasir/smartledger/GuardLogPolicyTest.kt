@@ -24,6 +24,7 @@ class GuardLogPolicyTest {
 
     @Test fun `click classification never returns the supplied label`() {
         assertEquals("PAY_ACTION", GuardLogPolicy.clickRole(listOf("确认支付")))
+        assertEquals("PAY_ACTION", GuardLogPolicy.clickRole(listOf("继续付款")))
         assertEquals("OTHER", GuardLogPolicy.clickRole(listOf("确认支付 ¥9999", "商户")))
         assertEquals("OTHER", GuardLogPolicy.clickRole(listOf("123456")))
     }

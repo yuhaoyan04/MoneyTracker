@@ -19,7 +19,7 @@ object CheckoutPageParser {
     fun exceedsThreshold(amount: Double, threshold: BigDecimal): Boolean =
         amount.isFinite() && threshold >= BigDecimal.ZERO && BigDecimal(amount.toString()) > threshold
 
-    private val actions = listOf("提交订单", "确认付款", "立即付款", "确认支付", "立即支付", "去付款", "去支付", "支付订单", "订单支付", "确认并支付")
+    private val actions = listOf("提交订单", "确认付款", "立即付款", "继续付款", "确认支付", "立即支付", "去付款", "去支付", "支付订单", "订单支付", "确认并支付")
     private val orderListTitles = setOf("全部订单", "我的订单", "订单列表", "历史订单", "订单记录")
     private val orderListTabs = setOf("待付款", "待发货", "待收货", "待评价", "已完成")
     private val outcomes = listOf("支付成功", "付款成功", "交易成功", "扣款成功", "支付失败", "付款失败", "交易失败", "订单已取消", "退款成功")
