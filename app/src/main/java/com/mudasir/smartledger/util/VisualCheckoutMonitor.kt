@@ -39,6 +39,9 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         handler.removeCallbacks(refresh)
         handler.postDelayed(refresh, 1_000L)
     }
+    fun ensureCheckoutWindow() {
+        if (checkoutSeenAt == 0L || SystemClock.elapsedRealtime() - checkoutSeenAt > 4_000L) checkoutWindow()
+    }
     fun leaveCheckout(preserveHandoff: Boolean = false) {
         checkoutSeenAt = 0L
         handler.removeCallbacks(refresh)

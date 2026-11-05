@@ -60,6 +60,13 @@ class AccessibilityCaptureService : AccessibilityService() {
         fun overlayWindowManager(): android.view.WindowManager? =
             connectedInstance?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
         fun activeRootPackage(): String? = connectedInstance?.rootInActiveWindow?.packageName?.toString()
+        fun onTaobaoOrderActivityResumed() {
+            connectedInstance?.let { service -> service.handler.post {
+                if (service.rootInActiveWindow?.packageName?.toString() == "com.taobao.taobao") {
+                    service.visualMonitor?.ensureCheckoutWindow()
+                }
+            } }
+        }
 
         private const val POLL_DEBOUNCE_MS = 400L
         private const val CONTENT_MIN_INTERVAL_MS = 1200L

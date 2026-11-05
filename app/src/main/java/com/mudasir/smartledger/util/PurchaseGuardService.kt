@@ -243,6 +243,7 @@ class PurchaseGuardService : Service() {
     private var overlayPackage: String? = null
     private var overlayTick: Runnable? = null
     private var lastPollErrorAt = 0L
+    private var lastVisualResumeAt = 0L
 
     private val screenReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -344,6 +345,11 @@ class PurchaseGuardService : Service() {
         val includeCheckout = prefs.getString("guard_scope", "payment") == "checkout"
         val latest = resumedPages.lastOrNull()
         for (page in resumedPages) {
+            if (page.pkg == "com.taobao.taobao" && page.cls.endsWith("TBOrderListActivity") &&
+                page.timestamp > lastVisualResumeAt && page.timestamp in (now - 5_000L)..now && page.pkg == latest?.pkg) {
+                lastVisualResumeAt = page.timestamp
+                AccessibilityCaptureService.onTaobaoOrderActivityResumed()
+            }
             if (page.timestamp in (now - 5_000L)..now && page.pkg == latest?.pkg) {
                 VisualPaymentHandoff.observe(page.pkg, page.cls)?.let { onVisualPaymentHandoff(applicationContext, page.pkg, it) }
             }
