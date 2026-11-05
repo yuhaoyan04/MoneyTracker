@@ -1,0 +1,92 @@
+package com.mudasir.smartledger.util
+
+import com.mudasir.smartledger.capture.CheckoutPageParser
+
+/** Converts diagnostics to a small allowlist; never forwards page text or exception messages. */
+object GuardLogPolicy {
+    private val idPattern = Regex("[A-Za-z_.$][A-Za-z0-9_.$]{0,199}")
+    private val longDigits = Regex("[0-9]{4,}")
+    private val evidenceNames = mapOf("节点" to "nodes", "操作" to "actions", "应付标签" to "payable_labels",
+        "标签独立" to "split_labels", "合计标签" to "subtotals", "按钮含金额" to "action_amounts", "列表标签" to "order_tabs",
+        "裸金额" to "standalone_numbers", "标签后数字" to "numeric_after_label", "同层邻近" to "near_sibling", "确认订单标题" to "confirm_order_titles")
+    private val boolNames = mapOf("订单列表" to "order_list", "结果页" to "outcome", "attached" to "attached", "shown" to "shown")
+    private val numericPatterns = evidenceNames.map { (name, key) ->
+        key to Regex("(?:^|[，,；;]\\s*)${Regex.escape(name)}=(\\d{1,3})(?!\\d)")
+    }
+    private val booleanPatterns = boolNames.map { (name, key) ->
+        key to Regex("(?:^|[，,；;]\\s*)${Regex.escape(name)}=(true|false)(?![A-Za-z])")
+    }
+
+    fun safePackage(pkg: String, ownPackage: String): String = when {
+        pkg == ownPackage -> "self"
+        CheckoutPageParser.isSupported(pkg) -> pkg
+        else -> "other"
+    }
+
+    fun safeClass(cls: String): String = cls.takeIf {
+        idPattern.matches(it) && !longDigits.containsMatchIn(it)
+    } ?: ""
+
+    /** Recognize only fixed labels, never returning the supplied text. */
+    fun clickRole(texts: List<String>): String = when {
+        texts.any { it.trim() == "提交订单" } -> "SUBMIT_ORDER"
+        texts.any { it.trim() in setOf("确认付款", "立即付款", "确认支付", "立即支付", "确认并支付") } -> "PAY_ACTION"
+        texts.any { it.trim() in setOf("去付款", "去支付") } -> "GO_TO_PAY"
+        else -> "OTHER"
+    }
+
+    fun status(message: String): String = when {
+        message.startsWith("收到无障碍窗口事件") -> "ACCESSIBILITY_WINDOW"
+        message.startsWith("窗口候选") -> "WINDOW_CANDIDATE"
+        message.startsWith("无障碍检查异常") -> "INSPECTION_ERROR"
+        message.startsWith("当前活动窗口根节点不可读取") -> "NO_ACTIVE_ROOT"
+        message.startsWith("页面未识别为付款确认页") -> "NOT_CHECKOUT"
+        message.startsWith("当前窗口没有可读取的文字节点") -> "NO_ACCESSIBLE_TEXT"
+        message.startsWith("付款页候选：未识别到明确实付金额") -> "NO_AMOUNT"
+        message.startsWith("付款页候选：金额冲突") -> "AMBIGUOUS"
+        message.startsWith("付款金额未超过门槛") || message.startsWith("金额未超过提醒门槛") -> "BELOW_THRESHOLD"
+        message.startsWith("付款金额超过门槛") -> "QUALIFIED"
+        message.startsWith("使用情况类名匹配") -> "USAGE_CLASS_MATCH"
+        message.startsWith("使用情况类名未匹配") -> "USAGE_CLASS_NO_MATCH"
+        message.startsWith("检测到支付应用切换") -> "PAYMENT_APP_TRANSITION"
+        message.startsWith("支付页面候选") -> "USAGE_CANDIDATE"
+        message.startsWith("提醒未开启") -> "GUARD_DISABLED"
+        message.startsWith("后台启动服务失败") -> "SERVICE_START_ERROR"
+        message.startsWith("守护服务已接收提醒请求") -> "SERVICE_REQUEST_POSTED"
+        message.startsWith("尝试启动守护服务") -> "SERVICE_START_REQUESTED"
+        message.startsWith("无障碍兜底：没有活动窗口") -> "FALLBACK_NO_ROOT"
+        message.startsWith("无障碍兜底：开关或应用已变化") -> "FALLBACK_CONTEXT_CHANGED"
+        message.startsWith("无障碍兜底：页面或金额已变化") -> "FALLBACK_PAGE_CHANGED"
+        message.startsWith("无障碍兜底：已调用通知") -> "FALLBACK_NOTIFICATION_REQUESTED"
+        message.startsWith("无障碍兜底失败") -> "FALLBACK_ERROR"
+        message.startsWith("已沿用刚确认") -> "APPROVED_HANDOFF"
+        message.startsWith("近期已放行") -> "APPROVAL_COOLDOWN"
+        message.startsWith("短时去重") -> "DEDUPLICATED"
+        message.startsWith("付款页面或金额已变化") -> "STALE_PAGE_CLOSED"
+        message.startsWith("已进入设置") -> "SETTINGS_CLOSED_OVERLAY"
+        message.startsWith("离开原应用，关闭") -> "LEFT_APP_CLOSED_OVERLAY"
+        message.startsWith("离开原应用，取消") -> "LEFT_APP_CANCELLED"
+        message.startsWith("页面已切换") -> "STALE_REQUEST_CANCELLED"
+        message.startsWith("提醒开关或门槛已变化") -> "SETTINGS_CHANGED_CANCELLED"
+        message.startsWith("无悬浮窗权限") -> "OVERLAY_PERMISSION_MISSING"
+        message.startsWith("通知模式") -> "NOTIFICATION_MODE"
+        message.startsWith("提醒失败") -> "PROMPT_ERROR"
+        message.startsWith("系统已接受悬浮窗请求") -> "OVERLAY_ADDED"
+        message.startsWith("浮层状态") -> "OVERLAY_STATE"
+        message.startsWith("悬浮窗创建失败") -> "OVERLAY_ERROR"
+        message.startsWith("用户点击继续") -> "USER_CONTINUE"
+        message.startsWith("用户选择心愿") -> "USER_WISHLIST"
+        message.startsWith("冷静计时结束") -> "COUNTDOWN_COMPLETE"
+        message.startsWith("浮层超时关闭") -> "OVERLAY_TIMEOUT"
+        else -> "OTHER"
+    }
+
+    fun evidence(message: String): Map<String, String> = buildMap {
+        numericPatterns.forEach { (key, pattern) ->
+            pattern.find(message)?.groupValues?.get(1)?.let { put(key, it) }
+        }
+        booleanPatterns.forEach { (key, pattern) ->
+            pattern.find(message)?.groupValues?.get(1)?.let { put(key, it) }
+        }
+    }
+}

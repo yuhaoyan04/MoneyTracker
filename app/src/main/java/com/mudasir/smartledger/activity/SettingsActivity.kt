@@ -65,6 +65,18 @@ class SettingsActivity : AppCompatActivity() {
         uri?.let { exportPortableBackup(it) }
     }
 
+    private val guardLogExportLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        uri?.let {
+            lifecycleScope.launch {
+                runCatching { com.mudasir.smartledger.util.GuardDiagnosticLog.export(this@SettingsActivity, it) }
+                    .onSuccess { bytes -> Toast.makeText(this@SettingsActivity, "诊断文件已保存（$bytes 字节）", Toast.LENGTH_LONG).show() }
+                    .onFailure { Toast.makeText(this@SettingsActivity, "没有可导出的记录或保存失败，请重试", Toast.LENGTH_LONG).show() }
+            }
+        }
+    }
+
     private val ledgerImportLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -217,6 +229,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.mudasir.smartledger.util.GuardDiagnosticLog.settingsResumed()
         com.mudasir.smartledger.util.PurchaseGuardService.dismissForSettings()
         com.mudasir.smartledger.util.BottomNavHelper.sync(
             findViewById(R.id.bottomNav), R.id.nav_tab_settings
@@ -319,6 +332,7 @@ class SettingsActivity : AppCompatActivity() {
             .setPositiveButton("保存") { _, _ ->
                 val mode = if (picked == 0) "overlay" else "notify"
                 prefs.edit().putString("guard_mode", mode).apply()
+                com.mudasir.smartledger.util.GuardDiagnosticLog.settingChanged("guard_mode", mode)
                 if (mode == "overlay" && !android.provider.Settings.canDrawOverlays(this)) {
                     // 引导授予悬浮窗权限
                     runCatching {
@@ -349,6 +363,7 @@ class SettingsActivity : AppCompatActivity() {
             .setSingleChoiceItems(options, picked) { _, which -> picked = which }
             .setPositiveButton("保存") { _, _ ->
                 prefs.edit().putInt("guard_cooldown_seconds", values[picked]).apply()
+                com.mudasir.smartledger.util.GuardDiagnosticLog.settingChanged("cooldown", values[picked].toString())
                 refreshGuardStatus()
             }
             .setNegativeButton("取消", null)
@@ -363,6 +378,7 @@ class SettingsActivity : AppCompatActivity() {
         when {
             running -> {
                 prefs.edit().putBoolean("guard_enabled", false).apply()
+                com.mudasir.smartledger.util.GuardDiagnosticLog.settingChanged("guard_enabled", "false")
                 if (!prefs.getBoolean("ball_enabled", false)) {
                     stopService(Intent(this, com.mudasir.smartledger.util.PurchaseGuardService::class.java))
                 }
@@ -396,6 +412,7 @@ class SettingsActivity : AppCompatActivity() {
                 }.isSuccess
                 if (!started) return
                 prefs.edit().putBoolean("guard_enabled", true).apply()
+                com.mudasir.smartledger.util.GuardDiagnosticLog.settingChanged("guard_enabled", "true")
                 Toast.makeText(this, "想好再买已开启 · 进入支付应用时会提醒你", Toast.LENGTH_LONG).show()
                 refreshGuardStatus()
             }
@@ -404,6 +421,52 @@ class SettingsActivity : AppCompatActivity() {
 
     /** A stable, scrollable snapshot: explicit refresh never interrupts text selection. */
     private fun showGuardDebug() {
+        val logStatus = TextView(this).apply { textSize = 12f }
+        val recordButton = com.google.android.material.button.MaterialButton(this, null,
+            com.google.android.material.R.attr.materialButtonOutlinedStyle).apply { textSize = 12f }
+        val exportButton = com.google.android.material.button.MaterialButton(this, null,
+            com.google.android.material.R.attr.materialButtonOutlinedStyle).apply { text = "保存文件"; textSize = 12f }
+        val clearButton = com.google.android.material.button.MaterialButton(this, null,
+            com.google.android.material.R.attr.materialButtonOutlinedStyle).apply { text = "清空"; textSize = 12f }
+        fun refreshLogState() {
+            val recording = com.mudasir.smartledger.util.GuardDiagnosticLog.isRecording()
+            recordButton.text = if (recording) "停止记录" else "开始记录"
+            val failure = com.mudasir.smartledger.util.GuardDiagnosticLog.lastError
+            logStatus.text = when {
+                failure != null -> "记录失败（$failure），请重新开始"
+                recording -> "正在记录 · 最长 30 分钟"
+                else -> "未记录 · 可保存已有记录"
+            }
+        }
+        recordButton.setOnClickListener {
+            val log = com.mudasir.smartledger.util.GuardDiagnosticLog
+            if (log.isRecording()) log.stop() else log.start(this)
+            refreshLogState()
+        }
+        exportButton.setOnClickListener {
+            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+            guardLogExportLauncher.launch("MoneyTracker-guard-$stamp.txt")
+        }
+        clearButton.setOnClickListener {
+            AlertDialog.Builder(this).setTitle("清空本机诊断记录？")
+                .setMessage("会停止记录并删除应用内保存的诊断日志；已导出的文件不会被删除。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("清空") { _, _ ->
+                    lifecycleScope.launch {
+                        recordButton.isEnabled = false
+                        exportButton.isEnabled = false
+                        clearButton.isEnabled = false
+                        runCatching { com.mudasir.smartledger.util.GuardDiagnosticLog.clear(this@SettingsActivity) }
+                            .onSuccess { Toast.makeText(this@SettingsActivity, "诊断记录已清空", Toast.LENGTH_SHORT).show() }
+                            .onFailure { Toast.makeText(this@SettingsActivity, "清空失败，请重试", Toast.LENGTH_SHORT).show() }
+                        refreshLogState()
+                        recordButton.isEnabled = true
+                        exportButton.isEnabled = true
+                        clearButton.isEnabled = true
+                    }
+                }.show()
+        }
+        refreshLogState()
         val tv = TextView(this).apply {
             textSize = 13f
             typeface = android.graphics.Typeface.MONOSPACE
@@ -419,12 +482,22 @@ class SettingsActivity : AppCompatActivity() {
             val horizontal = (24 * dp).toInt()
             setPadding(horizontal, (4 * dp).toInt(), horizontal, 0)
             addView(TextView(this@SettingsActivity).apply {
-                text = "记录是固定快照，点击刷新可更新；可滚动、选择或复制。诊断不保存页面原文或付款金额，异常详情可能包含设备信息。"
+                text = "可手动记录受支持应用的页面与操作类型，最多 30 分钟，保留最新约 256 KB，直至清空或卸载。不保存页面原文、输入内容或付款金额。导出前请检查设备信息。"
                 textSize = 13f
+            })
+            addView(logStatus, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = (6 * dp).toInt()
+            })
+            addView(LinearLayout(this@SettingsActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                listOf(recordButton, exportButton, clearButton).forEach { button ->
+                    addView(button, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                }
             })
             addView(scroll, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.40f).toInt().coerceAtLeast((160 * dp).toInt())
+                (resources.displayMetrics.heightPixels * 0.27f).toInt()
+                    .coerceAtLeast((80 * dp).toInt()).coerceAtMost((260 * dp).toInt())
             ).apply { topMargin = (12 * dp).toInt() })
         }
         fun snapshot(): String {
@@ -462,6 +535,7 @@ class SettingsActivity : AppCompatActivity() {
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                refreshLogState()
                 tv.text = snapshot()
                 scroll.scrollTo(0, 0)
             }
@@ -525,6 +599,7 @@ class SettingsActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 prefs.edit().putString("big_spend_threshold_decimal", value.toPlainString()).apply()
+                com.mudasir.smartledger.util.GuardDiagnosticLog.settingChanged("threshold", "updated")
                 refreshGuardStatus()
                 dialog.dismiss()
             }

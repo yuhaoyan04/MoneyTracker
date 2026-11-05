@@ -41,6 +41,8 @@ class SettingsLayoutTest {
                 activity.findViewById<View>(R.id.btnGuardDebug).performClick()
             }
             onView(withText("复制诊断")).check(matches(isDisplayed())).perform(click())
+            onView(withText("保存文件")).check(matches(isDisplayed()))
+            onView(withText("清空")).check(matches(isDisplayed()))
             onView(withText("刷新")).check(matches(isDisplayed())).perform(click())
             onView(withText("复制诊断")).check(matches(isDisplayed()))
             onView(withText("关闭")).perform(click())

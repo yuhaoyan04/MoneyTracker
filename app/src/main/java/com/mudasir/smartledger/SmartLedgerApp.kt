@@ -10,6 +10,7 @@ class SmartLedgerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.mudasir.smartledger.util.GuardDiagnosticLog.initialize(this)
         installCrashHandler()
     }
 

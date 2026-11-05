@@ -39,10 +39,23 @@ object CheckoutPageParser {
         val split = nodes.count { labelOnly.matches(it.text) }
         val subtotal = nodes.count { Regex("合计|总计|小计").containsMatchIn(it.text) }
         val buttonAmount = nodes.count { actionAmount.matches(it.text) }
+        val bareAmounts = nodes.count { amountOnly.matches(it.text) }
+        val nextNumeric = nodes.indices.count { index ->
+            labelOnly.matches(nodes[index].text) && nodes.getOrNull(index + 1)?.let { next ->
+                amountOnly.matches(next.text) || next.text.trim() in setOf("¥", "￥")
+            } == true
+        }
+        val sameParent = nodes.indices.count { index ->
+            labelOnly.matches(nodes[index].text) && nodes.getOrNull(index + 1)?.let { next ->
+                (amountOnly.matches(next.text) || next.text.trim() in setOf("¥", "￥")) &&
+                    next.parent == nodes[index].parent && nearby(nodes[index], next)
+            } == true
+        }
+        val orderTitle = nodes.count { it.text.trim() == "确认订单" }
         val listTitle = nodes.any { it.text.trim() in orderListTitles }
         val listTabs = nodes.map { it.text.trim() }.toSet().intersect(orderListTabs).size
         val result = nodes.any { node -> outcomes.any(node.text::contains) }
-        return "节点=${nodes.size}, 操作=$actionNodes, 应付标签=$labelled, 标签独立=$split, 合计标签=$subtotal, 按钮含金额=$buttonAmount, 订单列表=$listTitle, 列表标签=$listTabs, 结果页=$result"
+        return "节点=${nodes.size}, 操作=$actionNodes, 应付标签=$labelled, 标签独立=$split, 合计标签=$subtotal, 按钮含金额=$buttonAmount, 裸金额=$bareAmounts, 标签后数字=$nextNumeric, 同层邻近=$sameParent, 确认订单标题=$orderTitle, 订单列表=$listTitle, 列表标签=$listTabs, 结果页=$result"
     }
 
     fun analyze(pkg: String, nodes: List<CheckoutNode>, threshold: BigDecimal): CheckoutResult {

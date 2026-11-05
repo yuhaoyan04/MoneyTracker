@@ -86,10 +86,12 @@ class AccessibilityCaptureService : AccessibilityService() {
     private var lastGuardDiagnostic = ""
     private var lastGuardDiagnosticAt = 0L
     private var lastObservedPackage = ""
+    private var lastLoggedContentAt = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         isRunning = true
+        GuardDiagnosticLog.lifecycle("A11Y_CONNECTED")
         // 开机/重授权后自愈：待确认常驻通知刷新
         scope.launch {
             runCatching { PendingNotifier.update(applicationContext) }
@@ -100,6 +102,23 @@ class AccessibilityCaptureService : AccessibilityService() {
         val e = event ?: return
         val now = android.os.SystemClock.uptimeMillis()
         val eventPackage = e.packageName?.toString().orEmpty()
+        if (GuardDiagnosticLog.isRecording() && !e.isPassword && CheckoutPageParser.isSupported(eventPackage)) {
+            val kind = when (e.eventType) {
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE"
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED -> "WINDOWS_CHANGED"
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "CONTENT_CHANGED"
+                AccessibilityEvent.TYPE_VIEW_CLICKED -> "VIEW_CLICKED"
+                else -> null
+            }
+            if (kind != null && (kind != "CONTENT_CHANGED" || now - lastLoggedContentAt >= 1_200L)) {
+                if (kind == "CONTENT_CHANGED") lastLoggedContentAt = now
+                val cls = e.className?.toString().orEmpty()
+                val role = if (kind == "VIEW_CLICKED" && !cls.contains("EditText", ignoreCase = true)) {
+                    GuardLogPolicy.clickRole(e.text.take(5).map { it?.toString().orEmpty().take(80) })
+                } else "OTHER"
+                GuardDiagnosticLog.accessibilityEvent(eventPackage, cls, kind, e.eventTime, role)
+            }
+        }
         if (eventPackage.isNotBlank() && eventPackage != lastObservedPackage) {
             lastObservedPackage = eventPackage
             lastGuardDiagnostic = ""
@@ -141,6 +160,7 @@ class AccessibilityCaptureService : AccessibilityService() {
             // Exception messages can contain page content; record only the exception type.
             val pkg = lastObservedPackage
             if (CheckoutPageParser.isSupported(pkg)) {
+                GuardDiagnosticLog.failure(error)
                 PurchaseGuardService.recordDetection(pkg, "", "无障碍检查异常：${error.javaClass.simpleName}")
             }
         }
@@ -190,7 +210,12 @@ class AccessibilityCaptureService : AccessibilityService() {
                 val handled = PurchaseGuardService.onExternalPayPage(applicationContext, pkg, result.amount!!.toDouble())
                 if (!handled && prefs.getBoolean("guard_enabled", false) &&
                     CheckoutPageParser.exceedsThreshold(result.amount.toDouble(), com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) {
-                    scope.launch { runCatching { fallbackThinkNotification(pkg, result.amount.toDouble()) } }
+                    scope.launch {
+                        runCatching { fallbackThinkNotification(pkg, result.amount.toDouble()) }.onFailure {
+                            GuardDiagnosticLog.failure(it)
+                            PurchaseGuardService.recordDetection(pkg, "", "无障碍兜底失败")
+                        }
+                    }
                 }
             }
         }
@@ -267,14 +292,23 @@ class AccessibilityCaptureService : AccessibilityService() {
         val pct = if (budget > 0) ((spent / budget) * 100).toInt().coerceIn(0, 100) else null
         withContext(Dispatchers.Main) {
             val guard = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-            val root = rootInActiveWindow ?: return@withContext
-            if (!guard.getBoolean("guard_enabled", false) || root.packageName?.toString() != pkg) return@withContext
+            val root = rootInActiveWindow ?: run {
+                PurchaseGuardService.recordDetection(pkg, "", "无障碍兜底：没有活动窗口")
+                return@withContext
+            }
+            if (!guard.getBoolean("guard_enabled", false) || root.packageName?.toString() != pkg) {
+                PurchaseGuardService.recordDetection(pkg, "", "无障碍兜底：开关或应用已变化")
+                return@withContext
+            }
             val nodes = mutableListOf<CheckoutNode>()
             collectCheckoutNodes(root, nodes, 0, -1, intArrayOf(0))
             val current = CheckoutPageParser.analyze(pkg, nodes, com.mudasir.smartledger.capture.GuardThreshold.read(guard))
             if (current.status == CheckoutResult.Status.QUALIFIED && current.amount != null &&
                 kotlin.math.abs(current.amount.toDouble() - amount) < 0.005) {
                 PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
+                PurchaseGuardService.recordDetection(pkg, "", "无障碍兜底：已调用通知，显示未验证")
+            } else {
+                PurchaseGuardService.recordDetection(pkg, "", "无障碍兜底：页面或金额已变化")
             }
         }
     }
@@ -305,14 +339,16 @@ class AccessibilityCaptureService : AccessibilityService() {
         }
     }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() { GuardDiagnosticLog.lifecycle("A11Y_INTERRUPTED") }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        GuardDiagnosticLog.lifecycle("A11Y_UNBOUND")
         isRunning = false
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        GuardDiagnosticLog.lifecycle("A11Y_DESTROYED")
         isRunning = false
         handler.removeCallbacksAndMessages(null)
         scope.cancel()

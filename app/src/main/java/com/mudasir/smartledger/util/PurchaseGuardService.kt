@@ -87,11 +87,13 @@ class PurchaseGuardService : Service() {
 
         fun recordFailure(stage: String, error: Throwable) {
             debugFailure = "阶段：$stage\n${GuardFailureDetails.format(error)}"
+            GuardDiagnosticLog.failure(error)
             Log.w("PurchaseGuard", "Failure at $stage", error)
         }
 
         @Synchronized
         fun recordDetection(pkg: String, cls: String, result: String) {
+            GuardDiagnosticLog.detection(pkg, cls, result)
             val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
             debugPkg = pkg
             debugCls = cls
@@ -157,13 +159,23 @@ class PurchaseGuardService : Service() {
                 recordDetection(pkg, "", "提醒未开启")
                 return false
             }
-            if (!CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) return false
+            if (!CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) {
+                recordDetection(pkg, "", "金额未超过提醒门槛")
+                return false
+            }
             val svc = instance
             if (svc != null) {
-                svc.handler.post { runCatching { svc.nudgeFromDetection(pkg, amount) } }
+                recordDetection(pkg, "", "守护服务已接收提醒请求")
+                svc.handler.post {
+                    runCatching { svc.nudgeFromDetection(pkg, amount) }.onFailure {
+                        recordFailure("处理付款提醒请求", it)
+                        recordDetection(pkg, "", "提醒失败：${it.javaClass.simpleName}")
+                    }
+                }
                 return true
             }
             return runCatching {
+                recordDetection(pkg, "", "尝试启动守护服务")
                 androidx.core.content.ContextCompat.startForegroundService(context,
                     Intent(context, PurchaseGuardService::class.java)
                         .setAction(ACTION_PAY_PAGE).putExtra(EXTRA_PAY_PACKAGE, pkg).putExtra(EXTRA_PAY_AMOUNT, amount))
@@ -215,6 +227,7 @@ class PurchaseGuardService : Service() {
     private var requestAmount = Double.NaN
     private var overlayPackage: String? = null
     private var overlayTick: Runnable? = null
+    private var lastPollErrorAt = 0L
 
     private val screenReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -225,7 +238,13 @@ class PurchaseGuardService : Service() {
 
     private val pollRunnable = object : Runnable {
         override fun run() {
-            if (screenOn) runCatching { checkForeground() }
+            if (screenOn) runCatching { checkForeground() }.onFailure {
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - lastPollErrorAt >= 10_000L) {
+                    lastPollErrorAt = now
+                    GuardDiagnosticLog.failure(it)
+                }
+            }
             // 悬浮球角标：每 4 次轮询（约 6 秒）同步一次待确认数
             pollCount++
             if (ballView != null && pollCount % 4 == 0) updateBallBadge()
@@ -239,6 +258,7 @@ class PurchaseGuardService : Service() {
         super.onCreate()
         isRunning = true
         instance = this
+        GuardDiagnosticLog.lifecycle("GUARD_CREATED")
         PurchaseGuardNotifier.ensureChannels(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
@@ -268,6 +288,7 @@ class PurchaseGuardService : Service() {
     }
 
     override fun onDestroy() {
+        GuardDiagnosticLog.lifecycle("GUARD_DESTROYED")
         isRunning = false
         instance = null
         removePanel()
@@ -507,10 +528,12 @@ class PurchaseGuardService : Service() {
                     btnContinue.isEnabled = true
                     btnContinue.alpha = 1f
                     btnContinue.text = "我已三思，继续操作"
+                    recordDetection(pkg, "", "冷静计时结束")
                 }
             }
         }
         btnContinue.setOnClickListener {
+            recordDetection(pkg, "", "用户点击继续")
             getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
                 .putString("guard_last_pkg", pkg)
                 .putLong("guard_last_at", System.currentTimeMillis())
@@ -522,6 +545,7 @@ class PurchaseGuardService : Service() {
             removeOverlay()
         }
         btnWishlist.setOnClickListener {
+            recordDetection(pkg, "", "用户选择心愿")
             getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
                 .putString("guard_last_pkg", pkg)
                 .putLong("guard_last_at", System.currentTimeMillis())
@@ -558,7 +582,10 @@ class PurchaseGuardService : Service() {
                     recordDetection(currentFg.orEmpty(), "", "浮层状态：attached=${view.isAttachedToWindow}, shown=${view.isShown}, windowVisibility=${view.windowVisibility}；不能证明屏幕显示或触控拦截")
                 }
             }, 500L)
-            val autoRemove = Runnable { removeOverlay() }
+            val autoRemove = Runnable {
+                recordDetection(pkg, "", "浮层超时关闭")
+                removeOverlay()
+            }
             overlayAutoRemove = autoRemove
             handler.postDelayed(autoRemove, 60_000)
         }.onFailure {
