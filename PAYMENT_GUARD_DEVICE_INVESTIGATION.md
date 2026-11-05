@@ -11,3 +11,13 @@ No payment was made. Evidence below describes one observed transaction flow, not
 * The checkout action list did not include “继续付款”. Adding it covers accessible text with that label but does not make this particular inaccessible page work.
 
 Candidate work: explicitly opt-in on-device OCR on supported checkout pages, validate that the Android screenshot API works, associate a unique final payable value with its label, reject uncertain recognition and stale pages, and test amount thresholds, false positives, backgrounding, and privacy on real devices. A connected accessibility service's TYPE_ACCESSIBILITY_OVERLAY is a separate display experiment and must not be assumed to be visible or touchable over a protected payment window. Unknown amounts must not be treated as above threshold.
+
+## Follow-up: v2.43.2 device tests
+
+On the same Huawei device, a single Taobao confirmation screen with a “继续付款” button was hosted by TBOrderListActivity, while the accessibility tree reflected the underlying order list. On-device OCR of the visible screen found a payment label and action. Version 2.43.2 adds an opt-in visual path for these host windows and excludes visible multi-order lists.
+
+The user's above-threshold test recorded OCR_QUALIFIED three times, OCR_WECHAT_HANDOFF, OVERLAY_ADDED, OVERLAY_STATE, COUNTDOWN_COMPLETE and USER_CONTINUE in order. The user reported the overlay was visible and touchable and its amount agreed with the final payable amount. This verifies one observed product and flow, not general OCR accuracy.
+
+With the threshold temporarily raised above the same product's final payable amount, a subsequent test recorded OCR_BELOW_THRESHOLD four times, then the WeChat payment entry without an OVERLAY_ADDED event; the user reported no overlay. The initial frame of each run sometimes returned OCR_NO_CANDIDATE before rendering stabilized. An earlier run exposed a resume bug: usage events showed the Taobao activity returning without a corresponding accessibility window event, so v2.43.2 adds a usage-event recovery path. No transaction was completed.
+
+Limitations: the screenshot permission is opt-in, OCR may fail or misread amounts, and a single device and product cannot establish reliability across pages, timing, devices, discounts, or app versions. Protected payment windows may prevent ordinary overlays; the successful test uses an accessibility overlay. Google ML Kit describes image processing as on-device but may send device/performance metrics to Google. Bold style is not available as a reliable OCR attribute and is not used.
