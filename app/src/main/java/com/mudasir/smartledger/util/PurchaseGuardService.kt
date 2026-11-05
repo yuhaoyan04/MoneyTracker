@@ -38,6 +38,7 @@ import com.mudasir.smartledger.capture.PaymentScreenClassifier
 import com.mudasir.smartledger.capture.ResumedPage
 import com.mudasir.smartledger.capture.UsagePaymentEvents
 import com.mudasir.smartledger.capture.GuardPromptPolicy
+import com.mudasir.smartledger.capture.VisualGuardTargets
 import com.mudasir.smartledger.capture.PaymentAppLaunchTracker
 import com.mudasir.smartledger.capture.CheckoutPageParser
 import kotlinx.coroutines.CoroutineScope
@@ -150,15 +151,15 @@ class PurchaseGuardService : Service() {
         }
 
         fun onVisualPaymentHandoff(context: Context, pkg: String, amount: Double) {
-            if (pkg != "com.tencent.mm") return
             val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-            if (!prefs.getBoolean("guard_enabled", false) || !prefs.getBoolean("guard_visual_order_pages_enabled", false) ||
+            if (!prefs.getBoolean("guard_enabled", false) ||
+                !(prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getBoolean("guard_visual_multi_app_enabled", false)) ||
                 !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) return
             instance?.let { svc -> svc.handler.post {
-                if (svc.rootPackageIsWechat()) {
-                    recordDetection(pkg, "", "屏幕识别：已交接微信付款页")
+                if (AccessibilityCaptureService.activeRootPackage() == pkg) {
+                    recordDetection(pkg, "", "屏幕识别：已交接支付页面")
                     svc.nudgeFromDetection(pkg, amount, visualHandoff = true)
-                } else recordDetection(pkg, "", "屏幕识别：微信窗口尚不可用")
+                } else recordDetection(pkg, "", "屏幕识别：支付窗口尚不可用")
             } }
         }
 
@@ -345,10 +346,10 @@ class PurchaseGuardService : Service() {
         val includeCheckout = prefs.getString("guard_scope", "payment") == "checkout"
         val latest = resumedPages.lastOrNull()
         for (page in resumedPages) {
-            if (page.pkg == "com.taobao.taobao" && page.cls.endsWith("TBOrderListActivity") &&
+            if (VisualGuardTargets.sourceActivity(page.pkg, page.cls) &&
                 page.timestamp > lastVisualResumeAt && page.timestamp in (now - 5_000L)..now && page.pkg == latest?.pkg) {
                 lastVisualResumeAt = page.timestamp
-                AccessibilityCaptureService.onTaobaoOrderActivityResumed()
+                AccessibilityCaptureService.onShoppingActivityResumed(page.pkg)
             }
             if (page.timestamp in (now - 5_000L)..now && page.pkg == latest?.pkg) {
                 VisualPaymentHandoff.observe(page.pkg, page.cls)?.let { onVisualPaymentHandoff(applicationContext, page.pkg, it) }
@@ -406,8 +407,6 @@ class PurchaseGuardService : Service() {
     }
 
     /** 无障碍通道触发的提醒入口（与 usage 检测共用冷却与浮层逻辑）。 */
-    private fun rootPackageIsWechat(): Boolean = AccessibilityCaptureService.activeRootPackage() == "com.tencent.mm"
-
     fun nudgeFromDetection(pkg: String, amount: Double, visualHandoff: Boolean = false) {
         val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("guard_enabled", false)) {

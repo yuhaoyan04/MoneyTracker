@@ -147,8 +147,8 @@ class ExpenseAdapter(
 
                 if (isSelected) {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(itemView.context, R.color.selected_item_bg))
-                    tvTitle.setTextColor(Color.BLACK)
-                    tvDate.setTextColor(Color.DKGRAY)
+                    tvTitle.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_primary))
+                    tvDate.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_secondary))
                 } else {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(itemView.context, R.color.tile_bg))
                     tvTitle.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_primary))

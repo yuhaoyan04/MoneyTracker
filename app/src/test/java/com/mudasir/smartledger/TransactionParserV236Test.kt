@@ -116,4 +116,26 @@ class TransactionParserV236Test {
         )
         assertNull(r)
     }
+
+    @Test fun `transaction amount is preferred over balance regardless of order`() {
+        val source = TransactionRecord.SOURCE_CAPTURE_SMS
+        assertEquals(20.0, TransactionParser.parse("余额¥900.00，尾号1234消费20.00元", source)!!.amount, 0.001)
+        assertEquals(20.0, TransactionParser.parse("尾号1234消费人民币20.00元，余额¥900.00", source)!!.amount, 0.001)
+        assertNull(TransactionParser.parse("支付成功 ¥20.00，另付款 ¥30.00", source))
+        assertNull(TransactionParser.parse("尾号1234消费成功，余额¥900.00", source))
+    }
+
+    @Test fun `yuebao is not classified as ordinary balance`() {
+        val result = TransactionParser.parse("支付宝 | 余额宝支付成功 ¥20.00", TransactionRecord.SOURCE_CAPTURE_NOTIFICATION)
+        assertEquals("余额宝", result!!.paymentMethod)
+    }
+
+    @Test fun `wage card spending is not income`() {
+        val result = TransactionParser.parse("工资卡尾号1234消费20.00元，余额900.00元", TransactionRecord.SOURCE_CAPTURE_SMS)
+        assertEquals(TransactionRecord.TYPE_EXPENSE, result!!.type)
+    }
+    @Test fun `bank package identifies channel without bank wording`() {
+        val result = TransactionParser.parse("付款成功 ¥20.00", TransactionRecord.SOURCE_CAPTURE_NOTIFICATION, "com.chinamworld.bocmbci")
+        assertEquals("银行卡", result!!.channelName)
+    }
 }

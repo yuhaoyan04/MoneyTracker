@@ -6,7 +6,7 @@ import java.math.BigDecimal
 data class VisualText(val text: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
 
 object VisualCheckoutParser {
-    private val action = Regex("继续付款|确认付款|立即付款|确认支付|立即支付|提交订单")
+    private val action = Regex("继续付款|确认付款|立即付款|确认支付|立即支付|去付款|去支付|提交订单|确认下单|提交并支付")
     private val outcome = Regex("支付成功|付款成功|支付失败|付款失败|订单已取消")
     private val label = Regex("实付款|实付金额|实际支付|实际付款|应付金额|应付款|应付|需付款|需付|支付金额|付款金额")
     private val amount = Regex("(?<![0-9.,])(?:[¥￥]\\s*)?([0-9]{1,6}(?:\\.[0-9]{1,2})?)(?![0-9.,])")

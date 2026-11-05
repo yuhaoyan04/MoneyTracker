@@ -13,6 +13,7 @@ class NotificationGateTest {
     @Test
     fun `wechat chat messages cannot impersonate payment notifications by body alone`() {
         assertFalse(NotificationGate.isTrustedSender("com.tencent.mm", "张三"))
+        assertFalse(NotificationGate.isTrustedSender("com.tencent.mm", "微信支付福利群"))
         assertTrue(NotificationGate.isTrustedSender("com.tencent.mm", "微信支付"))
         assertTrue(NotificationGate.isTrustedSender("com.eg.android.AlipayGphone", "支付宝"))
     }

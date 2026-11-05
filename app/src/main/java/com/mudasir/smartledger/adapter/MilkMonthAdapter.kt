@@ -144,8 +144,8 @@ class MilkMonthAdapter(
 
                 if (isSelected) {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(itemView.context, R.color.selected_item_bg))
-                    tvMonth.setTextColor(Color.BLACK)
-                    tvLiters.setTextColor(Color.DKGRAY)
+                    tvMonth.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_primary))
+                    tvLiters.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_secondary))
                 } else {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(itemView.context, R.color.tile_bg))
                     tvMonth.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_primary))

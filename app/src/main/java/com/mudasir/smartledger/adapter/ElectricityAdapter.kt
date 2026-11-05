@@ -115,7 +115,7 @@ class ElectricityAdapter(
                 checkbox.visibility = View.VISIBLE; checkbox.isChecked = isSelected
                 if (isSelected) {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(itemView.context, R.color.selected_item_bg))
-                    tvUnits.setTextColor(Color.BLACK); tvDates.setTextColor(Color.DKGRAY)
+                    tvUnits.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_primary)); tvDates.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_secondary))
                 } else {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(itemView.context, R.color.tile_bg))
                     tvUnits.setTextColor(ContextCompat.getColor(itemView.context, R.color.text_primary))

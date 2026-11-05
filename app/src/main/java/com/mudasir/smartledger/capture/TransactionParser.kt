@@ -19,26 +19,33 @@ object TransactionParser {
 
     // ---- 金额提取 ----
     // 匹配 ¥12.00 / ￥1,234.56 / 12.00元 / 1,234.5元
+    private val transactionValue = "(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]{1,2})?"
     private val amountPatterns = listOf(
-        Regex("[¥￥]\\s*([0-9][0-9,]*\\.?[0-9]{0,2})"),
-        Regex("([0-9][0-9,]*\\.?[0-9]{2})\\s*元"),
-        Regex("金额[:：\\s]*([0-9][0-9,]*\\.?[0-9]{0,2})"),
-        Regex("实付[:：\\s]*([0-9][0-9,]*\\.?[0-9]{0,2})")
+        Regex("[¥￥]\\s*($transactionValue)(?![0-9.,])"),
+        Regex("(?<![0-9.,])($transactionValue)\\s*元")
+    )
+    private val labelledTransactionAmount = Regex(
+        "(?<!余额)(?<!可用)(?:付款金额|支付金额|交易金额|消费金额|扣款金额|收款金额|到账金额|转入金额|实付金额|实付款|实付|金额)\\s*[:：]?\\s*(?:人民币|RMB)?\\s*[¥￥]?\\s*($transactionValue)(?![0-9.,])\\s*元?",
+        RegexOption.IGNORE_CASE
+    )
+    private val movementAmount = Regex(
+        "(?:已支付|已付款|支付|付款|消费|支出|扣款|刷卡|转出|转入|收入|入账|到账|收款|退款|存入|代发)(?:成功|完成|人民币|金额|款项|到账|\\s|[:：]){0,8}(?:[¥￥]\\s*($transactionValue)(?![0-9.,])|($transactionValue)\\s*元)",
+        RegexOption.IGNORE_CASE
     )
 
     // ---- 收支方向关键词 ----
     // 强收入词：真实入账语义，营销文案极少伪造完整句式
     private val strongIncomeKeywords = listOf(
-        "退款成功", "退款已", "已退款", "退款到账", "退款将", "收款成功", "已收款",
-        "转入成功", "代发工资", "工资", "分红", "退款"
+        "退款成功", "退款已", "已退款", "退款到账", "收款成功", "已收款",
+        "转入成功", "已收到转账", "收款到账", "代发工资", "工资到账", "工资入账"
     )
     // 弱收入词：需配合强收入词或无支出词时才判收入
     private val incomeKeywords = listOf(
-        "收款", "收入", "到账", "入账", "转入", "提现", "收益", "利息", "返还", "红包"
+        "收款", "收入", "到账", "入账", "转入", "提现", "收益", "利息", "返还", "红包", "工资", "分红"
     )
     private val expenseKeywords = listOf(
         "支付成功", "消费", "付款", "扣款", "支出", "实付", "自动扣款", "代扣",
-        "已支付", "付款成功", "刷卡", "购物", "充值", "花费", "花呗", "已扣"
+        "已支付", "付款成功", "刷卡", "购物", "充值", "花费", "花呗", "已扣", "转出", "汇出", "支取", "取现"
     )
     // 营销话术：与支出词同现时视为营销噪音（真实扣款通知通常不含这些）
     private val marketingKeywords = listOf(
@@ -104,16 +111,22 @@ object TransactionParser {
         )
     }
 
-    fun channelForPackage(pkg: String?): String? = pkg?.let { packageChannelMap[it] }
+    fun channelForPackage(pkg: String?): String? = pkg?.let {
+        packageChannelMap[it] ?: if (it in CaptureWhitelist.bankPackages) "银行卡" else null
+    }
 
     private fun extractAmount(text: String): Double? {
-        for (pattern in amountPatterns) {
-            val m = pattern.find(text) ?: continue
-            val raw = m.groupValues.getOrNull(1)?.replace(",", "") ?: continue
-            val value = raw.toDoubleOrNull() ?: continue
-            if (value > 0.0) return value
-        }
-        return null
+        fun value(raw: String): Double? = raw.replace(",", "").toDoubleOrNull()
+            ?.takeIf { it.isFinite() && it > 0.0 }
+        val labelled = labelledTransactionAmount.findAll(text).mapNotNull { value(it.groupValues[1]) }.toSet()
+        val moved = movementAmount.findAll(text).mapNotNull { m -> value(m.groupValues[1].ifEmpty { m.groupValues[2] }) }.toSet()
+        val explicit = labelled + moved
+        if (explicit.isNotEmpty()) return explicit.singleOrNull()
+        val unrelated = Regex("(?:余额|可用余额|可用额度|剩余额度|授信额度|优惠|补贴|满减|立减)\\s*[:：]?\\s*[¥￥]?\\s*$")
+        val fallback = amountPatterns.asSequence().flatMap { it.findAll(text) }
+            .filterNot { unrelated.containsMatchIn(text.substring(0, it.range.first).takeLast(20)) }
+            .mapNotNull { value(it.groupValues[1]) }.toSet()
+        return fallback.singleOrNull()
     }
 
     private fun inferType(text: String): String {
@@ -137,7 +150,7 @@ object TransactionParser {
     }
 
     private fun inferChannel(text: String, packageName: String?): String {
-        packageChannelMap[packageName]?.let { return it }
+        channelForPackage(packageName)?.let { return it }
         val t = text.replace(" ", "")
         if (t.contains("微信")) return "微信支付"
         if (t.contains("支付宝") || t.contains("花呗") || t.contains("蚂蚁")) return "支付宝"
@@ -194,8 +207,8 @@ object TransactionParser {
             t.contains("花呗") -> "花呗"
             t.contains("信用卡") -> "信用卡"
             t.contains("储蓄卡") || t.contains("借记卡") -> "储蓄卡"
-            t.contains("余额") || t.contains("零钱") -> "余额"
             t.contains("余额宝") -> "余额宝"
+            t.contains("余额") || t.contains("零钱") -> "余额"
             t.contains("理财") -> "理财"
             else -> null
         }

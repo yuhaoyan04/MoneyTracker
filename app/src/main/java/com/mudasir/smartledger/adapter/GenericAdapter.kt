@@ -171,8 +171,8 @@ class GenericAdapter(
 
                 if (isSelected) {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(context, R.color.selected_item_bg))
-                    tvPrimary.setTextColor(android.graphics.Color.BLACK)
-                    tvDate.setTextColor(android.graphics.Color.DKGRAY)
+                    tvPrimary.setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+                    tvDate.setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
                 } else {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(context, R.color.tile_bg))
                     tvPrimary.setTextColor(ContextCompat.getColor(context, R.color.text_primary))
@@ -329,8 +329,8 @@ class DailyRecordAdapter(
 
                 if (isSelected) {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(context, R.color.selected_item_bg))
-                    tvPrimary.setTextColor(android.graphics.Color.BLACK)
-                    tvDate.setTextColor(android.graphics.Color.DKGRAY)
+                    tvPrimary.setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+                    tvDate.setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
                 } else {
                     cardView.setCardBackgroundColor(ContextCompat.getColor(context, R.color.tile_bg))
                     tvPrimary.setTextColor(ContextCompat.getColor(context, R.color.text_primary))

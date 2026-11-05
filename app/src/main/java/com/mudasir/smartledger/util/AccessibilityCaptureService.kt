@@ -14,7 +14,7 @@ import com.mudasir.smartledger.capture.PaymentScreenClassifier
 import com.mudasir.smartledger.capture.CheckoutNode
 import com.mudasir.smartledger.capture.CheckoutPageParser
 import com.mudasir.smartledger.capture.CheckoutResult
-import com.mudasir.smartledger.capture.RecentCaptureRegistry
+import com.mudasir.smartledger.capture.VisualGuardTargets
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
 import kotlinx.coroutines.CoroutineScope
@@ -60,10 +60,10 @@ class AccessibilityCaptureService : AccessibilityService() {
         fun overlayWindowManager(): android.view.WindowManager? =
             connectedInstance?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
         fun activeRootPackage(): String? = connectedInstance?.rootInActiveWindow?.packageName?.toString()
-        fun onTaobaoOrderActivityResumed() {
+        fun onShoppingActivityResumed(pkg: String) {
             connectedInstance?.let { service -> service.handler.post {
-                if (service.rootInActiveWindow?.packageName?.toString() == "com.taobao.taobao") {
-                    service.visualMonitor?.ensureCheckoutWindow()
+                if (service.rootInActiveWindow?.packageName?.toString() == pkg) {
+                    service.visualMonitor?.ensureCheckoutWindow(pkg)
                 }
             } }
         }
@@ -138,12 +138,13 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (eventPackage.isNotBlank() && eventPackage != lastObservedPackage) {
             lastObservedPackage = eventPackage
             lastGuardDiagnostic = ""
+            lastCapturedKey = ""
         }
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = e.packageName?.toString().orEmpty()
             val cls = e.className?.toString().orEmpty()
-            if (pkg == "com.taobao.taobao" && (cls.endsWith("UltronTradeHybridActivity") || cls.endsWith("TBOrderListActivity"))) visualMonitor?.checkoutWindow()
-            else if (pkg == "com.taobao.taobao" && cls.endsWith("Activity")) visualMonitor?.leaveCheckout(cls.endsWith("CashDeskActivity"))
+            if (VisualGuardTargets.sourceActivity(pkg, cls)) visualMonitor?.checkoutWindow(pkg)
+            else if (pkg in VisualGuardTargets.shopping && cls.endsWith("Activity")) visualMonitor?.leaveCheckout(VisualGuardTargets.isSourcePaymentTransition(cls))
             VisualPaymentHandoff.observe(pkg, cls)?.let { PurchaseGuardService.onVisualPaymentHandoff(applicationContext, pkg, it) }
             if (CheckoutPageParser.isSupported(pkg)) {
                 PurchaseGuardService.onObservedForeground(pkg)
@@ -250,7 +251,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         val nowMs = System.currentTimeMillis()
 
         // A checkout is an intention, not evidence that a payment happened.
-        if (!completed) return
+        if (!completed) { lastCapturedKey = ""; return }
         val amount = PageAmountExtractor.extractConservative(combined) ?: return
         val key = "$pkg|$amount"
         // 90 秒内同一笔（同包同额）只记一次
@@ -264,13 +265,6 @@ class AccessibilityCaptureService : AccessibilityService() {
         scope.launch {
             runCatching {
                 val dao = AppDatabase.getDatabase(applicationContext).transactionDao()
-                // 跨通道去重①：通知/短信通道 3 分钟窗口内已有同额待确认 → 跳过
-                if (dao.countPendingLike(
-                        amount, amount, nowMs - 180_000, nowMs + 60_000
-                    ) > 0
-                ) return@runCatching
-                // 跨通道去重②：与通知/短信通道共享的注册表
-                if (RecentCaptureRegistry.isDuplicate(type, amount)) return@runCatching
                 val suggestion = com.mudasir.smartledger.ml.PersonalTagger.recommendWithConfidence(
                     applicationContext, type, nowMs, amount, channel, null, combined.take(300), null
                 )

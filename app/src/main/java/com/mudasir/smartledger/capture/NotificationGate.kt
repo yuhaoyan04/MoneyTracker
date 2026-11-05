@@ -19,7 +19,7 @@ object NotificationGate {
 
     /** WeChat also carries arbitrary chat messages, so require the payment service as sender. */
     fun isTrustedSender(pkg: String, title: String): Boolean =
-        pkg != "com.tencent.mm" || listOf("微信支付", "微信收款助手").any { title.contains(it) }
+        pkg != "com.tencent.mm" || title.trim() in setOf("微信支付", "微信收款助手", "微信支付凭证")
 
     /** 完成表述词（强）：真实支付/收款/退款结果文案 */
     val completionWords = listOf(
@@ -29,7 +29,7 @@ object NotificationGate {
         "交易完成", "交易成功", "已消费",
         "微信支付凭证", "付款凭证", "支付凭证",
         // 收入结果
-        "收款成功", "已收款", "已到账", "到账成功", "已存入", "已转入",
+        "收款成功", "收款到账", "已收款", "已收到转账", "转账成功", "已到账", "到账成功", "已存入", "已转入",
         // 退款结果
         "退款成功", "已退款", "退款完成", "退款已"
     )

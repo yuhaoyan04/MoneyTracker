@@ -21,6 +21,8 @@ class CaptureAdapter(
 
     var parentMap: Map<String, String> = emptyMap()
         set(value) { field = value; notifyDataSetChanged() }
+    var possibleDuplicateIds: Set<Long> = emptySet()
+        set(value) { if (field != value) { field = value; notifyDataSetChanged() } }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_capture, parent, false)
@@ -64,7 +66,8 @@ class CaptureAdapter(
 
             tvMerchant.text = r.merchant?.takeIf { it.isNotBlank() } ?: r.categoryName.ifBlank { "待确认交易" }
             tvChannel.text = listOfNotNull(r.channelName, r.paymentMethod)
-                .joinToString(" · ").ifBlank { "未知渠道" }
+                .joinToString(" · ").ifBlank { "未知渠道" } +
+                if (r.id in possibleDuplicateIds) " · 疑似重复，请核对" else ""
             tvRaw.text = r.rawText ?: "无原文"
             tvRaw.visibility = if (r.rawText.isNullOrBlank()) View.GONE else View.VISIBLE
 

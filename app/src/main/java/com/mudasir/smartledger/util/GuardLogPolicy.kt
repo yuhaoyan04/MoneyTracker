@@ -29,7 +29,7 @@ object GuardLogPolicy {
 
     /** Recognize only fixed labels, never returning the supplied text. */
     fun clickRole(texts: List<String>): String = when {
-        texts.any { it.trim() == "提交订单" } -> "SUBMIT_ORDER"
+        texts.any { it.trim() in setOf("提交订单", "确认下单", "提交并支付") } -> "SUBMIT_ORDER"
         texts.any { it.trim() in setOf("确认付款", "立即付款", "继续付款", "确认支付", "立即支付", "确认并支付") } -> "PAY_ACTION"
         texts.any { it.trim() in setOf("去付款", "去支付") } -> "GO_TO_PAY"
         else -> "OTHER"
@@ -43,6 +43,8 @@ object GuardLogPolicy {
         message.startsWith("屏幕识别：没有可靠付款金额") -> "OCR_NO_CANDIDATE"
         message.startsWith("屏幕识别：已交接微信付款页") -> "OCR_WECHAT_HANDOFF"
         message.startsWith("屏幕识别：微信窗口尚不可用") -> "OCR_WECHAT_WINDOW_NOT_READY"
+        message.startsWith("屏幕识别：已交接支付页面") -> "OCR_PAYMENT_HANDOFF"
+        message.startsWith("屏幕识别：支付窗口尚不可用") -> "OCR_PAYMENT_WINDOW_NOT_READY"
         message.startsWith("屏幕识别：无可靠超门槛金额") -> "OCR_NOT_QUALIFIED"
         message.startsWith("屏幕识别失败") -> "OCR_ERROR"
         message.startsWith("窗口候选") -> "WINDOW_CANDIDATE"

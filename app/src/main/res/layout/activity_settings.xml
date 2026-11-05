@@ -65,8 +65,24 @@
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/divider"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnGuardDebug" style="@style/SettingsListAction" android:text="检测自检"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualGuard" style="@style/SettingsListAction" android:text="屏幕识别（测试）"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualMulti" style="@style/SettingsListAction" android:text="更多购物应用识别（测试）"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnWishlist" style="@style/SettingsListAction" android:text="愿望清单"/>
             <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="18dp" android:paddingEnd="18dp" android:paddingTop="4dp" android:paddingBottom="10dp" android:text="仅在可读取的付款页识别到明确金额且超过门槛时提醒；部分页面无法识别，安全页面也可能隐藏浮层。"/>
+          </LinearLayout>
+        </LinearLayout>
+      </com.google.android.material.card.MaterialCardView>
+      <com.google.android.material.card.MaterialCardView style="@style/SettingsSectionCard">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+          <LinearLayout android:id="@+id/headerAppearance" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="74dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+              <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="外观"/>
+              <TextView android:id="@+id/tvAppearance" style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="跟随系统"/>
+            </LinearLayout>
+            <TextView android:id="@+id/chevronAppearance" android:layout_width="32dp" android:layout_height="48dp" android:gravity="center" android:text="⌄" android:textColor="@color/text_secondary" android:textSize="22sp" android:importantForAccessibility="no"/>
+          </LinearLayout>
+          <LinearLayout android:id="@+id/bodyAppearance" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingBottom="8dp" android:visibility="gone">
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/divider"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnAppearance" style="@style/SettingsListAction" android:text="切换浅色、深色或跟随系统"/>
           </LinearLayout>
         </LinearLayout>
       </com.google.android.material.card.MaterialCardView>

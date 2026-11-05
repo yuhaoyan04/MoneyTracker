@@ -160,6 +160,9 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnGuardScope).setOnClickListener { editGuardScope() }
         findViewById<View>(R.id.btnGuardDebug).setOnClickListener { showGuardDebug() }
         findViewById<View>(R.id.btnVisualGuard).setOnClickListener { editVisualGuard() }
+        findViewById<View>(R.id.btnVisualMulti).setOnClickListener { editVisualMulti() }
+        findViewById<View>(R.id.btnAppearance).setOnClickListener { editAppearance() }
+        refreshAppearance()
         findViewById<View>(R.id.btnAutoConfirm).setOnClickListener { editAutoConfirm() }
         findViewById<View>(R.id.btnBall).setOnClickListener { toggleBall() }
         findViewById<View>(R.id.btnWishlist).setOnClickListener {
@@ -199,6 +202,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private val settingsSections = listOf(
         SettingsSection("guard", "想好再买", R.id.headerGuard, R.id.bodyGuard, R.id.chevronGuard),
+        SettingsSection("appearance", "外观", R.id.headerAppearance, R.id.bodyAppearance, R.id.chevronAppearance),
         SettingsSection("capture", "自动记账与权限", R.id.headerCapture, R.id.bodyCapture, R.id.chevronCapture),
         SettingsSection("data", "数据与备份", R.id.headerData, R.id.bodyData, R.id.chevronData),
         SettingsSection("pro", "MoneyTracker Pro", R.id.headerPro, R.id.bodyPro, R.id.chevronPro),
@@ -309,6 +313,26 @@ class SettingsActivity : AppCompatActivity() {
             "付款页且金额超过门槛"
     }
 
+    private fun refreshAppearance() {
+        val selected = com.mudasir.smartledger.util.AppearancePreferences.selected(this)
+        findViewById<TextView>(R.id.tvAppearance).text = when (selected) {
+            androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO -> "浅色"
+            androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES -> "深色"
+            else -> "跟随系统"
+        }
+    }
+
+    private fun editAppearance() {
+        val modes = listOf(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM,
+            androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO, androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)
+        val current = com.mudasir.smartledger.util.AppearancePreferences.selected(this)
+        AlertDialog.Builder(this).setTitle("外观")
+            .setSingleChoiceItems(arrayOf("跟随系统", "浅色", "深色"), modes.indexOf(current).coerceAtLeast(0)) { dialog, which ->
+                dialog.dismiss()
+                com.mudasir.smartledger.util.AppearancePreferences.save(this, modes[which])
+            }.setNegativeButton("取消", null).show()
+    }
+
     private fun editVisualGuard() {
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
         val enabled = prefs.getBoolean("guard_visual_order_pages_enabled", false)
@@ -317,9 +341,22 @@ class SettingsActivity : AppCompatActivity() {
             .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。开启后，会在淘宝订单列表及订单确认页面尝试截取屏幕，在本机判断是否为单笔付款页面并识别金额；画面和识别文字不保存、不上传。识别组件由 Google ML Kit 提供，可能向 Google 发送设备和性能等使用指标。截图可能包含屏幕上的订单和个人信息；安全窗口无法保证读取。识别不确定时不会提醒，可能漏检或误判。")
             .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
                 prefs.edit().putBoolean("guard_visual_order_pages_enabled", !enabled).apply()
+                com.mudasir.smartledger.util.VisualPaymentHandoff.clear()
                 Toast.makeText(this, if (enabled) "屏幕识别已关闭" else "屏幕识别已开启；请确认无障碍服务仍然启用", Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("取消", null).show()
+    }
+
+    private fun editVisualMulti() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val enabled = prefs.getBoolean("guard_visual_multi_app_enabled", false)
+        AlertDialog.Builder(this).setTitle("更多购物应用识别（测试）")
+            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。开启后，在京东、拼多多、美团、美团外卖及 12306 等受支持应用的部分页面，本应用会截取当前屏幕并在本机判断付款信息。画面可能包含地址、订单和其他个人信息；图片和识别文字不保存、不上传。Google ML Kit 可能向 Google 发送设备和性能指标。各应用及支付宝、银行支付交接尚未全部真机验证，可能漏检或误判。")
+            .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
+                prefs.edit().putBoolean("guard_visual_multi_app_enabled", !enabled).apply()
+                com.mudasir.smartledger.util.VisualPaymentHandoff.clear()
+                Toast.makeText(this, if (enabled) "更多应用识别已关闭" else "更多应用识别已开启", Toast.LENGTH_LONG).show()
+            }.setNegativeButton("取消", null).show()
     }
 
     /** 提醒范围：精确（进入付款页面）/ 宽松（打开支付应用）。 */

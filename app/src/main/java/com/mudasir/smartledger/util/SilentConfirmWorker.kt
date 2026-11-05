@@ -47,6 +47,10 @@ class SilentConfirmWorker(
             for (record in oldPending) {
                 // 置信度门槛：低置信度预测不参与静默学习（自进化的数据质量防线）
                 if (!CaptureReviewPolicy.canAutoConfirm(record.amount, record.categoryName, record.aiConfidence)) { held++; continue }
+                if (dao.countPossibleCrossSourceDuplicates(record.id, record.type, record.amount,
+                        record.timestamp - 300_000L, record.timestamp + 300_000L, record.source, record.packageName) > 0) {
+                    held++; continue
+                }
                 if (dao.confirmPending(record.id) > 0) {
                     learned++
                 }

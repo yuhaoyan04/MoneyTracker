@@ -23,29 +23,6 @@ class BankSmsReceiver : BroadcastReceiver() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val bankSignalKeywords = listOf("尾号", "银行", "信用社", "消费", "支出", "入账", "到账", "代发", "扣款", "退款")
-
-    // 新闻/内容/通知短信黑名单 —— 命中即丢弃，避免新闻被误判为交易
-    private val newsBlacklist = listOf(
-        "男子", "女子", "网友", "爆料", "报道", "新闻", "事件", "吃出", "发现",
-        "曝光", "维权", "投诉", "热搜", "刷屏", "意外", "震惊", "提醒大家",
-        "注意了", "警惕", "骗局", "诈骗", "中奖通知", "验证码", "验证", "登录",
-        "注册", "动态", "好友", "群消息", "公众号", "订阅", "取件", "快递柜",
-        "取件码", "好评返现", "邀请你", "帮你砍", "拼团成功", "助力",
-        "直播", "开播", "预告", "更新", "评论", "点赞", "关注", "粉丝",
-        "面试", "简历", "职位", "hr", "boss直聘", "拉勾", "智联",
-        "短信测试", "测试短信"
-    )
-
-    // 银行短信格式特征 —— 真正的银行交易短信通常包含这些结构化表述
-    private val bankFormatPatterns = listOf(
-        Regex("尾号\\d{4}"),
-        Regex("账户尾号\\d{4}"),
-        Regex("卡.*尾号\\d{4}"),
-        Regex("\\d{4}的卡"),
-        Regex("活期|定期|储蓄|信用|借记")
-    )
-
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
@@ -54,19 +31,8 @@ class BankSmsReceiver : BroadcastReceiver() {
         val body = messages.joinToString("") { it.displayMessageBody ?: "" }
         if (body.isBlank()) return
 
-        // 快速过滤非交易短信
-        val hasMoney = body.contains("¥") || body.contains("￥") || body.contains("元")
-        val hasBankSignal = bankSignalKeywords.any { body.contains(it) }
-        if (!hasMoney || !hasBankSignal) return
-
-        // 新闻/内容短信过滤 —— 命中新闻关键词直接丢弃
-        val lowerBody = body.lowercase()
-        if (newsBlacklist.any { lowerBody.contains(it.lowercase()) }) return
-
-        // 银行短信格式验证 —— 至少匹配一个银行格式特征
-        if (bankFormatPatterns.none { it.containsMatchIn(body) }) return
-
         val sender = messages.firstOrNull()?.displayOriginatingAddress
+        if (!BankSmsGate.shouldCapture(sender, body)) return
         val timestamp = messages.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
 
         val parsed = TransactionParser.parse(
@@ -82,26 +48,14 @@ class BankSmsReceiver : BroadcastReceiver() {
             // 后台协程绝不抛异常 —— 任何失败只记日志，保住前台体验
             runCatching {
                 val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
-                // 跨通道去重（v2.36.0）：银行短信常比钱包通知晚 1-3 分钟，
-                // 同一笔卡支付已有「支付成功通知」入库时，短信通道不得重复入库。
-                // 窗口放宽到 5 分钟（短信延迟上限），宁合并勿重复。
-                if (com.mudasir.smartledger.capture.RecentCaptureRegistry.isDuplicate(
-                        parsed.type, parsed.amount, 300_000L
-                    )
-                ) return@launch
-                if (dao.countPendingLike(
-                        parsed.amount, parsed.amount,
-                        timestamp - 300_000L, timestamp + 120_000L
-                    ) > 0
-                ) return@launch
                 // 短信到达即记录支付时刻位置（主动新鲜定位，等待最多 8s）
                 val place = com.mudasir.smartledger.util.LocationHelper.freshPlace(context.applicationContext)
                 if (dao.countExactCapture(
                         TransactionRecord.SOURCE_CAPTURE_SMS,
                         null,
                         body,
-                        timestamp - 5 * 60_000,
-                        timestamp + 5 * 60_000
+                        timestamp,
+                        timestamp
                     ) > 0
                 ) return@launch
                 dao.insert(

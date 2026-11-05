@@ -16,8 +16,8 @@ android {
         targetSdk = 36
         // Compatibility rollback: v2.22.0 behavior with a higher version code so
         // devices already on v2.23.x can install it without uninstalling.
-        versionCode = 82
-        versionName = "2.43.2"
+        versionCode = 83
+        versionName = "2.44.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -62,6 +62,10 @@ android {
 
     buildTypes {
         debug {
+            if (providers.gradleProperty("isolatedDeviceTest").orNull == "true") {
+                applicationIdSuffix = ".isolated"
+                versionNameSuffix = "-isolated"
+            }
             // Opt-in local diagnostics can be installed over the release without changing keys.
             if (providers.gradleProperty("diagnosticReleaseSigning").orNull == "true") {
                 require(hasReleaseSigning) { "Diagnostic build requires the release signing configuration" }

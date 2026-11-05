@@ -103,20 +103,23 @@ class CaptureInboxActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnConfirmAll).setOnClickListener {
             val all = adapter.currentList.toList()
-            val valid = all.filter { CaptureReviewPolicy.canConfirm(it.amount) }
+            val duplicateIds = CaptureReviewPolicy.possiblyDuplicateIds(all)
+            val valid = all.filter { CaptureReviewPolicy.canConfirm(it.amount) && it.id !in duplicateIds }
             if (valid.isEmpty()) {
-                android.widget.Toast.makeText(this, "请先补充待确认交易的金额", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(this, "请先核对疑似重复交易或补充金额", android.widget.Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             val missing = all.size - valid.size
             AlertDialog.Builder(this)
                 .setTitle("确认 ${valid.size} 笔交易？")
-                .setMessage("请先核对金额与分类。确认后会记入账本并用于分类学习。" +
-                    if (missing > 0) "\n\n另有 $missing 笔金额待补充，会保留在收件箱。" else "")
+                .setMessage("请先核对金额与分类。确认后会记入账本并用于分类学习；与已确认交易疑似重复的记录会保留供核对。" +
+                    if (missing > 0) "\n\n另有 $missing 笔金额待补充或疑似重复，会保留在收件箱供逐笔核对。" else "")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("确认入账") { _, _ ->
             lifecycleScope.launch {
                 valid.forEach {
+                    if (db.transactionDao().countPossibleCrossSourceDuplicates(it.id, it.type, it.amount,
+                            it.timestamp - 300_000L, it.timestamp + 300_000L, it.source, it.packageName) > 0) return@forEach
                     // 幂等确认：只有第一次生效
                     val changed = db.transactionDao().confirmPending(it.id)
                     if (changed > 0 && it.categoryName.isNotBlank()) {
@@ -150,6 +153,7 @@ class CaptureInboxActivity : AppCompatActivity() {
     private fun observe() {
         lifecycleScope.launch {
             db.transactionDao().observePending().collectLatest { list ->
+                adapter.possibleDuplicateIds = CaptureReviewPolicy.possiblyDuplicateIds(list)
                 adapter.submitList(list)
                 findViewById<TextView>(R.id.tvEmpty).visibility =
                     if (list.isEmpty()) View.VISIBLE else View.GONE

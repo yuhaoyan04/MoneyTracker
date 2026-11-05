@@ -82,6 +82,13 @@ interface TransactionDao {
     )
     suspend fun countPendingLike(lo: Double, hi: Double, start: Long, end: Long): Int
 
+    @Query("""SELECT COUNT(*) FROM transactions WHERE isDeleted = 0 AND id != :id
+        AND status IN ('PENDING', 'CONFIRMED') AND type = :type AND ABS(amount - :amount) < 0.005
+        AND timestamp BETWEEN :start AND :end
+        AND (source != :source OR COALESCE(packageName, '') != COALESCE(:pkg, ''))""")
+    suspend fun countPossibleCrossSourceDuplicates(id: Long, type: String, amount: Double,
+        start: Long, end: Long, source: String, pkg: String?): Int
+
     @Query("SELECT * FROM transactions WHERE isDeleted = 0 AND status = 'PENDING' ORDER BY timestamp DESC LIMIT 1")
     suspend fun latestPending(): TransactionRecord?
 
