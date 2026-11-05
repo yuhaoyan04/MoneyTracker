@@ -135,7 +135,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = e.packageName?.toString().orEmpty()
             val cls = e.className?.toString().orEmpty()
-            if (pkg == "com.taobao.taobao" && cls.endsWith("UltronTradeHybridActivity")) visualMonitor?.checkoutWindow()
+            if (pkg == "com.taobao.taobao" && (cls.endsWith("UltronTradeHybridActivity") || cls.endsWith("TBOrderListActivity"))) visualMonitor?.checkoutWindow()
             else if (pkg == "com.taobao.taobao" && cls.endsWith("Activity")) visualMonitor?.leaveCheckout(cls.endsWith("CashDeskActivity"))
             VisualPaymentHandoff.observe(pkg, cls)?.let { PurchaseGuardService.onVisualPaymentHandoff(applicationContext, pkg, it) }
             if (CheckoutPageParser.isSupported(pkg)) {

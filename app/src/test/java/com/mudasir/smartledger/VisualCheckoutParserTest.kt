@@ -28,5 +28,7 @@ class VisualCheckoutParserTest {
     @Test fun `results and early page buttons are not active checkouts`() {
         assertNull(parse(action, line("应付 ¥501"), line("支付成功")))
         assertNull(parse(line("继续付款", 0, 50), line("应付 ¥501")))
+        assertNull(parse(action, line("应付 ¥501"), line("全部订单")))
+        assertNull(parse(action, line("应付 ¥501"), line("待付款"), line("待发货")))
     }
 }

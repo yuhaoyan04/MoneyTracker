@@ -11,12 +11,16 @@ object VisualCheckoutParser {
     private val label = Regex("实付款|实付金额|实际支付|实际付款|应付金额|应付款|应付|需付款|需付|支付金额|付款金额")
     private val amount = Regex("(?<![0-9.,])(?:[¥￥]\\s*)?([0-9]{1,6}(?:\\.[0-9]{1,2})?)(?![0-9.,])")
     private val exclusions = Regex("订单号|交易号|编号|优惠|立减|红包|折扣|运费|邮费|原价|小计|合计|总计")
+    private val listTitles = listOf("全部订单", "我的订单", "订单列表", "历史订单", "订单记录")
+    private val listTabs = listOf("待付款", "待发货", "待收货", "待评价", "已完成")
 
     /** A payment label is mandatory; arbitrary small numbers are never treated as amounts. */
     fun amount(lines: List<VisualText>, width: Int, height: Int): BigDecimal? {
         if (width <= 0 || height <= 0 || lines.isEmpty()) return null
         val normalized = lines.map { it.copy(text = it.text.replace(Regex("\\s+"), "")) }
         if (normalized.any { outcome.containsMatchIn(it.text) }) return null
+        if (normalized.any { line -> listTitles.any(line.text::contains) } ||
+            listTabs.count { tab -> normalized.any { tab in it.text } } >= 2) return null
         if (normalized.none { action.containsMatchIn(it.text) && it.top >= height / 2 }) return null
         val candidates = mutableListOf<BigDecimal>()
         normalized.forEach { line ->

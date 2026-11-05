@@ -15,7 +15,7 @@ import com.mudasir.smartledger.capture.GuardThreshold
 import com.mudasir.smartledger.capture.VisualCheckoutParser
 import com.mudasir.smartledger.capture.VisualText
 
-/** Experimental opt-in OCR, limited to Taobao checkout; screen data never leaves memory. */
+/** Experimental opt-in OCR, limited to Taobao order and checkout pages; screen data stays in memory. */
 @RequiresApi(Build.VERSION_CODES.R)
 class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private val recognizer by lazy { TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build()) }
@@ -34,6 +34,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     }
 
     fun checkoutWindow() {
+        VisualPaymentHandoff.clear()
         checkoutSeenAt = SystemClock.elapsedRealtime()
         handler.removeCallbacks(refresh)
         handler.postDelayed(refresh, 1_000L)
@@ -48,7 +49,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         val now = SystemClock.elapsedRealtime()
         val prefs = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         if (pkg != "com.taobao.taobao" || !prefs.getBoolean("guard_enabled", false) ||
-            !prefs.getBoolean("guard_visual_enabled", false) || now - checkoutSeenAt !in 0..60_000L ||
+            !prefs.getBoolean("guard_visual_order_pages_enabled", false) || now - checkoutSeenAt !in 0..60_000L ||
             busy || now - lastAttempt < 2_500L) return
         busy = true
         lastAttempt = now
@@ -75,7 +76,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 val current = service.rootInActiveWindow?.packageName?.toString()
                                 val active = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
                                 if (current != pkg || !active.getBoolean("guard_enabled", false) ||
-                                    !active.getBoolean("guard_visual_enabled", false) || SystemClock.elapsedRealtime() - now > 8_000L) return@addOnSuccessListener
+                                    !active.getBoolean("guard_visual_order_pages_enabled", false) || SystemClock.elapsedRealtime() - now > 8_000L) return@addOnSuccessListener
                                 val lines = result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
                                     val b = line.boundingBox ?: return@mapNotNull null
                                     VisualText(line.text, b.left, b.top, b.right, b.bottom)
@@ -84,9 +85,12 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
                                     VisualPaymentHandoff.remember(value.toDouble())
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：识别到超门槛付款候选")
+                                } else if (value != null) {
+                                    VisualPaymentHandoff.clear()
+                                    PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：金额未超过门槛")
                                 } else {
                                     VisualPaymentHandoff.clear()
-                                    PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：无可靠超门槛金额")
+                                    PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：没有可靠付款金额")
                                 }
                             }
                             .addOnFailureListener(service.mainExecutor) {

@@ -152,10 +152,13 @@ class PurchaseGuardService : Service() {
         fun onVisualPaymentHandoff(context: Context, pkg: String, amount: Double) {
             if (pkg != "com.tencent.mm") return
             val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-            if (!prefs.getBoolean("guard_enabled", false) || !prefs.getBoolean("guard_visual_enabled", false) ||
+            if (!prefs.getBoolean("guard_enabled", false) || !prefs.getBoolean("guard_visual_order_pages_enabled", false) ||
                 !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) return
             instance?.let { svc -> svc.handler.post {
-                if (svc.rootPackageIsWechat()) svc.nudgeFromDetection(pkg, amount, visualHandoff = true)
+                if (svc.rootPackageIsWechat()) {
+                    recordDetection(pkg, "", "屏幕识别：已交接微信付款页")
+                    svc.nudgeFromDetection(pkg, amount, visualHandoff = true)
+                } else recordDetection(pkg, "", "屏幕识别：微信窗口尚不可用")
             } }
         }
 
