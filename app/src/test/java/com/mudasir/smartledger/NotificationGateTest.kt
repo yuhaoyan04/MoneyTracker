@@ -10,6 +10,13 @@ import org.junit.Test
  * 用例全部来自真实世界的通知文案形态。
  */
 class NotificationGateTest {
+    @Test fun `completed transit charges pass but incomplete charges and promotions do not`() {
+        listOf("微信支付 | 乘车扣费成功 3.00元", "支付宝 | 地铁乘车已扣费 ¥2.50",
+            "微信支付 | 乘车费用已扣除3.00元").forEach { assertTrue(it, NotificationGate.shouldCapture(it)) }
+        listOf("微信支付 | 地铁乘车预计扣费3.00元", "微信支付 | 乘车扣费失败 3.00元",
+            "微信支付 | 扣费成功领3元优惠券", "微信支付 | 乘车尚未扣费3元")
+            .forEach { assertFalse(it, NotificationGate.shouldCapture(it)) }
+    }
     @Test
     fun `wechat chat messages cannot impersonate payment notifications by body alone`() {
         assertFalse(NotificationGate.isTrustedSender("com.tencent.mm", "张三"))

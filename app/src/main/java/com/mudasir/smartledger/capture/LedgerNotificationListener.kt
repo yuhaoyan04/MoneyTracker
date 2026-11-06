@@ -57,6 +57,7 @@ class LedgerNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         val pkg = sbn?.packageName ?: return
         if (!CaptureWhitelist.isWatched(pkg)) return
+        CaptureDiagnostics.record(this, if (pkg == "com.tencent.mm") CaptureDiagnostics.Stage.WECHAT_RECEIVED else CaptureDiagnostics.Stage.OTHER_RECEIVED)
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
@@ -75,16 +76,16 @@ class LedgerNotificationListener : NotificationListenerService() {
         }.getOrDefault("")
 
         val combined = listOf(title, sub, text, big, msgText).filter { it.isNotBlank() }.joinToString(" | ")
-        if (combined.isBlank()) return
+        if (combined.isBlank()) { CaptureDiagnostics.record(this, CaptureDiagnostics.Stage.CONTENT_REJECTED); return }
 
         // === Gate 1: 严格白名单 —— 只处理支付/购物 App 的通知 ===
         // 微博、新闻、银行 App 非通知源（银行走短信）等全部忽略
-        if (!NotificationGate.isTrustedSender(pkg, title)) return
+        if (!NotificationGate.isTrustedSender(pkg, title)) { CaptureDiagnostics.record(this, CaptureDiagnostics.Stage.SENDER_REJECTED); return }
 
         // === Gates 2+3: 双信号门 + 完成词主门（逻辑提取至 NotificationGate，可单元测试） ===
         // v2.36.0：广告金额误判收支的根治 —— 无「支付成功/已扣款/已到账」等完成表述
         // 一律不采集（漏采可补记，广告污染需逐条清理）。
-        if (!NotificationGate.shouldCapture(combined)) return
+        if (!NotificationGate.shouldCapture(combined)) { CaptureDiagnostics.record(this, CaptureDiagnostics.Stage.CONTENT_REJECTED); return }
 
         val captureTime = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
         val parsed = TransactionParser.parse(
@@ -93,6 +94,7 @@ class LedgerNotificationListener : NotificationListenerService() {
             packageName = pkg,
             timestamp = captureTime
         )
+        CaptureDiagnostics.record(this, if (parsed != null) CaptureDiagnostics.Stage.PARSED else CaptureDiagnostics.Stage.FALLBACK)
 
         scope.launch {
             // 后台协程绝不抛异常 —— 任何失败只记日志，保住前台体验
@@ -107,7 +109,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                         parsed.timestamp,
                         parsed.timestamp
                     ) > 0
-                ) return@launch
+                ) { CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.DUPLICATE); return@launch }
                 val rec = parsed.toRecord()
                 // Equal amounts and nearby timestamps do not prove two notices are the same transaction.
                 val enrichedMerchant = rec.merchant
@@ -129,6 +131,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                     locationName = place?.name,
                     aiConfidence = suggestion.confidence
                 ))
+                CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.SAVED)
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
                 // 有新的待确认交易 → 刷新常驻通知
                 com.mudasir.smartledger.util.PendingNotifier.update(applicationContext)
@@ -152,7 +155,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                         captureTime,
                         captureTime
                     ) > 0
-                ) return@launch
+                ) { CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.DUPLICATE); return@launch }
                 dao.insert(
                     TransactionRecord(
                         type = TransactionRecord.TYPE_EXPENSE,
@@ -166,9 +169,11 @@ class LedgerNotificationListener : NotificationListenerService() {
                         timestamp = captureTime
                     )
                 )
+                CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.SAVED)
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
+                com.mudasir.smartledger.util.PendingNotifier.update(applicationContext)
             }
-            }.onFailure { android.util.Log.w("LedgerListener", "capture failed", it) }
+            }.onFailure { CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.FAILED); android.util.Log.w("LedgerListener", "capture failed", it) }
         }
     }
 

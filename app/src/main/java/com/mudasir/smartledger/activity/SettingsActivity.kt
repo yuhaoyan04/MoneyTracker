@@ -111,6 +111,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnSms).setOnClickListener {
             smsLauncher.launch(Manifest.permission.RECEIVE_SMS)
         }
+        findViewById<View>(R.id.btnCaptureDiagnostics).setOnClickListener { showCaptureDiagnostics() }
         findViewById<View>(R.id.btnBackgroundSettings).setOnClickListener {
             runCatching {
                 startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
@@ -947,6 +948,24 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvCaptureOverview).text = "通知 · 短信 · 支付页检测（$captureCount/3 已开启）"
         tv.setTextColor(getColorCompat(if (enabled) R.color.color_income else R.color.color_expense))
         btn.visibility = if (enabled) View.GONE else View.VISIBLE
+    }
+
+    private fun showCaptureDiagnostics() {
+        val diag = com.mudasir.smartledger.capture.CaptureDiagnostics
+        val running = diag.enabled(this)
+        val report = diag.report(this)
+        AlertDialog.Builder(this).setTitle("收件箱采集诊断")
+            .setMessage(report + if (!running) "\n\n开始记录会清空上次计数。" else "")
+            .setPositiveButton(if (running) "停止记录" else "开始记录") { _, _ ->
+                if (running) diag.stop(this) else diag.start(this)
+                showCaptureDiagnostics()
+            }
+            .setNeutralButton("复制结果") { _, _ ->
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("收件箱采集诊断", report))
+                Toast.makeText(this, "已复制诊断计数", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("关闭", null).show()
     }
 
     private fun refreshAutoConfirmStatus() {

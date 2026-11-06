@@ -146,6 +146,7 @@
             </LinearLayout>
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/divider"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnBackgroundSettings" style="@style/SettingsListAction" android:text="后台运行与电池优化"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnCaptureDiagnostics" style="@style/SettingsListAction" android:text="收件箱采集诊断"/>
             <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="18dp" android:paddingEnd="18dp" android:paddingTop="4dp" android:paddingBottom="10dp" android:text="自动采集取决于系统权限和支付应用。华为手机还可在手机管家中允许后台活动。"/>
           </LinearLayout>
         </LinearLayout>

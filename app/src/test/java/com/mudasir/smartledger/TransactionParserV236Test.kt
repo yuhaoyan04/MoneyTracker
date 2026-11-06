@@ -11,6 +11,12 @@ import org.junit.Test
  * v2.36.0 证据测试：商户提取（自进化根基）+ 收支方向判定。
  */
 class TransactionParserV236Test {
+    @Test fun `small transit charge chooses charge rather than account balance`() {
+        val source = TransactionRecord.SOURCE_CAPTURE_NOTIFICATION
+        val result = TransactionParser.parse("微信支付 | 乘车扣费成功3.00元，余额100.00元", source, "com.tencent.mm")!!
+        assertEquals(3.0, result.amount, 0.001)
+        assertEquals(TransactionRecord.TYPE_EXPENSE, result.type)
+    }
 
     // ===== 商户提取（Bug4：商户记忆层依赖商户名，此前几乎永远为 null） =====
 

@@ -26,6 +26,7 @@ object NotificationGate {
         // 支出结果
         "支付成功", "付款成功", "已支付", "已付款", "支付完成", "付款完成",
         "已扣款", "扣款成功", "扣款完成", "自动扣款成功", "刷卡成功",
+        "已扣费", "扣费成功", "扣费完成", "已扣除",
         "交易完成", "交易成功", "已消费",
         "微信支付凭证", "付款凭证", "支付凭证",
         // 收入结果
@@ -49,7 +50,7 @@ object NotificationGate {
     )
 
     private val paymentActionKeywords = listOf(
-        "支付成功", "支付", "消费", "付款成功", "付款", "扣款", "自动扣款", "代扣",
+        "支付成功", "支付", "消费", "付款成功", "付款", "扣款", "扣费", "扣除", "自动扣款", "代扣",
         "已支付", "刷卡", "花费", "已扣", "收款", "到账", "入账", "退款",
         "退回", "转入", "已退款", "退款成功", "转账", "代付"
     )
@@ -67,11 +68,14 @@ object NotificationGate {
         return promotionalBlacklist.any { lower.contains(it.lowercase()) }
     }
 
+    private val incompleteCharge = Regex("未扣费|尚未扣费|扣费失败|扣费未成功|等待扣费|预计扣费|即将扣费")
+
     /** 返回 true = 应当采集为候选交易；false = 放弃。 */
     fun shouldCapture(combined: String): Boolean {
         if (combined.isBlank()) return false
         if (!hasPaymentAction(combined)) return false
         if (!hasAmountSymbol(combined)) return false
+        if (incompleteCharge.containsMatchIn(combined)) return false
         if (!completionWords.any { combined.contains(it) }) return false
         if (isPromotional(combined)) return false
         return true

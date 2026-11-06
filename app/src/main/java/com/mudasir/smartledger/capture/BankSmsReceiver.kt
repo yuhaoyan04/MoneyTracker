@@ -25,6 +25,7 @@ class BankSmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+        CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_RECEIVED)
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
         if (messages.isEmpty()) return
 
@@ -32,7 +33,7 @@ class BankSmsReceiver : BroadcastReceiver() {
         if (body.isBlank()) return
 
         val sender = messages.firstOrNull()?.displayOriginatingAddress
-        if (!BankSmsGate.shouldCapture(sender, body)) return
+        if (!BankSmsGate.shouldCapture(sender, body)) { CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_REJECTED); return }
         val timestamp = messages.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
 
         val parsed = TransactionParser.parse(
@@ -40,7 +41,30 @@ class BankSmsReceiver : BroadcastReceiver() {
             source = TransactionRecord.SOURCE_CAPTURE_SMS,
             channelHint = "银行卡",
             timestamp = timestamp
-        ) ?: return
+        )
+        if (parsed == null) {
+            CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_UNPARSED)
+            val pendingResult = goAsync()
+            scope.launch {
+                try {
+                    runCatching {
+                        val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
+                        if (dao.countExactCapture(TransactionRecord.SOURCE_CAPTURE_SMS, null, body, timestamp, timestamp) > 0) return@runCatching
+                        dao.insert(TransactionRecord(
+                            type = TransactionParser.inferType(body), amount = 0.0, channelName = "银行卡",
+                            note = sender?.let { "来自 $it" }, rawText = body,
+                            source = TransactionRecord.SOURCE_CAPTURE_SMS,
+                            status = TransactionRecord.STATUS_PENDING, timestamp = timestamp
+                        ))
+                        CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_SAVED)
+                        runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(context.applicationContext) }
+                        com.mudasir.smartledger.util.PendingNotifier.update(context.applicationContext)
+                    }.onFailure { CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_FAILED); android.util.Log.w("BankSmsReceiver", "sms capture failed", it) }
+                } finally { pendingResult.finish() }
+            }
+            return
+        }
+        CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_PARSED)
 
         val pendingResult = goAsync()
         scope.launch {
@@ -80,6 +104,7 @@ class BankSmsReceiver : BroadcastReceiver() {
                         )
                     )
                 )
+                CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_SAVED)
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(context.applicationContext) }
                 com.mudasir.smartledger.util.PendingNotifier.update(context.applicationContext)
                 // 想好再买：超过门槛的大额消费 → 立即冷静提醒
@@ -92,7 +117,7 @@ class BankSmsReceiver : BroadcastReceiver() {
                         )
                     }
                 }
-            }.onFailure { android.util.Log.w("BankSmsReceiver", "sms capture failed", it) }
+            }.onFailure { CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_FAILED); android.util.Log.w("BankSmsReceiver", "sms capture failed", it) }
             } finally {
                 pendingResult.finish()
             }

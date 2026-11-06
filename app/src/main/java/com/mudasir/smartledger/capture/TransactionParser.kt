@@ -29,7 +29,7 @@ object TransactionParser {
         RegexOption.IGNORE_CASE
     )
     private val movementAmount = Regex(
-        "(?:已支付|已付款|支付|付款|消费|支出|扣款|刷卡|转出|转入|收入|入账|到账|收款|退款|存入|代发)(?:成功|完成|人民币|金额|款项|到账|\\s|[:：]){0,8}(?:[¥￥]\\s*($transactionValue)(?![0-9.,])|($transactionValue)\\s*元)",
+        "(?:已支付|已付款|支付|付款|消费|支出|扣款|扣费|扣除|刷卡|转出|转入|收入|入账|到账|收款|退款|存入|代发)(?:成功|完成|人民币|金额|款项|到账|\\s|[:：]){0,8}(?:[¥￥]\\s*($transactionValue)(?![0-9.,])|($transactionValue)\\s*元)",
         RegexOption.IGNORE_CASE
     )
 
@@ -44,7 +44,7 @@ object TransactionParser {
         "收款", "收入", "到账", "入账", "转入", "提现", "收益", "利息", "返还", "红包", "工资", "分红"
     )
     private val expenseKeywords = listOf(
-        "支付成功", "消费", "付款", "扣款", "支出", "实付", "自动扣款", "代扣",
+        "支付成功", "消费", "付款", "扣款", "扣费", "扣除", "支出", "实付", "自动扣款", "代扣",
         "已支付", "付款成功", "刷卡", "购物", "充值", "花费", "花呗", "已扣", "转出", "汇出", "支取", "取现"
     )
     // 营销话术：与支出词同现时视为营销噪音（真实扣款通知通常不含这些）
@@ -129,7 +129,7 @@ object TransactionParser {
         return fallback.singleOrNull()
     }
 
-    private fun inferType(text: String): String {
+    fun inferType(text: String): String {
         val t = text.replace(" ", "")
         val hasStrongIncome = strongIncomeKeywords.any { t.contains(it) }
         val hasWeakIncome = incomeKeywords.any { t.contains(it) }
