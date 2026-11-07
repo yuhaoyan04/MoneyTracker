@@ -156,10 +156,7 @@ class PurchaseGuardService : Service() {
                 !(prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getBoolean("guard_visual_multi_app_enabled", false)) ||
                 !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) return
             instance?.let { svc -> svc.handler.post {
-                if (AccessibilityCaptureService.activeRootPackage() == pkg) {
-                    recordDetection(pkg, "", "屏幕识别：已交接支付页面")
-                    svc.nudgeFromDetection(pkg, amount, visualHandoff = true)
-                } else recordDetection(pkg, "", "屏幕识别：支付窗口尚不可用")
+                svc.deliverVisualHandoff(pkg, amount)
             } }
         }
 
@@ -245,6 +242,33 @@ class PurchaseGuardService : Service() {
     private var overlayTick: Runnable? = null
     private var lastPollErrorAt = 0L
     private var lastVisualResumeAt = 0L
+    private var visualDeliveryGeneration = 0L
+
+    private fun deliverVisualHandoff(pkg: String, amount: Double) {
+        val generation = ++visualDeliveryGeneration
+        val started = android.os.SystemClock.elapsedRealtime()
+        val attempt = object : Runnable {
+            override fun run() {
+                val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+                val enabled = instance === this@PurchaseGuardService && generation == visualDeliveryGeneration &&
+                    prefs.getBoolean("guard_enabled", false) &&
+                    (prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getBoolean("guard_visual_multi_app_enabled", false)) &&
+                    CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))
+                when (com.mudasir.smartledger.capture.HandoffForegroundWait.decide(
+                    pkg, AccessibilityCaptureService.activeRootPackage(),
+                    android.os.SystemClock.elapsedRealtime() - started, enabled)) {
+                    com.mudasir.smartledger.capture.HandoffForegroundWait.Decision.DELIVER -> {
+                        recordDetection(pkg, "", "屏幕识别：已交接支付页面")
+                        nudgeFromDetection(pkg, amount, visualHandoff = true)
+                    }
+                    com.mudasir.smartledger.capture.HandoffForegroundWait.Decision.WAIT -> handler.postDelayed(this, 250L)
+                    com.mudasir.smartledger.capture.HandoffForegroundWait.Decision.ABANDON ->
+                        recordDetection(pkg, "", "屏幕识别：支付窗口未及时成为前台，放弃提醒")
+                }
+            }
+        }
+        attempt.run()
+    }
 
     private val screenReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {

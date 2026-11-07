@@ -45,6 +45,7 @@ object GuardLogPolicy {
         message.startsWith("屏幕识别：微信窗口尚不可用") -> "OCR_WECHAT_WINDOW_NOT_READY"
         message.startsWith("屏幕识别：已交接支付页面") -> "OCR_PAYMENT_HANDOFF"
         message.startsWith("屏幕识别：支付窗口尚不可用") -> "OCR_PAYMENT_WINDOW_NOT_READY"
+        message.startsWith("屏幕识别：支付窗口未及时成为前台") -> "OCR_PAYMENT_WINDOW_TIMEOUT"
         message.startsWith("屏幕识别：无可靠超门槛金额") -> "OCR_NOT_QUALIFIED"
         message.startsWith("屏幕识别失败") -> "OCR_ERROR"
         message.startsWith("窗口候选") -> "WINDOW_CANDIDATE"
