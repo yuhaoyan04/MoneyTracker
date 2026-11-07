@@ -16,6 +16,7 @@ import com.mudasir.smartledger.capture.VisualCheckoutParser
 import com.mudasir.smartledger.capture.VisualText
 import com.mudasir.smartledger.capture.VisualGuardTargets
 import com.mudasir.smartledger.capture.VisualHandoffState
+import com.mudasir.smartledger.capture.PendingOcrClear
 
 /** Experimental opt-in OCR for allowed shopping apps; screen data stays in memory. */
 @RequiresApi(Build.VERSION_CODES.R)
@@ -27,6 +28,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private var sourcePackage = ""
     private var verificationSource = ""
     private var generation = 0L
+    private val pendingOcrClear = PendingOcrClear()
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val refresh = object : Runnable {
         override fun run() {
@@ -81,6 +83,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                 override fun onFailure(errorCode: Int) {
                     busy = false
                     if (generation == capturedGeneration) {
+                        pendingOcrClear.cancel()
                         VisualPaymentHandoff.clear()
                         PurchaseGuardService.recordDetection(pkg, "", "屏幕识别截图失败：$errorCode")
                     }
@@ -109,18 +112,29 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 }
                                 val value = VisualCheckoutParser.amount(lines, width, height)
                                 if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
+                                    pendingOcrClear.cancel()
                                     VisualPaymentHandoff.remember(pkg, value.toDouble())
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：识别到超门槛付款候选")
                                 } else if (value != null) {
+                                    pendingOcrClear.cancel()
                                     VisualPaymentHandoff.clear()
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：金额未超过门槛")
                                 } else {
-                                    VisualPaymentHandoff.clear()
+                                    // A blank transition frame may arrive just before the cashier activity.
+                                    // Keep the candidate only if that activity transition changes the generation
+                                    // within 500 ms; otherwise clear it, preventing stale amounts on this page.
+                                    val ticket = pendingOcrClear.schedule()
+                                    handler.postDelayed({
+                                        if (pendingOcrClear.shouldClear(ticket, generation == capturedGeneration)) {
+                                            VisualPaymentHandoff.clear()
+                                        }
+                                    }, 500L)
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：没有可靠付款金额")
                                 }
                             }
                             .addOnFailureListener(service.mainExecutor) {
                                 if (generation == capturedGeneration) {
+                                    pendingOcrClear.cancel()
                                     VisualPaymentHandoff.clear()
                                     GuardDiagnosticLog.failure(it)
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别失败")
