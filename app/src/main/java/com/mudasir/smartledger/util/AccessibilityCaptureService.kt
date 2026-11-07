@@ -190,7 +190,17 @@ class AccessibilityCaptureService : AccessibilityService() {
             else if (VisualGuardTargets.isTaobaoSkuDialog(pkg, cls)) visualMonitor?.checkoutWindow(pkg, cls)
             else if (VisualGuardTargets.sourceActivity(pkg, cls)) visualMonitor?.checkoutWindow(pkg, cls)
             else if (pkg in VisualGuardTargets.shopping && cls.endsWith("Activity")) visualMonitor?.leaveCheckout(VisualGuardTargets.isSourcePaymentTransition(cls))
-            if (pkg == VisualGuardTargets.TAOBAO && cls == "android.app.Dialog") visualMonitor?.taobaoDialogOpened(pkg)
+            if (pkg == VisualGuardTargets.TAOBAO && cls == "android.app.Dialog") {
+                visualMonitor?.taobaoDialogOpened(pkg)
+                // The payment dialog can disappear before the normal 350 ms inspection.
+                // Recheck only while Taobao remains the active root; parsing still applies
+                // the full checkout, amount and threshold rules.
+                listOf(40L, 120L, 240L).forEach { delay ->
+                    handler.postDelayed({
+                        if (rootInActiveWindow?.packageName?.toString() == pkg) inspectSafely()
+                    }, delay)
+                }
+            }
             VisualPaymentHandoff.observe(pkg, cls)?.let { PurchaseGuardService.onVisualPaymentHandoff(applicationContext, pkg, it) }
             // Also observe leaving a supported payment app: a launcher is not in the
             // payment allowlist, but an existing prompt must not follow the user there.
