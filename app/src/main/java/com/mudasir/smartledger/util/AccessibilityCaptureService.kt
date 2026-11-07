@@ -126,6 +126,11 @@ class AccessibilityCaptureService : AccessibilityService() {
     private var lastLoggedContentAt = 0L
     private var orderButtons: List<OrderPayCandidate> = emptyList()
     private var orderButtonsAt = 0L
+    private val orderRefresh = object : Runnable {
+        override fun run() {
+            if (rootInActiveWindow?.packageName?.toString() == VisualGuardTargets.TAOBAO) inspectSafely()
+        }
+    }
     private val visualMonitor by lazy {
         if (android.os.Build.VERSION.SDK_INT >= 30) VisualCheckoutMonitor(this) else null
     }
@@ -298,6 +303,10 @@ class AccessibilityCaptureService : AccessibilityService() {
                 val metrics = resources.displayMetrics
                 orderButtons = OrderListPaymentParser.candidates(nodes, metrics.widthPixels, metrics.heightPixels)
                 orderButtonsAt = SystemClock.uptimeMillis()
+                handler.removeCallbacks(orderRefresh)
+                if (orderButtons.isNotEmpty()) handler.postDelayed(orderRefresh, 700L)
+            } else if (pkg == VisualGuardTargets.TAOBAO) {
+                orderButtons = emptyList(); orderButtonsAt = 0L; handler.removeCallbacks(orderRefresh)
             }
             val threshold = com.mudasir.smartledger.capture.GuardThreshold.read(prefs)
             val result = CheckoutPageParser.analyze(pkg, nodes, threshold)
