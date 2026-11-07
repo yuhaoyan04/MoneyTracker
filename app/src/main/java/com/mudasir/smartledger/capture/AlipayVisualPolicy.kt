@@ -10,7 +10,7 @@ object AlipayVisualPolicy {
     private const val ALIPAY_CASHIER = "com.alipay.android.msp.ui.views.MspContainerActivity"
     fun isJdCashier(pkg: String, cls: String) = pkg == JD && cls == JD_CASHIER
     fun isAlipayCashier(pkg: String, cls: String) = pkg == ALIPAY && cls == ALIPAY_CASHIER
-    fun isPayAction(texts: List<String>) = texts.any { it.trim() in setOf("确认付款", "立即付款", "继续付款", "确认支付", "立即支付", "确认并支付") }
+    fun isPayAction(texts: List<String>) = texts.any { it.trim() in setOf("确认付款", "立即付款", "继续付款", "确认支付", "立即支付", "确认并支付", "提交并支付", "去付款", "去支付") }
     fun isPendingCashier(lines: List<VisualText>, height: Int): Boolean {
         if (height <= 0) return false
         val words = lines.map { it.text.replace(Regex("\\s+"), "") }
@@ -41,6 +41,8 @@ class JdAlipayEntryTracker {
             return accepted
         }
         if (pkg == AlipayVisualPolicy.JD && cls.endsWith("Activity")) { inCashier = false; armedAt = -1L }
+        if (pkg.isNotBlank() && pkg != AlipayVisualPolicy.JD && pkg != AlipayVisualPolicy.ALIPAY &&
+            pkg != "com.mudasir.smartledger" && !pkg.startsWith("com.android.systemui")) clear()
         return false
     }
     fun onClick(pkg: String, texts: List<String>, now: Long): Boolean {
@@ -49,6 +51,40 @@ class JdAlipayEntryTracker {
         return accepted
     }
     fun clear() { inCashier = false; cashierAt = -1L; armedAt = -1L }
+}
+
+/** Experimental handoff for other explicitly enabled shopping apps. A click and the
+ * specific Alipay cashier are hints only; the cashier OCR must prove the amount. */
+class ShoppingAlipayEntryTracker {
+    private var source = ""
+    private var sourceAt = -1L
+    private var armedAt = -1L
+
+    fun onWindow(pkg: String, cls: String, now: Long): String? {
+        if (AlipayVisualPolicy.isAlipayCashier(pkg, cls)) {
+            val accepted = source.takeIf { armedAt >= 0 && now - armedAt in 0..15_000L }
+            clear()
+            return accepted
+        }
+        if (pkg in VisualGuardTargets.shopping && pkg != AlipayVisualPolicy.JD && cls.endsWith("Activity")) {
+            source = pkg
+            sourceAt = now
+            armedAt = -1L
+        } else if (pkg.isNotBlank() && pkg != source && pkg != "com.mudasir.smartledger" &&
+            !pkg.startsWith("com.android.systemui") && pkg != AlipayVisualPolicy.ALIPAY) {
+            clear()
+        }
+        return null
+    }
+
+    fun onClick(pkg: String, texts: List<String>, now: Long): Boolean {
+        val accepted = source.isNotEmpty() && pkg == source && now - sourceAt in 0..60_000L &&
+            AlipayVisualPolicy.isPayAction(texts)
+        if (accepted) armedAt = now
+        return accepted
+    }
+
+    fun clear() { source = ""; sourceAt = -1L; armedAt = -1L }
 }
 
 class StableAlipayAmount {

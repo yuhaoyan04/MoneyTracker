@@ -20,6 +20,7 @@ import com.mudasir.smartledger.capture.OrderPayCandidate
 import com.mudasir.smartledger.capture.VisualGuardTargets
 import com.mudasir.smartledger.capture.AlipayVisualPolicy
 import com.mudasir.smartledger.capture.JdAlipayEntryTracker
+import com.mudasir.smartledger.capture.ShoppingAlipayEntryTracker
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
 import kotlinx.coroutines.CoroutineScope
@@ -131,6 +132,7 @@ class AccessibilityCaptureService : AccessibilityService() {
     private var lastGuardDiagnosticAt = 0L
     private var lastObservedPackage = ""
     private val jdAlipayEntry = JdAlipayEntryTracker()
+    private val shoppingAlipayEntry = ShoppingAlipayEntryTracker()
     private var alipayVisualMonitor: AlipayVisualMonitor? = null
     private var lastLoggedContentAt = 0L
     private var orderButtons: List<OrderPayCandidate> = emptyList()
@@ -204,6 +206,14 @@ class AccessibilityCaptureService : AccessibilityService() {
             val accepted = jdAlipayEntry.onClick(eventPackage, texts, SystemClock.elapsedRealtime())
             if (AlipayVisualPolicy.isPayAction(texts)) PurchaseGuardService.recordDetection(eventPackage, "", if (accepted) "支付宝入口：付款操作已接收" else "支付宝入口：缺少有效京东收银台")
         }
+        if (e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && !e.isPassword &&
+            eventPackage in VisualGuardTargets.shopping && eventPackage != AlipayVisualPolicy.JD &&
+            getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).getBoolean("guard_visual_alipay_multi_enabled", false)) {
+            val texts = e.text.take(5).map { it?.toString().orEmpty().take(80) }
+            val accepted = shoppingAlipayEntry.onClick(eventPackage, texts, SystemClock.elapsedRealtime())
+            if (AlipayVisualPolicy.isPayAction(texts)) PurchaseGuardService.recordDetection(eventPackage, "",
+                if (accepted) "支付宝入口：其他购物应用付款操作已接收" else "支付宝入口：其他购物应用缺少有效页面")
+        }
         if (GuardDiagnosticLog.isRecording() && !e.isPassword && CheckoutPageParser.isSupported(eventPackage)) {
             val kind = when (e.eventType) {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE"
@@ -241,12 +251,20 @@ class AccessibilityCaptureService : AccessibilityService() {
                 alipayVisualMonitor?.cancel()
             }
             val alipayEntry = jdAlipayEntry.onWindow(pkg, cls, SystemClock.elapsedRealtime())
+            val multiPrefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            val multiSource = if (multiPrefs.getBoolean("guard_visual_alipay_multi_enabled", false))
+                shoppingAlipayEntry.onWindow(pkg, cls, SystemClock.elapsedRealtime()) else {
+                    shoppingAlipayEntry.clear(); null
+                }
+            val multiEntry = multiSource != null && VisualGuardTargets.sourceAllowed(multiSource,
+                multiPrefs.getBoolean("guard_visual_order_pages_enabled", false),
+                multiPrefs.getBoolean("guard_visual_multi_app_enabled", false))
             if (AlipayVisualPolicy.isAlipayCashier(pkg, cls)) {
-                PurchaseGuardService.recordDetection(pkg, "", if (alipayEntry) "支付宝入口：已匹配付款窗口" else "支付宝入口：没有有效付款操作")
+                PurchaseGuardService.recordDetection(pkg, "", if (alipayEntry || multiEntry) "支付宝入口：已匹配付款窗口" else "支付宝入口：没有有效付款操作")
             }
-            if (alipayEntry && android.os.Build.VERSION.SDK_INT >= 30) {
+            if ((alipayEntry || multiEntry) && android.os.Build.VERSION.SDK_INT >= 30) {
                 if (alipayVisualMonitor == null) alipayVisualMonitor = AlipayVisualMonitor(this)
-                alipayVisualMonitor?.start()
+                alipayVisualMonitor?.start(if (multiEntry) multiSource else null)
             }
             if (VisualGuardTargets.isJdVerification(pkg, cls)) visualMonitor?.pauseForVerification(pkg)
             else if (VisualGuardTargets.isTaobaoSkuDialog(pkg, cls)) visualMonitor?.checkoutWindow(pkg, cls)

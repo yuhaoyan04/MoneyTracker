@@ -2,6 +2,7 @@ package com.mudasir.smartledger
 
 import com.mudasir.smartledger.capture.AlipayVisualPolicy
 import com.mudasir.smartledger.capture.JdAlipayEntryTracker
+import com.mudasir.smartledger.capture.ShoppingAlipayEntryTracker
 import com.mudasir.smartledger.capture.StableAlipayAmount
 import com.mudasir.smartledger.capture.VisualText
 import org.junit.Assert.*
@@ -9,6 +10,43 @@ import org.junit.Test
 import java.math.BigDecimal
 
 class AlipayVisualPolicyTest {
+    @Test fun `other shopping app must click before specific alipay cashier and handoff is one shot`() {
+        val target = "com.alipay.android.msp.ui.views.MspContainerActivity"
+        val apps = listOf("com.taobao.taobao", "com.xunmeng.pinduoduo", "com.sankuai.meituan", "com.MobileTicket")
+        apps.forEach { pkg ->
+            val t = ShoppingAlipayEntryTracker()
+            assertNull(t.onWindow(pkg, "$pkg.CheckoutActivity", 1000))
+            assertFalse(t.onClick(pkg, listOf("支付优惠"), 1500))
+            assertNull(t.onWindow(AlipayVisualPolicy.ALIPAY, target, 1600))
+            t.onWindow(pkg, "$pkg.CheckoutActivity", 2000)
+            assertTrue(t.onClick(pkg, listOf("确认付款"), 2500))
+            assertEquals(pkg, t.onWindow(AlipayVisualPolicy.ALIPAY, target, 3000))
+            assertNull(t.onWindow(AlipayVisualPolicy.ALIPAY, target, 3100))
+        }
+    }
+
+    @Test fun `other shopping handoff expires and is cleared when leaving the source`() {
+        val t = ShoppingAlipayEntryTracker()
+        val source = "com.xunmeng.pinduoduo"
+        val target = "com.alipay.android.msp.ui.views.MspContainerActivity"
+        t.onWindow(source, "$source.CheckoutActivity", 1000)
+        assertTrue(t.onClick(source, listOf("立即支付"), 1500))
+        assertNull(t.onWindow("com.example.other", "HomeActivity", 2000))
+        assertNull(t.onWindow(AlipayVisualPolicy.ALIPAY, target, 2500))
+        t.onWindow(source, "$source.CheckoutActivity", 3000)
+        assertTrue(t.onClick(source, listOf("立即支付"), 3500))
+        assertNull(t.onWindow(AlipayVisualPolicy.ALIPAY, target, 18501))
+        t.onWindow(source, "$source.CheckoutActivity", 20000)
+        assertFalse(t.onClick(source, listOf("立即支付"), 80001))
+    }
+    @Test fun `common checkout actions require exact labels`() {
+        listOf("提交并支付", "去付款", "去支付").forEach {
+            assertTrue(AlipayVisualPolicy.isPayAction(listOf(it)))
+        }
+        listOf("先享后付0元下单", "支付优惠", "去付款可享优惠", "提交订单").forEach {
+            assertFalse(AlipayVisualPolicy.isPayAction(listOf(it)))
+        }
+    }
     @Test fun `amount must be seen twice consecutively`() {
         val state = StableAlipayAmount()
         assertNull(state.observe(BigDecimal("123.45")))
@@ -51,6 +89,10 @@ class AlipayVisualPolicyTest {
         t.onWindow(jd, cashier, 70000)
         t.onWindow(jd, "com.jd.OtherActivity", 71000)
         assertFalse(t.onClick(jd, listOf("确认付款"), 72000))
+        t.onWindow(jd, cashier, 80000)
+        assertTrue(t.onClick(jd, listOf("确认付款"), 81000))
+        t.onWindow("com.example.other", "HomeActivity", 82000)
+        assertFalse(t.onWindow(alipay, target, 83000))
     }
     @Test fun `cropped price requires one unambiguous decimal amount`() {
         assertEquals(BigDecimal("123.45"), AlipayVisualPolicy.cropAmount("¥ 123.45"))

@@ -83,6 +83,7 @@ object GuardDiagnosticLog {
             "visual_taobao_sku_enabled" to guard.getBoolean("guard_visual_taobao_sku_enabled", false).toString(),
             "visual_other_apps_enabled" to guard.getBoolean("guard_visual_multi_app_enabled", false).toString(),
             "visual_alipay_enabled" to guard.getBoolean("guard_visual_alipay_enabled", false).toString(),
+            "visual_alipay_multi_enabled" to guard.getBoolean("guard_visual_alipay_multi_enabled", false).toString(),
             "guard_mode" to mode,
             "guard_scope" to scope
         ), force = true)

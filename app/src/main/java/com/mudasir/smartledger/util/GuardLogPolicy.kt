@@ -73,6 +73,8 @@ object GuardLogPolicy {
         message.startsWith("订单按钮保护：已添加按钮浮层") -> "ORDER_SHIELD_ADDED"
         message.startsWith("订单按钮保护：无法添加浮层") -> "ORDER_SHIELD_ADD_FAILED"
         message.startsWith("订单按钮保护：用户点击高额按钮") -> "ORDER_SHIELD_CLICKED"
+        message.startsWith("支付宝入口：其他购物应用付款操作已接收") -> "ALIPAY_MULTI_CLICK_ACCEPTED"
+        message.startsWith("支付宝入口：其他购物应用缺少有效页面") -> "ALIPAY_MULTI_CLICK_NO_SOURCE"
         message.startsWith("屏幕识别：保留刚识别的同一付款页候选") -> "OCR_FRESH_DUPLICATE_PRESERVED"
         message.startsWith("屏幕识别：金额未超过门槛") -> "OCR_BELOW_THRESHOLD"
         message.startsWith("屏幕识别：没有可靠付款金额") -> "OCR_NO_CANDIDATE"

@@ -18,6 +18,7 @@ import com.mudasir.smartledger.capture.CheckoutPageParser
 import com.mudasir.smartledger.capture.GuardThreshold
 import com.mudasir.smartledger.capture.StableAlipayAmount
 import com.mudasir.smartledger.capture.VisualText
+import com.mudasir.smartledger.capture.VisualGuardTargets
 
 /** Opt-in, bounded local OCR for a known JD-to-Alipay payment handoff. */
 @RequiresApi(Build.VERSION_CODES.R)
@@ -29,9 +30,11 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
     private var startedAt = 0L
     private var attempts = 0
     private var stable = StableAlipayAmount()
+    private var multiSource: String? = null
 
-    fun start() {
+    fun start(source: String? = null) {
         cancel()
+        multiSource = source
         if (!enabled()) return
         startedAt = SystemClock.elapsedRealtime()
         attempts = 0
@@ -45,7 +48,9 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
     private fun enabled(): Boolean {
         val p = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         return p.getBoolean("guard_enabled", false) && p.getBoolean("guard_visual_multi_app_enabled", false) &&
-            p.getBoolean("guard_visual_alipay_enabled", false)
+            p.getBoolean("guard_visual_alipay_enabled", false) && (multiSource == null ||
+                (p.getBoolean("guard_visual_alipay_multi_enabled", false) && VisualGuardTargets.sourceAllowed(multiSource!!,
+                    p.getBoolean("guard_visual_order_pages_enabled", false), p.getBoolean("guard_visual_multi_app_enabled", false))))
     }
 
     private fun alive(token: Long): Boolean = token == generation && enabled() &&
@@ -103,7 +108,7 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
                                     val p = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
                                     if (CheckoutPageParser.exceedsThreshold(confirmed.toDouble(), GuardThreshold.read(p))) {
                                         PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝屏幕识别：金额超过门槛")
-                                        PurchaseGuardService.onVisualPaymentHandoff(service.applicationContext, AlipayVisualPolicy.ALIPAY, confirmed.toDouble())
+                                        PurchaseGuardService.onVisualPaymentHandoff(service.applicationContext, AlipayVisualPolicy.ALIPAY, confirmed.toDouble(), multiSource)
                                     } else PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝屏幕识别：金额未超过门槛")
                                     cancel()
                                 }

@@ -163,14 +163,17 @@ class PurchaseGuardService : Service() {
             } }
         }
 
-        fun onVisualPaymentHandoff(context: Context, pkg: String, amount: Double) {
+        fun onVisualPaymentHandoff(context: Context, pkg: String, amount: Double, multiAlipaySource: String? = null) {
             val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
             if (!prefs.getBoolean("guard_enabled", false) ||
                 !(prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getBoolean("guard_visual_multi_app_enabled", false)) ||
                 (pkg == com.mudasir.smartledger.capture.AlipayVisualPolicy.ALIPAY && !prefs.getBoolean("guard_visual_alipay_enabled", false)) ||
+                (multiAlipaySource != null && (!prefs.getBoolean("guard_visual_alipay_multi_enabled", false) ||
+                    !VisualGuardTargets.sourceAllowed(multiAlipaySource, prefs.getBoolean("guard_visual_order_pages_enabled", false),
+                        prefs.getBoolean("guard_visual_multi_app_enabled", false)))) ||
                 !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) return
             instance?.let { svc -> svc.handler.post {
-                svc.deliverVisualHandoff(pkg, amount)
+                svc.deliverVisualHandoff(pkg, amount, multiAlipaySource)
             } }
         }
 
@@ -289,7 +292,7 @@ class PurchaseGuardService : Service() {
     private var lastVisualResumeAt = 0L
     private var visualDeliveryGeneration = 0L
 
-    private fun deliverVisualHandoff(pkg: String, amount: Double) {
+    private fun deliverVisualHandoff(pkg: String, amount: Double, multiAlipaySource: String? = null) {
         val generation = ++visualDeliveryGeneration
         val started = android.os.SystemClock.elapsedRealtime()
         val attempt = object : Runnable {
@@ -299,6 +302,9 @@ class PurchaseGuardService : Service() {
                     prefs.getBoolean("guard_enabled", false) &&
                     (prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getBoolean("guard_visual_multi_app_enabled", false)) &&
                     (pkg != com.mudasir.smartledger.capture.AlipayVisualPolicy.ALIPAY || prefs.getBoolean("guard_visual_alipay_enabled", false)) &&
+                    (multiAlipaySource == null || (prefs.getBoolean("guard_visual_alipay_multi_enabled", false) &&
+                        VisualGuardTargets.sourceAllowed(multiAlipaySource, prefs.getBoolean("guard_visual_order_pages_enabled", false),
+                            prefs.getBoolean("guard_visual_multi_app_enabled", false)))) &&
                     CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))
                 when (com.mudasir.smartledger.capture.HandoffForegroundWait.decide(
                     pkg, AccessibilityCaptureService.activeRootPackage(),
