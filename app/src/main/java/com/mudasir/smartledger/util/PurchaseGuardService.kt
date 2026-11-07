@@ -634,6 +634,7 @@ class PurchaseGuardService : Service() {
             view.postDelayed({
                 if (overlayView === view) {
                     recordDetection(currentFg.orEmpty(), "", "浮层状态：attached=${view.isAttachedToWindow}, shown=${view.isShown}, windowVisibility=${view.windowVisibility}；不能证明屏幕显示或触控拦截")
+                    AccessibilityCaptureService.recordWindowLayers()
                 }
             }, 500L)
             val autoRemove = Runnable {

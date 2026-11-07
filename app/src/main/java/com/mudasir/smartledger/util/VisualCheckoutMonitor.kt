@@ -68,13 +68,24 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         if (!preserveHandoff) VisualPaymentHandoff.clear()
     }
 
-    fun inspect(pkg: String) {
+    /** A Taobao order-list dialog can appear and disappear between the regular OCR polls. */
+    fun taobaoDialogOpened(pkg: String) {
+        if (pkg != VisualGuardTargets.TAOBAO || pkg != sourcePackage || checkoutSeenAt == 0L) return
+        val ticket = generation
+        PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：订单弹窗触发快速检查")
+        listOf(350L, 1000L, 1650L).forEach { delay ->
+            handler.postDelayed({ if (ticket == generation) inspect(pkg, fast = true) }, delay)
+        }
+    }
+
+    fun inspect(pkg: String, fast: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
         val prefs = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-        if (pkg != sourcePackage || !prefs.getBoolean("guard_enabled", false) ||
+        if (pkg != sourcePackage || service.rootInActiveWindow?.packageName?.toString() != pkg ||
+            !prefs.getBoolean("guard_enabled", false) ||
             !VisualGuardTargets.sourceAllowed(pkg, prefs.getBoolean("guard_visual_order_pages_enabled", false),
                 prefs.getBoolean("guard_visual_multi_app_enabled", false)) || now - checkoutSeenAt !in 0..60_000L ||
-            busy || now - lastAttempt < 2_500L) return
+            busy || now - lastAttempt < (if (fast) 650L else 2_500L)) return
         busy = true
         lastAttempt = now
         val capturedGeneration = generation

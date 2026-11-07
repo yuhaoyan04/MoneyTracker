@@ -118,6 +118,13 @@ object GuardDiagnosticLog {
         enqueue(kind, "self", "", emptyMap())
     }
 
+    /** Coarse window metadata only: never record node text or unlisted app identities. */
+    @Synchronized fun windowLayers(windows: List<String>) {
+        if (!isRecording()) return
+        val safe = windows.take(20).filter { it.matches(Regex("(?:self|payment|system|other|unknown):[0-9-]+:[0-9-]+:[01]:[01]")) }
+        enqueue("OVERLAY_WINDOW_LAYERS", "self", "", mapOf("windows" to safe.joinToString("|")))
+    }
+
     @Synchronized fun settingChanged(field: String, value: String) {
         if (!isRecording()) return
         val allowed = when (field) {

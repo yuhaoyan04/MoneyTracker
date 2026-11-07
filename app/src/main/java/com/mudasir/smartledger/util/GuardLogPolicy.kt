@@ -47,6 +47,7 @@ object GuardLogPolicy {
         message.startsWith("支付宝入口：已匹配付款窗口") -> "ALIPAY_ENTRY_WINDOW_ACCEPTED"
         message.startsWith("支付宝入口：没有有效付款操作") -> "ALIPAY_ENTRY_WINDOW_REJECTED"
         message.startsWith("屏幕识别：识别到超门槛付款候选") -> "OCR_QUALIFIED"
+        message.startsWith("屏幕识别：订单弹窗触发快速检查") -> "OCR_DIALOG_FAST_CHECK"
         message.startsWith("屏幕识别：金额未超过门槛") -> "OCR_BELOW_THRESHOLD"
         message.startsWith("屏幕识别：没有可靠付款金额") -> "OCR_NO_CANDIDATE"
         message.startsWith("屏幕识别：已交接微信付款页") -> "OCR_WECHAT_HANDOFF"

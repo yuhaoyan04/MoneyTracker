@@ -63,6 +63,24 @@ class AccessibilityCaptureService : AccessibilityService() {
         fun overlayWindowManager(): android.view.WindowManager? =
             connectedInstance?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
         fun activeRootPackage(): String? = connectedInstance?.rootInActiveWindow?.packageName?.toString()
+        fun recordWindowLayers() {
+            val svc = connectedInstance ?: return
+            if (!GuardDiagnosticLog.isRecording()) return
+            runCatching {
+                val windows = svc.windows.take(20).map { window ->
+                    val pkg = runCatching { window.root?.packageName?.toString() }.getOrNull()
+                    val kind = when {
+                        pkg == null -> "unknown"
+                        pkg == svc.packageName -> "self"
+                        pkg == "com.android.systemui" -> "system"
+                        CheckoutPageParser.isSupported(pkg) -> "payment"
+                        else -> "other"
+                    }
+                    "$kind:${window.type}:${window.layer}:${if (window.isActive) 1 else 0}:${if (window.isFocused) 1 else 0}"
+                }
+                GuardDiagnosticLog.windowLayers(windows)
+            }.onFailure { GuardDiagnosticLog.failure(it) }
+        }
         fun onShoppingActivityResumed(pkg: String, cls: String) {
             connectedInstance?.let { service -> service.handler.post {
                 if (service.rootInActiveWindow?.packageName?.toString() == pkg) {
@@ -168,8 +186,12 @@ class AccessibilityCaptureService : AccessibilityService() {
             if (VisualGuardTargets.isJdVerification(pkg, cls)) visualMonitor?.pauseForVerification(pkg)
             else if (VisualGuardTargets.sourceActivity(pkg, cls)) visualMonitor?.checkoutWindow(pkg, cls)
             else if (pkg in VisualGuardTargets.shopping && cls.endsWith("Activity")) visualMonitor?.leaveCheckout(VisualGuardTargets.isSourcePaymentTransition(cls))
+            if (pkg == VisualGuardTargets.TAOBAO && cls == "android.app.Dialog") visualMonitor?.taobaoDialogOpened(pkg)
             VisualPaymentHandoff.observe(pkg, cls)?.let { PurchaseGuardService.onVisualPaymentHandoff(applicationContext, pkg, it) }
-            if (CheckoutPageParser.isSupported(pkg)) {
+            // Also observe leaving a supported payment app: a launcher is not in the
+            // payment allowlist, but an existing prompt must not follow the user there.
+            if (pkg.isNotBlank() && (CheckoutPageParser.isSupported(pkg) ||
+                    rootInActiveWindow?.packageName?.toString() == pkg)) {
                 PurchaseGuardService.onObservedForeground(pkg)
             }
             if (CheckoutPageParser.isSupported(pkg)) {
