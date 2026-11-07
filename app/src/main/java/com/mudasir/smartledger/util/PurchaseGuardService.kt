@@ -639,7 +639,7 @@ class PurchaseGuardService : Service() {
                     tvCountdown.text = "🧘"
                     btnContinue.isEnabled = true
                     btnContinue.alpha = 1f
-                    btnContinue.text = "我已三思，继续操作"
+                    btnContinue.text = if (orderButtonPrompt) "我已三思，返回后再次点击付款" else "我已三思，继续操作"
                     recordDetection(pkg, "", "冷静计时结束")
                 }
             }
