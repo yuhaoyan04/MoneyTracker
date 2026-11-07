@@ -65,6 +65,9 @@ class AccessibilityCaptureService : AccessibilityService() {
         fun overlayWindowManager(): android.view.WindowManager? =
             connectedInstance?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
         fun activeRootPackage(): String? = connectedInstance?.rootInActiveWindow?.packageName?.toString()
+        fun approveOrderButton(amount: Double) { connectedInstance?.orderShield?.approved(amount) }
+        fun cancelOrderButton() { connectedInstance?.orderShield?.cancelPending() }
+        fun clearOrderButtonShield() { connectedInstance?.orderShield?.reset() }
         fun recordWindowLayers() {
             val svc = connectedInstance ?: return
             if (!GuardDiagnosticLog.isRecording()) return
@@ -126,6 +129,7 @@ class AccessibilityCaptureService : AccessibilityService() {
     private var lastLoggedContentAt = 0L
     private var orderButtons: List<OrderPayCandidate> = emptyList()
     private var orderButtonsAt = 0L
+    private val orderShield by lazy { OrderButtonShield(this, ::onOrderShieldTap) }
     private val orderRefresh = object : Runnable {
         override fun run() {
             if (rootInActiveWindow?.packageName?.toString() == VisualGuardTargets.TAOBAO) inspectSafely()
@@ -150,6 +154,12 @@ class AccessibilityCaptureService : AccessibilityService() {
         val e = event ?: return
         val now = android.os.SystemClock.uptimeMillis()
         val eventPackage = e.packageName?.toString().orEmpty()
+        if (e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED && eventPackage == VisualGuardTargets.TAOBAO) orderShield.reset()
+        else if (e.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && eventPackage == VisualGuardTargets.TAOBAO) orderShield.removeViews()
+        else if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            ((eventPackage == VisualGuardTargets.TAOBAO && e.className?.toString() == "android.app.Dialog") ||
+             (eventPackage.isNotBlank() && eventPackage != VisualGuardTargets.TAOBAO &&
+                 rootInActiveWindow?.packageName?.toString() == eventPackage))) orderShield.reset()
         if (eventPackage == VisualGuardTargets.TAOBAO && e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
             val bounds = android.graphics.Rect()
@@ -316,6 +326,7 @@ class AccessibilityCaptureService : AccessibilityService() {
                 orderButtons = OrderListPaymentParser.candidates(nodes, metrics.widthPixels, metrics.heightPixels)
                 orderButtonsAt = SystemClock.uptimeMillis()
                 if (wasEmpty && orderButtons.isNotEmpty()) PurchaseGuardService.recordDetection(pkg, "", "订单列表：付款按钮快照已就绪")
+                orderShield.update(orderButtons, thresholdForShield(prefs), shieldEnabled(prefs))
                 handler.removeCallbacks(orderRefresh)
                 if (orderButtons.isNotEmpty()) handler.postDelayed(orderRefresh, 700L)
             } else if (pkg == VisualGuardTargets.TAOBAO) {
@@ -325,6 +336,7 @@ class AccessibilityCaptureService : AccessibilityService() {
                 if (nodes.size > 1 || SystemClock.uptimeMillis() - orderButtonsAt !in 0..1_200L) {
                     orderButtons = emptyList(); orderButtonsAt = 0L
                 }
+                orderShield.removeViews()
                 handler.removeCallbacks(orderRefresh)
             }
             val threshold = com.mudasir.smartledger.capture.GuardThreshold.read(prefs)
@@ -408,6 +420,40 @@ class AccessibilityCaptureService : AccessibilityService() {
         }
     }
 
+    private fun thresholdForShield(prefs: android.content.SharedPreferences) =
+        com.mudasir.smartledger.capture.GuardThreshold.read(prefs)
+
+    private fun shieldEnabled(prefs: android.content.SharedPreferences): Boolean =
+        prefs.getBoolean("guard_enabled", false) && prefs.getBoolean("guard_visual_order_pages_enabled", false) &&
+            prefs.getBoolean("guard_order_button_shield_enabled", false) &&
+            prefs.getString("guard_mode", "overlay") == "overlay" && PurchaseGuardService.isRunning &&
+            android.provider.Settings.canDrawOverlays(this)
+
+    private fun onOrderShieldTap(candidate: OrderPayCandidate) {
+        val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        val root = rootInActiveWindow
+        if (!shieldEnabled(prefs) || root?.packageName?.toString() != VisualGuardTargets.TAOBAO) {
+            orderShield.reset()
+            android.widget.Toast.makeText(this, "页面或提醒状态已变化，请重新点击", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val nodes = mutableListOf<CheckoutNode>()
+        collectCheckoutNodes(root, nodes, 0, -1, intArrayOf(0))
+        val metrics = resources.displayMetrics
+        val current = OrderListPaymentParser.candidates(nodes, metrics.widthPixels, metrics.heightPixels)
+        if (candidate !in current || !CheckoutPageParser.exceedsThreshold(candidate.amount.toDouble(), thresholdForShield(prefs))) {
+            orderShield.reset()
+            android.widget.Toast.makeText(this, "订单页面已变化，请重新点击付款", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        orderShield.suspendFor(candidate)
+        PurchaseGuardService.recordDetection(VisualGuardTargets.TAOBAO, "", "订单按钮保护：用户点击高额按钮")
+        if (!PurchaseGuardService.onOrderButtonTap(applicationContext, candidate.amount.toDouble())) {
+            orderShield.cancelPending()
+            android.widget.Toast.makeText(this, "提醒暂不可用，请检查守护服务", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     /** 守护服务未运行时的兜底：直接发「想好再买」冷静通知（无浮层）。 */
     private suspend fun fallbackThinkNotification(pkg: String, amount: Double) {
         val dao = AppDatabase.getDatabase(applicationContext).transactionDao()
@@ -473,10 +519,11 @@ class AccessibilityCaptureService : AccessibilityService() {
         }
     }
 
-    override fun onInterrupt() { GuardDiagnosticLog.lifecycle("A11Y_INTERRUPTED") }
+    override fun onInterrupt() { orderShield.reset(); GuardDiagnosticLog.lifecycle("A11Y_INTERRUPTED") }
 
     override fun onUnbind(intent: Intent?): Boolean {
         GuardDiagnosticLog.lifecycle("A11Y_UNBOUND")
+        orderShield.reset()
         isRunning = false
         connectedInstance = null
         return super.onUnbind(intent)
@@ -486,6 +533,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         GuardDiagnosticLog.lifecycle("A11Y_DESTROYED")
         isRunning = false
         connectedInstance = null
+        orderShield.reset()
         visualMonitor?.close()
         alipayVisualMonitor?.close()
         handler.removeCallbacksAndMessages(null)

@@ -174,6 +174,19 @@ class PurchaseGuardService : Service() {
             } }
         }
 
+        fun isOrderButtonPromptActive(): Boolean = instance?.let { it.orderButtonPrompt && it.requestPackage == "com.taobao.taobao" } == true
+
+        fun onOrderButtonTap(context: Context, amount: Double): Boolean {
+            val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            val svc = instance ?: return false
+            if (!prefs.getBoolean("guard_enabled", false) || !prefs.getBoolean("guard_order_button_shield_enabled", false) ||
+                !prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getString("guard_mode", "overlay") != "overlay" ||
+                !Settings.canDrawOverlays(context) || AccessibilityCaptureService.activeRootPackage() != "com.taobao.taobao" ||
+                !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs)) || svc.overlayView != null) return false
+            svc.handler.post { svc.nudgeFromDetection("com.taobao.taobao", amount, visualHandoff = true, orderButton = true) }
+            return true
+        }
+
         /**
          * 无障碍通道检测到支付页 → 触发想好再买浮层/通知（遵守 2 分钟授权冷却）。
          * v2.36.0 返回 true=守护服务在线已接手；false=服务未运行，调用方可做兜底提醒。
@@ -251,6 +264,7 @@ class PurchaseGuardService : Service() {
     private var requestStartedAt = 0L
     private var requestAmount = Double.NaN
     private var visualHandoffRequest = false
+    private var orderButtonPrompt = false
     private var overlayWindowManager: WindowManager? = null
     private var overlayPackage: String? = null
     private var overlayTick: Runnable? = null
@@ -446,7 +460,7 @@ class PurchaseGuardService : Service() {
     }
 
     /** 无障碍通道触发的提醒入口（与 usage 检测共用冷却与浮层逻辑）。 */
-    fun nudgeFromDetection(pkg: String, amount: Double, visualHandoff: Boolean = false) {
+    fun nudgeFromDetection(pkg: String, amount: Double, visualHandoff: Boolean = false, orderButton: Boolean = false) {
         val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("guard_enabled", false)) {
             recordDetection(pkg, "", "提醒未开启")
@@ -457,7 +471,7 @@ class PurchaseGuardService : Service() {
             return
         }
         val now = System.currentTimeMillis()
-        if (GuardPromptPolicy.canUseTaobaoHandoff(pkg, prefs.getBoolean("guard_handoff_pending", false),
+        if (!orderButton && GuardPromptPolicy.canUseTaobaoHandoff(pkg, prefs.getBoolean("guard_handoff_pending", false),
                 prefs.getLong("guard_handoff_at", 0L), now, APPROVAL_COOLDOWN_MS) &&
             kotlin.math.abs(prefs.getFloat("guard_handoff_amount", -1f).toDouble() - amount) < 0.005) {
             prefs.edit().putBoolean("guard_handoff_pending", false)
@@ -466,13 +480,13 @@ class PurchaseGuardService : Service() {
             recordDetection(pkg, "", "已沿用刚确认的淘宝付款提醒")
             return
         }
-        if (prefs.getString("guard_last_pkg", "") == pkg &&
+        if (!orderButton && prefs.getString("guard_last_pkg", "") == pkg &&
             kotlin.math.abs(prefs.getFloat("guard_last_amount", -1f).toDouble() - amount) < 0.005 &&
             now - prefs.getLong("guard_last_at", 0L) < APPROVAL_COOLDOWN_MS) {
             recordDetection(pkg, "", "近期已放行，处于冷却期")
             return
         }
-        if (now - lastNudgeAt < 5_000L || overlayView != null) {
+        if ((!orderButton && now - lastNudgeAt < 5_000L) || overlayView != null) {
             recordDetection(pkg, "", "短时去重或浮层已存在")
             return
         }
@@ -481,6 +495,7 @@ class PurchaseGuardService : Service() {
         requestPackage = pkg
         requestAmount = amount
         visualHandoffRequest = visualHandoff
+        orderButtonPrompt = orderButton
         requestStartedAt = now
         requestGeneration++
         nudgeInternal(pkg, requestGeneration, amount)
@@ -496,6 +511,7 @@ class PurchaseGuardService : Service() {
             removeOverlay()
         } else {
             lastNudgeAt = 0L // No prompt was shown; permit the immediately following payment window.
+            if (orderButtonPrompt) removeOverlay()
             recordDetection(origin, "", "离开原应用，取消待显示提醒")
         }
     }
@@ -529,6 +545,13 @@ class PurchaseGuardService : Service() {
                     if (!prefs.getBoolean("guard_enabled", false) ||
                         !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) {
                         recordDetection(pkg, "", "提醒开关或门槛已变化，取消提醒")
+                        if (orderButtonPrompt) removeOverlay()
+                        return@withContext
+                    }
+                    if (orderButtonPrompt && (!prefs.getBoolean("guard_order_button_shield_enabled", false) ||
+                            AccessibilityCaptureService.activeRootPackage() != "com.taobao.taobao")) {
+                        recordDetection(pkg, "", "页面已切换，取消过期提醒")
+                        removeOverlay()
                         return@withContext
                     }
                     if (mode == "overlay" && Settings.canDrawOverlays(this@PurchaseGuardService)) {
@@ -536,6 +559,7 @@ class PurchaseGuardService : Service() {
                     } else {
                         recordDetection(currentFg.orEmpty(), "", if (mode == "overlay") "无悬浮窗权限，尝试通知" else "通知模式")
                         PurchaseGuardNotifier.notifyThink(applicationContext, spent, pct)
+                        if (orderButtonPrompt) removeOverlay()
                     }
                 }
             }.onFailure {
@@ -564,11 +588,14 @@ class PurchaseGuardService : Service() {
     private fun showCooldownOverlay(spent: Double, budgetPct: Int?, pkg: String, amount: Double) {
         if (overlayView != null) return
         val a11yWm = if (visualHandoffRequest) AccessibilityCaptureService.overlayWindowManager() else null
-        val wm = a11yWm ?: getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        val wm = a11yWm ?: getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: run {
+            if (orderButtonPrompt) removeOverlay()
+            return
+        }
         val view = CooldownOverlayFactory.create(this)
 
         val spendText = buildString {
-            append("本次待付 ¥${"%.2f".format(amount)} · 本月已支出 ¥${"%.0f".format(spent)}")
+            append("${if (orderButtonPrompt) "订单页应付" else "本次待付"} ¥${"%.2f".format(amount)} · 本月已支出 ¥${"%.0f".format(spent)}")
             budgetPct?.let { append(" · 预算已用 $it%") }
         }
         view.findViewById<TextView>(R.id.tvCooldownSpend).text = spendText
@@ -601,6 +628,7 @@ class PurchaseGuardService : Service() {
         }
         btnContinue.setOnClickListener {
             recordDetection(pkg, "", "用户点击继续")
+            if (orderButtonPrompt) AccessibilityCaptureService.approveOrderButton(amount)
             getSharedPreferences("guard_prefs", Context.MODE_PRIVATE).edit()
                 .putString("guard_last_pkg", pkg)
                 .putLong("guard_last_at", System.currentTimeMillis())
@@ -659,6 +687,7 @@ class PurchaseGuardService : Service() {
             handler.postDelayed(autoRemove, 60_000)
         }.onFailure {
             overlayView = null
+            if (orderButtonPrompt) removeOverlay()
             recordFailure("添加悬浮窗", it)
             recordDetection(currentFg.orEmpty(), "", "悬浮窗创建失败：${it.javaClass.simpleName}，尝试通知")
             val current = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
@@ -670,6 +699,7 @@ class PurchaseGuardService : Service() {
     }
 
     private fun removeOverlay() {
+        if (orderButtonPrompt) AccessibilityCaptureService.cancelOrderButton()
         overlayTick?.let { handler.removeCallbacks(it) }
         overlayTick = null
         overlayAutoRemove?.let { handler.removeCallbacks(it) }
@@ -682,6 +712,7 @@ class PurchaseGuardService : Service() {
         overlayView = null
         overlayWindowManager = null
         visualHandoffRequest = false
+        orderButtonPrompt = false
         overlayPackage = null
         requestPackage = null
     }

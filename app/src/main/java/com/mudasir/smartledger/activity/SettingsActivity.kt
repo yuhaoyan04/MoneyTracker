@@ -161,6 +161,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnGuardScope).setOnClickListener { editGuardScope() }
         findViewById<View>(R.id.btnGuardDebug).setOnClickListener { showGuardDebug() }
         findViewById<View>(R.id.btnVisualGuard).setOnClickListener { editVisualGuard() }
+        findViewById<View>(R.id.btnOrderButtonShield).setOnClickListener { editOrderButtonShield() }
         findViewById<View>(R.id.btnVisualTaobaoSku).setOnClickListener { editVisualTaobaoSku() }
         findViewById<View>(R.id.btnVisualMulti).setOnClickListener { editVisualMulti() }
         findViewById<View>(R.id.btnVisualAlipay).setOnClickListener { editVisualAlipay() }
@@ -348,6 +349,18 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this, if (enabled) "屏幕识别已关闭" else "屏幕识别已开启；请确认无障碍服务仍然启用", Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("取消", null).show()
+    }
+
+    private fun editOrderButtonShield() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val enabled = prefs.getBoolean("guard_order_button_shield_enabled", false)
+        AlertDialog.Builder(this).setTitle("淘宝高额按钮提醒（测试）")
+            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。还需开启守护服务、淘宝屏幕识别和全屏提醒。仅在订单列表中将付款按钮与唯一应付金额明确对应，且金额超过门槛时，按钮上显示小型提醒区域。第一次点击显示冷静页；选择继续后，需要再次点击原付款按钮，应用不会替你付款。小额和金额不明确的订单不会覆盖。支付方式优惠可能使最终金额变化；页面结构或窗口限制可能导致漏检、误判或按钮需要重新点击。")
+            .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
+                prefs.edit().putBoolean("guard_order_button_shield_enabled", !enabled).apply()
+                if (enabled) com.mudasir.smartledger.util.AccessibilityCaptureService.clearOrderButtonShield()
+                Toast.makeText(this, if (enabled) "淘宝高额按钮提醒已关闭" else "已开启；高额订单需在提醒后再点一次付款", Toast.LENGTH_LONG).show()
+            }.setNegativeButton("取消", null).show()
     }
 
     private fun editVisualMulti() {
