@@ -126,6 +126,18 @@ class PurchaseGuardService : Service() {
             instance?.let { svc -> svc.handler.post { svc.observeForeground(pkg, System.currentTimeMillis()) } }
         }
 
+        /** Returning to WeChat's home screen ends an in-flight visual payment prompt. */
+        fun onWechatHome() {
+            instance?.let { svc -> svc.handler.post {
+                svc.visualDeliveryGeneration++
+                if (svc.visualHandoffRequest && (svc.overlayPackage == "com.tencent.mm" || svc.requestPackage == "com.tencent.mm")) {
+                    svc.requestGeneration++
+                    svc.removeOverlay()
+                    recordDetection("com.tencent.mm", "", "离开原应用，关闭过期付款提醒")
+                }
+            } }
+        }
+
         /** Settings must remain usable even if the source payment app was covered by an overlay. */
         fun dismissForSettings() {
             instance?.let { svc -> svc.handler.post {

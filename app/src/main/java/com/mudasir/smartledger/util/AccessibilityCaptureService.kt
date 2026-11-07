@@ -171,6 +171,9 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = e.packageName?.toString().orEmpty()
             val cls = e.className?.toString().orEmpty()
+            visualMonitor?.observedWindow(pkg, cls, e.eventTime, rootInActiveWindow?.packageName?.toString() == pkg)
+            if (pkg == VisualGuardTargets.WECHAT && cls.endsWith("LauncherUI") &&
+                rootInActiveWindow?.packageName?.toString() == pkg) PurchaseGuardService.onWechatHome()
             if (pkg != AlipayVisualPolicy.JD && pkg != AlipayVisualPolicy.ALIPAY ||
                 (pkg == AlipayVisualPolicy.ALIPAY && cls.endsWith("Activity") && !AlipayVisualPolicy.isAlipayCashier(pkg, cls))) {
                 alipayVisualMonitor?.cancel()

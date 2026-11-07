@@ -17,6 +17,7 @@ import com.mudasir.smartledger.capture.VisualText
 import com.mudasir.smartledger.capture.VisualGuardTargets
 import com.mudasir.smartledger.capture.VisualHandoffState
 import com.mudasir.smartledger.capture.PendingOcrClear
+import com.mudasir.smartledger.capture.DeferredTaobaoCapture
 
 /** Experimental opt-in OCR for allowed shopping apps; screen data stays in memory. */
 @RequiresApi(Build.VERSION_CODES.R)
@@ -31,6 +32,8 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private var verificationSource = ""
     private var generation = 0L
     private val pendingOcrClear = PendingOcrClear()
+    private val deferredCapture = DeferredTaobaoCapture()
+    private var dialogTicket = 0L
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val refresh = object : Runnable {
         override fun run() {
@@ -49,6 +52,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
             return
         }
         generation++
+        deferredCapture.invalidate()
         if (verificationSource != pkg || !VisualGuardTargets.isJdOrderAfterVerification(pkg, cls)) VisualPaymentHandoff.clear()
         verificationSource = ""
         sourcePackage = pkg
@@ -71,6 +75,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     }
     fun pauseForVerification(pkg: String) {
         generation++
+        deferredCapture.invalidate()
         verificationSource = if (pkg == sourcePackage) pkg else ""
         checkoutSeenAt = 0L
         handler.removeCallbacks(refresh)
@@ -78,6 +83,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     }
     fun leaveCheckout(preserveHandoff: Boolean = false) {
         generation++
+        if (!preserveHandoff) deferredCapture.invalidate()
         checkoutSeenAt = 0L
         sourcePackage = ""
         sourceClass = ""
@@ -91,10 +97,15 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     fun taobaoDialogOpened(pkg: String) {
         if (pkg != VisualGuardTargets.TAOBAO || pkg != sourcePackage || checkoutSeenAt == 0L) return
         val ticket = generation
+        dialogTicket = deferredCapture.open(SystemClock.uptimeMillis())
         PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：订单弹窗触发快速检查")
         listOf(200L, 600L, 1000L).forEach { delay ->
             handler.postDelayed({ if (ticket == generation) inspect(pkg, fast = true) }, delay)
         }
+    }
+
+    fun observedWindow(pkg: String, cls: String, at: Long, foreground: Boolean) {
+        deferredCapture.window(pkg, cls, at, foreground)
     }
 
     fun inspect(pkg: String, fast: Boolean = false) {
@@ -116,6 +127,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         lastAttempt = now
         if (fast) PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：弹窗截图已请求")
         val capturedGeneration = generation
+        val capturedDialogTicket = dialogTicket
         try {
             service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor, object : AccessibilityService.TakeScreenshotCallback {
                 override fun onFailure(errorCode: Int) {
@@ -127,7 +139,16 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                     }
                 }
                 override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                    val captureTime = screenshot.timestamp
                     val hardware = screenshot.hardwareBuffer
+                    val current = service.rootInActiveWindow?.packageName?.toString()
+                    if ((generation != capturedGeneration || current != pkg) &&
+                        (!fast || pkg != VisualGuardTargets.TAOBAO || deferredCapture.accept(
+                            capturedDialogTicket, captureTime, SystemClock.uptimeMillis(), current, allowSource = true) == null)) {
+                        hardware.close(); busy = false
+                        if (fast) PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：弹窗截图不属于有效付款流程")
+                        return
+                    }
                     val bitmap = try {
                         Bitmap.wrapHardwareBuffer(hardware, screenshot.colorSpace)?.copy(Bitmap.Config.ARGB_8888, false)
                     } catch (error: Exception) {
@@ -141,7 +162,9 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                             .addOnSuccessListener(service.mainExecutor) { result ->
                                 val current = service.rootInActiveWindow?.packageName?.toString()
                                 val active = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-                                if (generation != capturedGeneration || current != pkg || !active.getBoolean("guard_enabled", false) ||
+                                val deferred = if (fast && pkg == VisualGuardTargets.TAOBAO)
+                                    deferredCapture.accept(capturedDialogTicket, captureTime, SystemClock.uptimeMillis(), current) else null
+                                if (((generation != capturedGeneration || current != pkg) && deferred == null) || !active.getBoolean("guard_enabled", false) ||
                                     (skuMode && !active.getBoolean("guard_visual_taobao_sku_enabled", false)) ||
                                     !VisualGuardTargets.sourceAllowed(pkg, active.getBoolean("guard_visual_order_pages_enabled", false),
                                         active.getBoolean("guard_visual_multi_app_enabled", false)) || SystemClock.elapsedRealtime() - now > 8_000L) {
@@ -154,6 +177,22 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 }
                                 val value = if (skuMode) VisualCheckoutParser.amountForTaobaoSku(lines, width, height)
                                     else VisualCheckoutParser.amount(lines, width, height)
+                                if (deferred != null) {
+                                    if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
+                                        VisualPaymentHandoff.remember(pkg, value.toDouble())
+                                        if (deferred.entry) VisualPaymentHandoff.observe(VisualGuardTargets.WECHAT, "OrderHandlerUI")
+                                        if (deferred.cashier) VisualPaymentHandoff.observe(VisualGuardTargets.WECHAT, "WxaLiteAppTransparentLiteUI")?.let {
+                                            PurchaseGuardService.onVisualPaymentHandoff(service.applicationContext, VisualGuardTargets.WECHAT, it)
+                                        }
+                                        PurchaseGuardService.recordDetection(pkg, "", when {
+                                            deferred.cashier -> "屏幕识别：延迟结果补接已观察收银台"
+                                            deferred.entry -> "屏幕识别：延迟结果等待微信收银台"
+                                            else -> "屏幕识别：延迟结果等待微信入口"
+                                        })
+                                        PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：延迟结果已关联付款流程")
+                                    } else PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：延迟结果没有超门槛金额")
+                                    return@addOnSuccessListener
+                                }
                                 if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
                                     pendingOcrClear.cancel()
                                     VisualPaymentHandoff.remember(pkg, value.toDouble())
@@ -199,7 +238,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         }
     }
 
-    fun close() { handler.removeCallbacks(refresh); if (recognizerInitialized()) recognizer.close() }
+    fun close() { deferredCapture.invalidate(); handler.removeCallbacks(refresh); if (recognizerInitialized()) recognizer.close() }
     private fun recognizerInitialized() = lastAttempt != 0L
 }
 
