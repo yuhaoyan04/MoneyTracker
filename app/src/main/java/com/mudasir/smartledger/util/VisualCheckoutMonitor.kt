@@ -92,7 +92,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         if (pkg != VisualGuardTargets.TAOBAO || pkg != sourcePackage || checkoutSeenAt == 0L) return
         val ticket = generation
         PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：订单弹窗触发快速检查")
-        listOf(350L, 1000L, 1650L).forEach { delay ->
+        listOf(200L, 600L, 1000L).forEach { delay ->
             handler.postDelayed({ if (ticket == generation) inspect(pkg, fast = true) }, delay)
         }
     }
@@ -101,6 +101,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         val now = SystemClock.elapsedRealtime()
         val prefs = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         val skuMode = VisualGuardTargets.isTaobaoSkuDialog(sourcePackage, sourceClass)
+        if (VisualGuardTargets.skipBackgroundOrderListOcr(pkg, sourceClass, fast)) return
         if (pkg != sourcePackage || service.rootInActiveWindow?.packageName?.toString() != pkg ||
             !prefs.getBoolean("guard_enabled", false) ||
             (skuMode && !prefs.getBoolean("guard_visual_taobao_sku_enabled", false)) ||

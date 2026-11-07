@@ -6,6 +6,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VisualGuardTargetsTest {
+    @Test fun `order list does not occupy OCR before its payment dialog`() {
+        val tb = "com.taobao.taobao"
+        assertTrue(VisualGuardTargets.skipBackgroundOrderListOcr(tb, "taobao_order_list_nodes", false))
+        assertTrue(VisualGuardTargets.skipBackgroundOrderListOcr(tb, "com.taobao.TBOrderListActivity", false))
+        assertFalse(VisualGuardTargets.skipBackgroundOrderListOcr(tb, "taobao_order_list_nodes", true))
+        assertFalse(VisualGuardTargets.skipBackgroundOrderListOcr(tb, "UltronTradeHybridActivity", false))
+        assertFalse(VisualGuardTargets.skipBackgroundOrderListOcr("com.other", "taobao_order_list_nodes", false))
+    }
     @Test fun `sku experiment is limited to the observed taobao dialog`() {
         val cls = "com.taobao.android.sku.widget.SkuDialogFragment\$1"
         assertTrue(VisualGuardTargets.isTaobaoSkuDialog("com.taobao.taobao", cls))

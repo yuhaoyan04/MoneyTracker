@@ -13,6 +13,10 @@ object VisualGuardTargets {
     fun isTaobaoSkuDialog(pkg: String, cls: String): Boolean = pkg == TAOBAO &&
         cls.startsWith("com.taobao.android.sku.widget.SkuDialogFragment")
 
+    /** An order list alone cannot supply a single payable amount; reserve OCR for its dialog. */
+    fun skipBackgroundOrderListOcr(pkg: String, cls: String, fast: Boolean): Boolean =
+        !fast && pkg == TAOBAO && (cls == "taobao_order_list_nodes" || cls.endsWith("TBOrderListActivity"))
+
     fun sourceActivity(pkg: String, cls: String): Boolean {
         if (pkg !in shopping || cls.isBlank()) return false
         if (pkg == TAOBAO) return cls.endsWith("UltronTradeHybridActivity") || cls.endsWith("TBOrderListActivity")
