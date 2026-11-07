@@ -221,6 +221,10 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = e.packageName?.toString().orEmpty()
             val cls = e.className?.toString().orEmpty()
+            if (pkg == VisualGuardTargets.TAOBAO && cls.endsWith("Activity") && !cls.endsWith("TBOrderListActivity")) {
+                orderShield.reset()
+                PurchaseGuardService.onOrderListLeft()
+            }
             visualMonitor?.observedWindow(pkg, cls, e.eventTime, rootInActiveWindow?.packageName?.toString() == pkg)
             if (pkg == VisualGuardTargets.WECHAT && cls.endsWith("LauncherUI") &&
                 rootInActiveWindow?.packageName?.toString() == pkg) PurchaseGuardService.onWechatHome()

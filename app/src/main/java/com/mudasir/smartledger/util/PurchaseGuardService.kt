@@ -176,6 +176,16 @@ class PurchaseGuardService : Service() {
 
         fun isOrderButtonPromptActive(): Boolean = instance?.let { it.orderButtonPrompt && it.requestPackage == "com.taobao.taobao" } == true
 
+        fun onOrderListLeft() {
+            instance?.let { svc -> svc.handler.post {
+                if (svc.orderButtonPrompt) {
+                    svc.requestGeneration++
+                    svc.removeOverlay()
+                    recordDetection("com.taobao.taobao", "", "页面已切换，取消过期提醒")
+                }
+            } }
+        }
+
         fun onOrderButtonTap(context: Context, amount: Double): Boolean {
             val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
             val svc = instance ?: return false
