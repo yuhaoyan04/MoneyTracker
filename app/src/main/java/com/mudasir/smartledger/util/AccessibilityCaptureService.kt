@@ -65,8 +65,14 @@ class AccessibilityCaptureService : AccessibilityService() {
         fun overlayWindowManager(): android.view.WindowManager? =
             connectedInstance?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
         fun activeRootPackage(): String? = connectedInstance?.rootInActiveWindow?.packageName?.toString()
-        fun approveOrderButton(amount: Double) { connectedInstance?.orderShield?.approved(amount) }
-        fun cancelOrderButton() { connectedInstance?.orderShield?.cancelPending() }
+        fun approveOrderButton(amount: Double) { connectedInstance?.let { svc ->
+            svc.orderShield.approved(amount)
+            svc.handler.postDelayed({ svc.inspectSafely() }, 250L)
+        } }
+        fun cancelOrderButton() { connectedInstance?.let { svc ->
+            svc.orderShield.cancelPending()
+            svc.handler.postDelayed({ svc.inspectSafely() }, 250L)
+        } }
         fun clearOrderButtonShield() { connectedInstance?.orderShield?.reset() }
         fun recordWindowLayers() {
             val svc = connectedInstance ?: return
@@ -160,6 +166,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         else if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             ((eventPackage == VisualGuardTargets.TAOBAO && e.className?.toString() == "android.app.Dialog") ||
              (eventPackage.isNotBlank() && eventPackage != VisualGuardTargets.TAOBAO &&
+                 (eventPackage != packageName || e.className?.toString()?.endsWith("Activity") == true) &&
                  rootInActiveWindow?.packageName?.toString() == eventPackage))) orderShield.reset()
         if (eventPackage == VisualGuardTargets.TAOBAO && e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
