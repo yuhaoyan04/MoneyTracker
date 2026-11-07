@@ -37,7 +37,7 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
         attempts = 0
         stable = StableAlipayAmount()
         val token = generation
-        handler.postDelayed({ capture(token) }, 600L)
+        handler.postDelayed({ capture(token) }, 400L)
     }
 
     fun cancel() { generation++; handler.removeCallbacksAndMessages(null) }
@@ -54,7 +54,7 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
         service.rootInActiveWindow?.packageName?.toString() == AlipayVisualPolicy.ALIPAY
 
     private fun retry(token: Long) {
-        if (alive(token) && attempts < 4) handler.postDelayed({ capture(token) }, 1500L)
+        if (alive(token) && attempts < 6) handler.postDelayed({ capture(token) }, 900L)
     }
 
     private fun capture(token: Long) {
