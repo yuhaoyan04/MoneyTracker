@@ -60,10 +60,10 @@ class AccessibilityCaptureService : AccessibilityService() {
         fun overlayWindowManager(): android.view.WindowManager? =
             connectedInstance?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
         fun activeRootPackage(): String? = connectedInstance?.rootInActiveWindow?.packageName?.toString()
-        fun onShoppingActivityResumed(pkg: String) {
+        fun onShoppingActivityResumed(pkg: String, cls: String) {
             connectedInstance?.let { service -> service.handler.post {
                 if (service.rootInActiveWindow?.packageName?.toString() == pkg) {
-                    service.visualMonitor?.ensureCheckoutWindow(pkg)
+                    service.visualMonitor?.ensureCheckoutWindow(pkg, cls)
                 }
             } }
         }
@@ -143,7 +143,8 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = e.packageName?.toString().orEmpty()
             val cls = e.className?.toString().orEmpty()
-            if (VisualGuardTargets.sourceActivity(pkg, cls)) visualMonitor?.checkoutWindow(pkg)
+            if (VisualGuardTargets.isJdVerification(pkg, cls)) visualMonitor?.pauseForVerification(pkg)
+            else if (VisualGuardTargets.sourceActivity(pkg, cls)) visualMonitor?.checkoutWindow(pkg, cls)
             else if (pkg in VisualGuardTargets.shopping && cls.endsWith("Activity")) visualMonitor?.leaveCheckout(VisualGuardTargets.isSourcePaymentTransition(cls))
             VisualPaymentHandoff.observe(pkg, cls)?.let { PurchaseGuardService.onVisualPaymentHandoff(applicationContext, pkg, it) }
             if (CheckoutPageParser.isSupported(pkg)) {

@@ -8,6 +8,16 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VisualCheckoutParserTest {
+    @Test fun `jd payment button amount is preferred over add-on prices and zero down payment`() {
+        val pay = line("立即支付¥398.06", 600, 900)
+        assertEquals(BigDecimal("398.06"), parse(pay, line("¥3.99专享价", 100, 700),
+            line("先享后付0元下单", 0, 900), line("￥398.06补贴价", 100, 600)))
+        assertNull(parse(line("立即支付¥398.06", 0, 100), line("¥3.99", 100, 700)))
+        assertNull(parse(pay, line("立即支付¥20.00", 100, 900)))
+        assertNull(parse(line("先享后付0元下单", 0, 900), line("¥3.99专享价", 100, 700)))
+        assertEquals(BigDecimal("398.06"), parse(line("立即支付", 600, 900), line("¥398.06", 710, 900), line("¥3.99", 100, 700)))
+        assertNull(parse(line("立即支付", 100, 900), line("¥3.99", 700, 700)))
+    }
     private fun line(s: String, x: Int = 0, y: Int = 800) = VisualText(s, x, y, x + 100, y + 30)
     private val action = line("继续付款", 700, 850)
     private fun parse(vararg lines: VisualText) = VisualCheckoutParser.amount(lines.toList(), 1000, 1000)

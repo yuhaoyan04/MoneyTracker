@@ -373,7 +373,7 @@ class PurchaseGuardService : Service() {
             if (VisualGuardTargets.sourceActivity(page.pkg, page.cls) &&
                 page.timestamp > lastVisualResumeAt && page.timestamp in (now - 5_000L)..now && page.pkg == latest?.pkg) {
                 lastVisualResumeAt = page.timestamp
-                AccessibilityCaptureService.onShoppingActivityResumed(page.pkg)
+                AccessibilityCaptureService.onShoppingActivityResumed(page.pkg, page.cls)
             }
             if (page.timestamp in (now - 5_000L)..now && page.pkg == latest?.pkg) {
                 VisualPaymentHandoff.observe(page.pkg, page.cls)?.let { onVisualPaymentHandoff(applicationContext, page.pkg, it) }

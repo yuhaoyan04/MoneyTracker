@@ -14,9 +14,15 @@ object VisualGuardTargets {
     fun sourceActivity(pkg: String, cls: String): Boolean {
         if (pkg !in shopping || cls.isBlank()) return false
         if (pkg == TAOBAO) return cls.endsWith("UltronTradeHybridActivity") || cls.endsWith("TBOrderListActivity")
+        if (isJdVerification(pkg, cls)) return false
         if (isSourcePaymentTransition(cls)) return false
         return '.' in cls && !cls.startsWith("android.") && cls.endsWith("Activity")
     }
+
+    fun isJdVerification(pkg: String, cls: String): Boolean =
+        pkg == "com.jingdong.app.mall" && cls.endsWith(".JDRiskHandleActivity")
+    fun isJdOrderAfterVerification(pkg: String, cls: String): Boolean =
+        pkg == "com.jingdong.app.mall" && cls.endsWith(".SettlementFillOrderTaroActivity")
 
     fun isSourcePaymentTransition(cls: String): Boolean =
         listOf("cashdesk", "cashier", "payactivity", "paymentactivity").any(cls.lowercase()::contains)

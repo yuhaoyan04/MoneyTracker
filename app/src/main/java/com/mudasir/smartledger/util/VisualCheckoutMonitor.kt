@@ -25,6 +25,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private var lastAttempt = 0L
     private var checkoutSeenAt = 0L
     private var sourcePackage = ""
+    private var verificationSource = ""
     private var generation = 0L
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val refresh = object : Runnable {
@@ -37,21 +38,30 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         }
     }
 
-    fun checkoutWindow(pkg: String) {
+    fun checkoutWindow(pkg: String, cls: String = "") {
         generation++
-        VisualPaymentHandoff.clear()
+        if (verificationSource != pkg || !VisualGuardTargets.isJdOrderAfterVerification(pkg, cls)) VisualPaymentHandoff.clear()
+        verificationSource = ""
         sourcePackage = pkg
         checkoutSeenAt = SystemClock.elapsedRealtime()
         handler.removeCallbacks(refresh)
         handler.postDelayed(refresh, 1_000L)
     }
-    fun ensureCheckoutWindow(pkg: String) {
-        if (pkg != sourcePackage || checkoutSeenAt == 0L || SystemClock.elapsedRealtime() - checkoutSeenAt > 4_000L) checkoutWindow(pkg)
+    fun ensureCheckoutWindow(pkg: String, cls: String) {
+        if (pkg != sourcePackage || checkoutSeenAt == 0L || SystemClock.elapsedRealtime() - checkoutSeenAt > 4_000L) checkoutWindow(pkg, cls)
+    }
+    fun pauseForVerification(pkg: String) {
+        generation++
+        verificationSource = if (pkg == sourcePackage) pkg else ""
+        checkoutSeenAt = 0L
+        handler.removeCallbacks(refresh)
+        if (verificationSource.isEmpty()) VisualPaymentHandoff.clear()
     }
     fun leaveCheckout(preserveHandoff: Boolean = false) {
         generation++
         checkoutSeenAt = 0L
         sourcePackage = ""
+        verificationSource = ""
         handler.removeCallbacks(refresh)
         if (!preserveHandoff) VisualPaymentHandoff.clear()
     }
@@ -70,8 +80,10 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
             service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor, object : AccessibilityService.TakeScreenshotCallback {
                 override fun onFailure(errorCode: Int) {
                     busy = false
-                    VisualPaymentHandoff.clear()
-                    PurchaseGuardService.recordDetection(pkg, "", "屏幕识别截图失败：$errorCode")
+                    if (generation == capturedGeneration) {
+                        VisualPaymentHandoff.clear()
+                        PurchaseGuardService.recordDetection(pkg, "", "屏幕识别截图失败：$errorCode")
+                    }
                 }
                 override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
                     val hardware = screenshot.hardwareBuffer
@@ -108,9 +120,11 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 }
                             }
                             .addOnFailureListener(service.mainExecutor) {
-                                VisualPaymentHandoff.clear()
-                                GuardDiagnosticLog.failure(it)
-                                PurchaseGuardService.recordDetection(pkg, "", "屏幕识别失败")
+                                if (generation == capturedGeneration) {
+                                    VisualPaymentHandoff.clear()
+                                    GuardDiagnosticLog.failure(it)
+                                    PurchaseGuardService.recordDetection(pkg, "", "屏幕识别失败")
+                                }
                             }
                             .addOnCompleteListener(service.mainExecutor) { bitmap.recycle(); busy = false }
                     } catch (error: Exception) {

@@ -6,6 +6,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VisualGuardTargetsTest {
+    @Test fun `jd verification is distinct from an order page`() {
+        val jd = "com.jingdong.app.mall"
+        val challenge = "com.jingdong.app.mall.bundle.jdrhsdk.JDRiskHandleActivity"
+        val order = "com.jd.lib.settlement.taro.activity.SettlementFillOrderTaroActivity"
+        assertTrue(VisualGuardTargets.isJdVerification(jd, challenge))
+        assertFalse(VisualGuardTargets.sourceActivity(jd, challenge))
+        assertTrue(VisualGuardTargets.isJdOrderAfterVerification(jd, order))
+        assertFalse(VisualGuardTargets.isJdOrderAfterVerification("com.other", order))
+    }
     @Test fun `opt in gates each source and excludes unknown packages`() {
         assertTrue(VisualGuardTargets.sourceAllowed("com.taobao.taobao", true, false))
         assertFalse(VisualGuardTargets.sourceAllowed("com.jingdong.app.mall", true, false))
