@@ -585,6 +585,7 @@ class PurchaseGuardService : Service() {
                             amount, com.mudasir.smartledger.capture.GuardThreshold.read(current))) {
                         runCatching { PurchaseGuardNotifier.notifyThink(applicationContext, spent, null) }
                     }
+                    if (requestGeneration == generation && orderButtonPrompt) removeOverlay()
                 }
             }
         }
