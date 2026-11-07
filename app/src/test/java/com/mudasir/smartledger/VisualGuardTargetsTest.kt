@@ -6,6 +6,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VisualGuardTargetsTest {
+    @Test fun `structured handoff is limited to a recent taobao order list dialog`() {
+        val t = VisualGuardTargets.TAOBAO
+        assertTrue(VisualGuardTargets.isRecentTaobaoOrderDialog(t, "taobao_order_list_nodes", 1000, 1300))
+        assertTrue(VisualGuardTargets.isRecentTaobaoOrderDialog(t, "x.TBOrderListActivity", 1000, 2500))
+        assertFalse(VisualGuardTargets.isRecentTaobaoOrderDialog(t, "x.TBOrderListActivity", 1000, 2501))
+        assertFalse(VisualGuardTargets.isRecentTaobaoOrderDialog(t, "x.ProductActivity", 1000, 1300))
+        assertFalse(VisualGuardTargets.isRecentTaobaoOrderDialog("com.jingdong.app.mall", "x.TBOrderListActivity", 1000, 1300))
+        assertFalse(VisualGuardTargets.isRecentTaobaoOrderDialog(t, "taobao_order_list_nodes", 0, 1))
+    }
     @Test fun `order list does not occupy OCR before its payment dialog`() {
         val tb = "com.taobao.taobao"
         assertTrue(VisualGuardTargets.skipBackgroundOrderListOcr(tb, "taobao_order_list_nodes", false))

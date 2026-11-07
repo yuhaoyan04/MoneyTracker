@@ -17,6 +17,11 @@ object VisualGuardTargets {
     fun skipBackgroundOrderListOcr(pkg: String, cls: String, fast: Boolean): Boolean =
         !fast && pkg == TAOBAO && (cls == "taobao_order_list_nodes" || cls.endsWith("TBOrderListActivity"))
 
+    /** A structured candidate belongs to the observed order-list dialog only briefly. */
+    fun isRecentTaobaoOrderDialog(pkg: String, cls: String, opened: Long, now: Long): Boolean =
+        pkg == TAOBAO && (cls == "taobao_order_list_nodes" || cls.endsWith("TBOrderListActivity")) &&
+            opened > 0 && now - opened in 0..1_500L
+
     fun sourceActivity(pkg: String, cls: String): Boolean {
         if (pkg !in shopping || cls.isBlank()) return false
         if (pkg == TAOBAO) return cls.endsWith("UltronTradeHybridActivity") || cls.endsWith("TBOrderListActivity")

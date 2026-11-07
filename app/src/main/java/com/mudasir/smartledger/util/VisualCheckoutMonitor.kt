@@ -35,6 +35,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private val deferredCapture = DeferredTaobaoCapture()
     private var dialogTicket = 0L
     private var deferredPending = false
+    private var dialogOpenedAt = 0L
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val refresh = object : Runnable {
         override fun run() {
@@ -55,6 +56,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         generation++
         deferredCapture.invalidate()
         deferredPending = false
+        dialogOpenedAt = 0L
         if (verificationSource != pkg || !VisualGuardTargets.isJdOrderAfterVerification(pkg, cls)) VisualPaymentHandoff.clear()
         verificationSource = ""
         sourcePackage = pkg
@@ -78,6 +80,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     fun pauseForVerification(pkg: String) {
         generation++
         deferredCapture.invalidate()
+        dialogOpenedAt = 0L
         verificationSource = if (pkg == sourcePackage) pkg else ""
         checkoutSeenAt = 0L
         handler.removeCallbacks(refresh)
@@ -86,6 +89,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     fun leaveCheckout(preserveHandoff: Boolean = false) {
         generation++
         if (!preserveHandoff) { deferredCapture.invalidate(); deferredPending = false }
+        dialogOpenedAt = 0L
         checkoutSeenAt = 0L
         sourcePackage = ""
         sourceClass = ""
@@ -99,11 +103,24 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     fun taobaoDialogOpened(pkg: String) {
         if (pkg != VisualGuardTargets.TAOBAO || pkg != sourcePackage || checkoutSeenAt == 0L) return
         val ticket = generation
-        dialogTicket = deferredCapture.open(SystemClock.uptimeMillis())
+        dialogOpenedAt = SystemClock.uptimeMillis()
+        dialogTicket = deferredCapture.open(dialogOpenedAt)
         PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：订单弹窗触发快速检查")
         listOf(200L, 600L, 1000L).forEach { delay ->
             handler.postDelayed({ if (ticket == generation) inspect(pkg, fast = true) }, delay)
         }
+    }
+
+    /** Retain only an explicit, unambiguous structured result from this single dialog. */
+    fun rememberStructuredDialog(pkg: String, value: Double) {
+        val prefs = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        if (!VisualGuardTargets.isRecentTaobaoOrderDialog(pkg, sourceClass, dialogOpenedAt, SystemClock.uptimeMillis()) ||
+            sourcePackage != pkg || !prefs.getBoolean("guard_enabled", false) ||
+            !prefs.getBoolean("guard_visual_order_pages_enabled", false) ||
+            !CheckoutPageParser.exceedsThreshold(value, GuardThreshold.read(prefs))) return
+        VisualPaymentHandoff.remember(pkg, value, 5_000L)
+        deferredPending = true
+        PurchaseGuardService.recordDetection(pkg, "", "结构化识别：单笔弹窗候选等待支付入口")
     }
 
     fun observedWindow(pkg: String, cls: String, at: Long, foreground: Boolean) {

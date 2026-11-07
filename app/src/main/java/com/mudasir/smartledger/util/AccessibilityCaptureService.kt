@@ -276,6 +276,9 @@ class AccessibilityCaptureService : AccessibilityService() {
             }
             logGuardDiagnostic(pkg, diagnostic, "$message；$evidence")
             val now = System.currentTimeMillis()
+            if (result.status == CheckoutResult.Status.QUALIFIED) {
+                visualMonitor?.rememberStructuredDialog(pkg, result.amount!!.toDouble())
+            }
             if (result.status == CheckoutResult.Status.QUALIFIED && now - lastGuardAt > 5_000) {
                 lastGuardAt = now
                 val handled = PurchaseGuardService.onExternalPayPage(applicationContext, pkg, result.amount!!.toDouble())

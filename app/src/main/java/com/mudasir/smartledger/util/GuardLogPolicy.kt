@@ -61,6 +61,7 @@ object GuardLogPolicy {
         message.startsWith("屏幕识别：延迟结果等待微信入口") -> "OCR_DEFERRED_WAIT_ENTRY"
         message.startsWith("屏幕识别：延迟结果已关联付款流程") -> "OCR_DEFERRED_QUALIFIED"
         message.startsWith("屏幕识别：延迟结果没有超门槛金额") -> "OCR_DEFERRED_NOT_QUALIFIED"
+        message.startsWith("结构化识别：单笔弹窗候选等待支付入口") -> "STRUCTURED_DIALOG_HANDOFF_ARMED"
         message.startsWith("屏幕识别：保留刚识别的同一付款页候选") -> "OCR_FRESH_DUPLICATE_PRESERVED"
         message.startsWith("屏幕识别：金额未超过门槛") -> "OCR_BELOW_THRESHOLD"
         message.startsWith("屏幕识别：没有可靠付款金额") -> "OCR_NO_CANDIDATE"
