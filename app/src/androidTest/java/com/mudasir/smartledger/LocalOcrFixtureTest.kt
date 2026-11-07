@@ -19,6 +19,67 @@ import java.util.concurrent.TimeUnit
 /** Optional private fixture is injected by adb for a user-authorized, local-only check. */
 @RunWith(AndroidJUnit4::class)
 class LocalOcrFixtureTest {
+    @Test fun probeAlipayAmountCrop() {
+        val args = InstrumentationRegistry.getArguments()
+        val target = args.getString("fixture_expected")
+        val file = InstrumentationRegistry.getInstrumentation().targetContext.filesDir.resolve("private_ocr_fixture.png")
+        assumeTrue(args.getString("fixture_mode") == "alipay_crop" && target != null && file.exists())
+        val bytes = android.util.Base64.decode(file.readBytes(), android.util.Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: error("Cannot decode local fixture")
+        val crop = android.graphics.Bitmap.createBitmap(bitmap, bitmap.width / 5, bitmap.height * 27 / 100,
+            bitmap.width * 3 / 5, bitmap.height * 10 / 100)
+        val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
+        try {
+            val result = Tasks.await(recognizer.process(InputImage.fromBitmap(crop, 0)), 30, TimeUnit.SECONDS)
+            val full = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap, 0)), 30, TimeUnit.SECONDS)
+            val lines = full.textBlocks.flatMap { it.lines }.mapNotNull { line ->
+                val b = line.boundingBox ?: return@mapNotNull null
+                VisualText(line.text, b.left, b.top, b.right, b.bottom)
+            }
+            val clean = result.text.replace(Regex("\\s+"), "")
+            val matched = target != null && target in clean
+            val pending = com.mudasir.smartledger.capture.AlipayVisualPolicy.isPendingCashier(lines, bitmap.height)
+            val parsed = com.mudasir.smartledger.capture.AlipayVisualPolicy.cropAmount(result.text)
+            val parsedMatches = target != null && parsed?.compareTo(BigDecimal(target)) == 0
+            InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply {
+                putString("crop_exact_match", matched.toString())
+                putString("pending_page_matched", pending.toString())
+                putString("parsed_amount_matched", parsedMatches.toString())
+                putInt("recognized_line_count", result.textBlocks.sumOf { it.lines.size })
+            })
+            assertTrue("Amount crop or pending page did not match", matched && pending && parsedMatches)
+        } finally {
+            recognizer.close(); crop.recycle(); bitmap.recycle(); file.delete()
+        }
+    }
+
+    @Test fun inspectCashierStructure() {
+        val args = InstrumentationRegistry.getArguments()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val file = instrumentation.targetContext.filesDir.resolve("private_ocr_fixture.png")
+        assumeTrue(args.getString("fixture_mode") == "cashier" && file.exists())
+        val bytes = android.util.Base64.decode(file.readBytes(), android.util.Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: error("Cannot decode local fixture")
+        val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
+        try {
+            val result = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap, 0)), 30, TimeUnit.SECONDS)
+            val evidence = result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
+                val b = line.boundingBox ?: return@mapNotNull null
+                if (!(line.text.contains('¥') || line.text.contains('￥') || line.text.contains("支付") || line.text.contains("付款"))) return@mapNotNull null
+                val masked = line.text.map { ch -> when {
+                    ch.isDigit() -> '#'
+                    ch in "确认付款支付宝微信银行卡¥￥.," -> ch
+                    else -> '*'
+                } }.joinToString("").take(80)
+                "$masked@${b.left * 100 / bitmap.width},${b.top * 100 / bitmap.height},${b.width() * 100 / bitmap.width},${b.height() * 100 / bitmap.height}"
+            }.joinToString(";")
+            instrumentation.sendStatus(0, android.os.Bundle().apply { putString("masked_structure", evidence) })
+        } finally {
+            recognizer.close(); bitmap.recycle()
+            if (args.getString("fixture_keep") != "true") file.delete()
+        }
+    }
+
     @Test fun paymentButtonAmountMatchesExpected() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val expected = InstrumentationRegistry.getArguments().getString("fixture_expected")

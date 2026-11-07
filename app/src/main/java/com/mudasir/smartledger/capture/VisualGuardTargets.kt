@@ -6,7 +6,6 @@ object VisualGuardTargets {
     const val WECHAT = "com.tencent.mm"
     val shopping = setOf(TAOBAO, "com.jingdong.app.mall", "com.xunmeng.pinduoduo",
         "com.sankuai.meituan", "com.sankuai.meituan.takeoutnew", "com.MobileTicket")
-    private val alipay = setOf("com.eg.android.AlipayGphone", "com.eg.android.AlipayGphone.rc", "com.eg.android.AlipayGphone.lite")
 
     fun sourceAllowed(pkg: String, taobaoEnabled: Boolean, multiEnabled: Boolean): Boolean =
         pkg in shopping && if (pkg == TAOBAO) taobaoEnabled else multiEnabled
@@ -31,7 +30,9 @@ object VisualGuardTargets {
     fun isWechatCashier(pkg: String, cls: String) = pkg == WECHAT && cls.endsWith("WxaLiteAppTransparentLiteUI")
 
     fun isOtherCashier(pkg: String, cls: String): Boolean {
-        if (pkg !in alipay && pkg !in CaptureWhitelist.bankPackages && pkg != "com.unionpay") return false
+        // Alipay can apply its own discount after leaving the merchant. The merchant's
+        // amount is not proof of the final amount and must not drive its threshold.
+        if (pkg !in CaptureWhitelist.bankPackages && pkg != "com.unionpay") return false
         val name = cls.lowercase()
         return listOf("cashier", "cashdesk", "paymentactivity", "payactivity", "mspcontainer", "wallet.pay.")
             .any(name::contains)

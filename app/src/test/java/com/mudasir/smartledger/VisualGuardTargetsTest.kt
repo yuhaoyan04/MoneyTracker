@@ -36,7 +36,8 @@ class VisualGuardTargetsTest {
         state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
         assertNull(state.observe("com.fake.bank", "CashierActivity", 2000))
         assertNull(state.observe("com.eg.android.AlipayGphone", "MainActivity", 2000))
-        assertEquals(600.0, state.observe("com.eg.android.AlipayGphone", "CashierActivity", 3000)!!, 0.001)
+        assertNull(state.observe("com.eg.android.AlipayGphone", "CashierActivity", 3000))
+        assertEquals(600.0, state.observe("com.icbc", "CashierActivity", 3000)!!, 0.001)
         state.remember("com.sankuai.meituan", 800.0, 1000)
         assertNull(state.observe("com.icbc", "PaymentActivity", 21_001))
     }

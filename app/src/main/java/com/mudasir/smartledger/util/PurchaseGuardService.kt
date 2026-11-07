@@ -154,6 +154,7 @@ class PurchaseGuardService : Service() {
             val prefs = context.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
             if (!prefs.getBoolean("guard_enabled", false) ||
                 !(prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getBoolean("guard_visual_multi_app_enabled", false)) ||
+                (pkg == com.mudasir.smartledger.capture.AlipayVisualPolicy.ALIPAY && !prefs.getBoolean("guard_visual_alipay_enabled", false)) ||
                 !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) return
             instance?.let { svc -> svc.handler.post {
                 svc.deliverVisualHandoff(pkg, amount)
@@ -253,6 +254,7 @@ class PurchaseGuardService : Service() {
                 val enabled = instance === this@PurchaseGuardService && generation == visualDeliveryGeneration &&
                     prefs.getBoolean("guard_enabled", false) &&
                     (prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getBoolean("guard_visual_multi_app_enabled", false)) &&
+                    (pkg != com.mudasir.smartledger.capture.AlipayVisualPolicy.ALIPAY || prefs.getBoolean("guard_visual_alipay_enabled", false)) &&
                     CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs))
                 when (com.mudasir.smartledger.capture.HandoffForegroundWait.decide(
                     pkg, AccessibilityCaptureService.activeRootPackage(),

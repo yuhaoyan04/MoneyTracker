@@ -162,6 +162,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnGuardDebug).setOnClickListener { showGuardDebug() }
         findViewById<View>(R.id.btnVisualGuard).setOnClickListener { editVisualGuard() }
         findViewById<View>(R.id.btnVisualMulti).setOnClickListener { editVisualMulti() }
+        findViewById<View>(R.id.btnVisualAlipay).setOnClickListener { editVisualAlipay() }
         findViewById<View>(R.id.btnAppearance).setOnClickListener { editAppearance() }
         refreshAppearance()
         findViewById<View>(R.id.btnAutoConfirm).setOnClickListener { editAutoConfirm() }
@@ -357,6 +358,17 @@ class SettingsActivity : AppCompatActivity() {
                 prefs.edit().putBoolean("guard_visual_multi_app_enabled", !enabled).apply()
                 com.mudasir.smartledger.util.VisualPaymentHandoff.clear()
                 Toast.makeText(this, if (enabled) "更多应用识别已关闭" else "更多应用识别已开启", Toast.LENGTH_LONG).show()
+            }.setNegativeButton("取消", null).show()
+    }
+
+    private fun editVisualAlipay() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val enabled = prefs.getBoolean("guard_visual_alipay_enabled", false)
+        AlertDialog.Builder(this).setTitle("支付宝付款金额识别（测试）")
+            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。开启后，还需开启‘更多购物应用识别’和守护服务。仅在识别到京东待付款收银台的确认付款操作、随后进入支付宝指定付款窗口时，短暂截取支付宝画面以在本机识别优惠后的金额。画面可能包含账号、银行卡和交易信息；图片和识别文字不保存、不上传。Google ML Kit 可能发送设备和性能指标。安全窗口可能无法读取，识别及浮层可能失败；不会自动付款。")
+            .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
+                prefs.edit().putBoolean("guard_visual_alipay_enabled", !enabled).apply()
+                Toast.makeText(this, if (enabled) "支付宝付款识别已关闭" else "支付宝付款识别已开启；请同时开启其他购物应用识别", Toast.LENGTH_LONG).show()
             }.setNegativeButton("取消", null).show()
     }
 
