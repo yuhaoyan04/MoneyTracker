@@ -193,7 +193,14 @@ class PurchaseGuardService : Service() {
                 !prefs.getBoolean("guard_visual_order_pages_enabled", false) || prefs.getString("guard_mode", "overlay") != "overlay" ||
                 !Settings.canDrawOverlays(context) || AccessibilityCaptureService.activeRootPackage() != "com.taobao.taobao" ||
                 !CheckoutPageParser.exceedsThreshold(amount, com.mudasir.smartledger.capture.GuardThreshold.read(prefs)) || svc.overlayView != null) return false
-            svc.handler.post { svc.nudgeFromDetection("com.taobao.taobao", amount, visualHandoff = true, orderButton = true) }
+            svc.handler.post {
+                runCatching { svc.nudgeFromDetection("com.taobao.taobao", amount, visualHandoff = true, orderButton = true) }
+                    .onFailure { error ->
+                        GuardDiagnosticLog.failure(error)
+                        AccessibilityCaptureService.cancelOrderButton()
+                        android.widget.Toast.makeText(context, "提醒暂不可用，请重新点击", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+            }
             return true
         }
 

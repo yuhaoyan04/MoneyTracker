@@ -154,8 +154,9 @@ class AccessibilityCaptureService : AccessibilityService() {
         val e = event ?: return
         val now = android.os.SystemClock.uptimeMillis()
         val eventPackage = e.packageName?.toString().orEmpty()
-        if (e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED && eventPackage == VisualGuardTargets.TAOBAO) orderShield.reset()
-        else if (e.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && eventPackage == VisualGuardTargets.TAOBAO) orderShield.removeViews()
+        if (e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED && eventPackage == VisualGuardTargets.TAOBAO) {
+            orderShield.reset(); PurchaseGuardService.onOrderListLeft()
+        } else if (e.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && eventPackage == VisualGuardTargets.TAOBAO) orderShield.hideForChange()
         else if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             ((eventPackage == VisualGuardTargets.TAOBAO && e.className?.toString() == "android.app.Dialog") ||
              (eventPackage.isNotBlank() && eventPackage != VisualGuardTargets.TAOBAO &&
@@ -340,7 +341,7 @@ class AccessibilityCaptureService : AccessibilityService() {
                 if (nodes.size > 1 || SystemClock.uptimeMillis() - orderButtonsAt !in 0..1_200L) {
                     orderButtons = emptyList(); orderButtonsAt = 0L
                 }
-                orderShield.removeViews()
+                orderShield.hideForChange()
                 handler.removeCallbacks(orderRefresh)
             }
             val threshold = com.mudasir.smartledger.capture.GuardThreshold.read(prefs)

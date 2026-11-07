@@ -28,7 +28,7 @@ class OrderButtonShield(private val service: AccessibilityCaptureService,
         val now = SystemClock.uptimeMillis()
         if (!enabled) { reset(); return }
         if (pending != null && (now - pendingAt < 2_000L || PurchaseGuardService.isOrderButtonPromptActive())) {
-            removeViews(); return
+            return // Keep consuming the original button until the full reminder is ready.
         }
         pending = null
         val wanted = OrderButtonShieldPolicy.eligible(candidates, threshold, approved, approvedUntil, now).toSet()
@@ -37,7 +37,7 @@ class OrderButtonShield(private val service: AccessibilityCaptureService,
     }
 
     fun suspendFor(candidate: OrderPayCandidate) {
-        pending = candidate; pendingAt = SystemClock.uptimeMillis(); removeViews()
+        pending = candidate; pendingAt = SystemClock.uptimeMillis()
     }
 
     fun approved(amount: Double) {
@@ -49,6 +49,7 @@ class OrderButtonShield(private val service: AccessibilityCaptureService,
     }
 
     fun cancelPending() { pending = null; removeViews() }
+    fun hideForChange() { if (pending == null) removeViews() }
     fun removeViews() { views.keys.toList().forEach(::remove) }
     fun reset() { removeViews(); pending = null; approved = null; approvedUntil = 0L }
 
@@ -75,7 +76,7 @@ class OrderButtonShield(private val service: AccessibilityCaptureService,
                 MotionEvent.ACTION_DOWN -> { downX = event.x; downY = event.y; moved = false; true }
                 MotionEvent.ACTION_MOVE -> { if (kotlin.math.abs(event.x - downX) > slop || kotlin.math.abs(event.y - downY) > slop) moved = true; true }
                 MotionEvent.ACTION_UP -> {
-                    if (!moved && event.x >= 0 && event.y >= 0 && event.x < width && event.y < height) {
+                    if (pending == null && !moved && event.x >= 0 && event.y >= 0 && event.x < width && event.y < height) {
                         runCatching { onTap(candidate) }.onFailure {
                             GuardDiagnosticLog.failure(it); reset()
                             android.widget.Toast.makeText(service, "提醒暂不可用，请重新点击", android.widget.Toast.LENGTH_SHORT).show()
