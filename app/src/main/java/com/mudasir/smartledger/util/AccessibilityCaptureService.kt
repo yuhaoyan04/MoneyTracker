@@ -15,6 +15,8 @@ import com.mudasir.smartledger.capture.PaymentScreenClassifier
 import com.mudasir.smartledger.capture.CheckoutNode
 import com.mudasir.smartledger.capture.CheckoutPageParser
 import com.mudasir.smartledger.capture.CheckoutResult
+import com.mudasir.smartledger.capture.OrderListPaymentParser
+import com.mudasir.smartledger.capture.OrderPayCandidate
 import com.mudasir.smartledger.capture.VisualGuardTargets
 import com.mudasir.smartledger.capture.AlipayVisualPolicy
 import com.mudasir.smartledger.capture.JdAlipayEntryTracker
@@ -122,6 +124,8 @@ class AccessibilityCaptureService : AccessibilityService() {
     private val jdAlipayEntry = JdAlipayEntryTracker()
     private var alipayVisualMonitor: AlipayVisualMonitor? = null
     private var lastLoggedContentAt = 0L
+    private var orderButtons: List<OrderPayCandidate> = emptyList()
+    private var orderButtonsAt = 0L
     private val visualMonitor by lazy {
         if (android.os.Build.VERSION.SDK_INT >= 30) VisualCheckoutMonitor(this) else null
     }
@@ -141,6 +145,26 @@ class AccessibilityCaptureService : AccessibilityService() {
         val e = event ?: return
         val now = android.os.SystemClock.uptimeMillis()
         val eventPackage = e.packageName?.toString().orEmpty()
+        if (eventPackage == VisualGuardTargets.TAOBAO && e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+            val bounds = android.graphics.Rect()
+            val source = e.source
+            source?.getBoundsInScreen(bounds)
+            val recent = now - orderButtonsAt in 0..1_200L && e.eventTime - orderButtonsAt in 0..1_200L
+            val candidate = if (recent && source != null) OrderListPaymentParser.match(orderButtons,
+                bounds.left, bounds.top, bounds.right, bounds.bottom) else null
+            orderButtons = emptyList(); orderButtonsAt = 0L
+            if (candidate != null && prefs.getBoolean("guard_enabled", false) &&
+                prefs.getBoolean("guard_visual_order_pages_enabled", false) &&
+                CheckoutPageParser.exceedsThreshold(candidate.amount.toDouble(), com.mudasir.smartledger.capture.GuardThreshold.read(prefs))) {
+                visualMonitor?.rememberOrderButton(eventPackage, candidate.amount.toDouble())
+                PurchaseGuardService.recordDetection(eventPackage, "", "订单列表：已关联所点付款按钮与实付金额")
+            }
+        }
+        if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || e.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
+            (eventPackage == VisualGuardTargets.TAOBAO && (e.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || e.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED))) {
+            orderButtons = emptyList(); orderButtonsAt = 0L
+        }
         if (e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && !e.isPassword && eventPackage == AlipayVisualPolicy.JD) {
             val texts = e.text.take(5).map { it?.toString().orEmpty().take(80) }
             val accepted = jdAlipayEntry.onClick(eventPackage, texts, SystemClock.elapsedRealtime())
@@ -223,7 +247,7 @@ class AccessibilityCaptureService : AccessibilityService() {
                 lastProcessAt = now
                 handler.postDelayed({ inspectSafely() }, 350)
             }
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
                 // H5 收银台同页渲染：内容变化兜底（独立节流，防高频）
                 if (now - lastContentAt < CONTENT_MIN_INTERVAL_MS) return
                 lastContentAt = now
@@ -269,7 +293,12 @@ class AccessibilityCaptureService : AccessibilityService() {
             visualMonitor?.inspect(pkg)
             val nodes = mutableListOf<CheckoutNode>()
             collectCheckoutNodes(root, nodes, 0, -1, intArrayOf(0))
-            if (CheckoutPageParser.isTaobaoOrderList(pkg, nodes)) visualMonitor?.ensureTaobaoOrderList()
+            if (CheckoutPageParser.isTaobaoOrderList(pkg, nodes)) {
+                visualMonitor?.ensureTaobaoOrderList()
+                val metrics = resources.displayMetrics
+                orderButtons = OrderListPaymentParser.candidates(nodes, metrics.widthPixels, metrics.heightPixels)
+                orderButtonsAt = SystemClock.uptimeMillis()
+            }
             val threshold = com.mudasir.smartledger.capture.GuardThreshold.read(prefs)
             val result = CheckoutPageParser.analyze(pkg, nodes, threshold)
             PurchaseGuardService.onCheckoutEvaluated(pkg,

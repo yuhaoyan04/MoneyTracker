@@ -123,6 +123,11 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         PurchaseGuardService.recordDetection(pkg, "", "结构化识别：单笔弹窗候选等待支付入口")
     }
 
+    fun rememberOrderButton(pkg: String, value: Double) {
+        VisualPaymentHandoff.remember(pkg, value, 5_000L)
+        deferredPending = true
+    }
+
     fun observedWindow(pkg: String, cls: String, at: Long, foreground: Boolean) {
         deferredCapture.window(pkg, cls, at, foreground)
         if (deferredPending && foreground && ((pkg != VisualGuardTargets.TAOBAO && pkg != VisualGuardTargets.WECHAT) ||
@@ -158,7 +163,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                     busy = false
                     if (generation == capturedGeneration) {
                         pendingOcrClear.cancel()
-                        VisualPaymentHandoff.clear()
+                        if (!deferredPending) VisualPaymentHandoff.clear()
                         PurchaseGuardService.recordDetection(pkg, "", "屏幕识别截图失败：$errorCode")
                     }
                 }
@@ -239,7 +244,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                     // within 500 ms; otherwise clear it, preventing stale amounts on this page.
                                     val ticket = pendingOcrClear.schedule()
                                     handler.postDelayed({
-                                        if (pendingOcrClear.shouldClear(ticket, generation == capturedGeneration)) {
+                                        if (!deferredPending && pendingOcrClear.shouldClear(ticket, generation == capturedGeneration)) {
                                             VisualPaymentHandoff.clear()
                                         }
                                     }, 500L)
@@ -249,7 +254,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                             .addOnFailureListener(service.mainExecutor) {
                                 if (generation == capturedGeneration) {
                                     pendingOcrClear.cancel()
-                                    VisualPaymentHandoff.clear()
+                                    if (!deferredPending) VisualPaymentHandoff.clear()
                                     GuardDiagnosticLog.failure(it)
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别失败")
                                 }
