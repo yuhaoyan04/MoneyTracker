@@ -16,6 +16,7 @@ class VisualGuardTargetsTest {
         val tb = "com.taobao.taobao"
         val checkout = "com.alibaba.android.ultron.UltronTradeHybridActivity"
         assertTrue(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, tb, checkout, 1000, 1900))
+        assertTrue(VisualGuardTargets.isFreshDuplicateCheckout(tb, "com.taobao.TBOrderListActivity", tb, "taobao_order_list_nodes", 1000, 1900))
         assertFalse(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, tb, checkout, 1000, 2001))
         assertFalse(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, tb, "another.Activity", 1000, 1900))
         assertFalse(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, "com.other", checkout, 1000, 1900))

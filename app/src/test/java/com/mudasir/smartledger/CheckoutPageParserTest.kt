@@ -14,6 +14,14 @@ class CheckoutPageParserTest {
     private val threshold = BigDecimal("500")
     private val pkg = "com.taobao.taobao"
 
+    @Test fun `taobao list structure may arm monitoring but never becomes a payment`() {
+        val list = listOf(n("待付款"), n("待发货"), n("继续付款"), n("应付 ¥501"))
+        assertTrue(CheckoutPageParser.isTaobaoOrderList(pkg, list))
+        assertFalse(CheckoutPageParser.isTaobaoOrderList("com.other", list))
+        assertFalse(CheckoutPageParser.isTaobaoOrderList(pkg, listOf(n("待付款"))))
+        assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze(pkg, list, threshold).status)
+    }
+
     @Test fun `reminder gate rejects missing values and equal amounts`() {
         assertFalse(CheckoutPageParser.exceedsThreshold(Double.NaN, 500f))
         assertFalse(CheckoutPageParser.exceedsThreshold(Double.POSITIVE_INFINITY, 500f))

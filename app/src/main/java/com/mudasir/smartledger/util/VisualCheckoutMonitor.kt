@@ -61,6 +61,14 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     fun ensureCheckoutWindow(pkg: String, cls: String) {
         if (pkg != sourcePackage || checkoutSeenAt == 0L || SystemClock.elapsedRealtime() - checkoutSeenAt > 4_000L) checkoutWindow(pkg, cls)
     }
+    fun ensureTaobaoOrderList() {
+        val pkg = VisualGuardTargets.TAOBAO
+        val validClass = sourceClass == "taobao_order_list_nodes" || sourceClass.endsWith("TBOrderListActivity")
+        if (pkg != sourcePackage || !validClass || checkoutSeenAt == 0L || SystemClock.elapsedRealtime() - checkoutSeenAt > 60_000L) {
+            checkoutWindow(pkg, "taobao_order_list_nodes")
+            PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：通过订单列表结构启动检查")
+        }
+    }
     fun pauseForVerification(pkg: String) {
         generation++
         verificationSource = if (pkg == sourcePackage) pkg else ""

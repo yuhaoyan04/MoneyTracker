@@ -29,7 +29,8 @@ object VisualGuardTargets {
     /** Suppress only a very recent duplicate event for the same Taobao checkout. */
     fun isFreshDuplicateCheckout(pkg: String, cls: String, previousPkg: String, previousCls: String,
                                  qualifiedAt: Long, now: Long): Boolean =
-        pkg == TAOBAO && pkg == previousPkg && cls.isNotBlank() && cls == previousCls &&
+        pkg == TAOBAO && pkg == previousPkg && cls.isNotBlank() &&
+            (cls == previousCls || (previousCls == "taobao_order_list_nodes" && cls.endsWith("TBOrderListActivity"))) &&
             qualifiedAt > 0 && now - qualifiedAt in 0..1_000L
 
     fun isSourcePaymentTransition(cls: String): Boolean =

@@ -48,6 +48,7 @@ object GuardLogPolicy {
         message.startsWith("支付宝入口：没有有效付款操作") -> "ALIPAY_ENTRY_WINDOW_REJECTED"
         message.startsWith("屏幕识别：识别到超门槛付款候选") -> "OCR_QUALIFIED"
         message.startsWith("屏幕识别：订单弹窗触发快速检查") -> "OCR_DIALOG_FAST_CHECK"
+        message.startsWith("屏幕识别：通过订单列表结构启动检查") -> "OCR_ORDER_LIST_STRUCTURE"
         message.startsWith("屏幕识别：弹窗检查等待前次识别") -> "OCR_DIALOG_BUSY"
         message.startsWith("屏幕识别：弹窗截图已请求") -> "OCR_DIALOG_CAPTURE_REQUESTED"
         message.startsWith("屏幕识别：弹窗结果过期已丢弃") -> "OCR_DIALOG_RESULT_STALE"

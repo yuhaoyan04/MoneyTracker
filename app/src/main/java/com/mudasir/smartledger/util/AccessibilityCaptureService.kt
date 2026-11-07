@@ -256,6 +256,7 @@ class AccessibilityCaptureService : AccessibilityService() {
             visualMonitor?.inspect(pkg)
             val nodes = mutableListOf<CheckoutNode>()
             collectCheckoutNodes(root, nodes, 0, -1, intArrayOf(0))
+            if (CheckoutPageParser.isTaobaoOrderList(pkg, nodes)) visualMonitor?.ensureTaobaoOrderList()
             val threshold = com.mudasir.smartledger.capture.GuardThreshold.read(prefs)
             val result = CheckoutPageParser.analyze(pkg, nodes, threshold)
             PurchaseGuardService.onCheckoutEvaluated(pkg,

@@ -22,6 +22,9 @@ object CheckoutPageParser {
     private val actions = listOf("提交订单", "确认下单", "提交并支付", "确认付款", "立即付款", "继续付款", "确认支付", "立即支付", "去付款", "去支付", "支付订单", "订单支付", "确认并支付")
     private val orderListTitles = setOf("全部订单", "我的订单", "订单列表", "历史订单", "订单记录")
     private val orderListTabs = setOf("待付款", "待发货", "待收货", "待评价", "已完成")
+    /** Identifies only the order-list container, never a payable amount. */
+    fun isTaobaoOrderList(pkg: String, nodes: List<CheckoutNode>): Boolean =
+        pkg == "com.taobao.taobao" && nodes.map { it.text.trim() }.toSet().intersect(orderListTabs).size >= 2
     private val outcomes = listOf("支付成功", "付款成功", "交易成功", "扣款成功", "支付失败", "付款失败", "交易失败", "订单已取消", "退款成功")
     // Generic subtotals may precede discounts or shipping, so they are not proof of the final payable amount.
     private val labels = "(?:实付款|实付金额|实际支付|实际付款|应付金额|应付款|应付|需付款|需付|支付金额|付款金额)"
