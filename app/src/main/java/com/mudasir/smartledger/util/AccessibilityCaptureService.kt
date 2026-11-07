@@ -158,6 +158,14 @@ class AccessibilityCaptureService : AccessibilityService() {
             val recent = now - orderButtonsAt in 0..1_200L && e.eventTime - orderButtonsAt in 0..1_200L
             val candidate = if (recent && source != null) OrderListPaymentParser.match(orderButtons,
                 bounds.left, bounds.top, bounds.right, bounds.bottom) else null
+            if (GuardDiagnosticLog.isRecording()) PurchaseGuardService.recordDetection(eventPackage, "", when {
+                orderButtons.isEmpty() -> "订单列表：点击时没有可用快照"
+                source == null -> "订单列表：点击来源不可读取"
+                !recent -> "订单列表：点击快照已过期"
+                candidate == null -> "订单列表：点击未匹配唯一按钮"
+                !CheckoutPageParser.exceedsThreshold(candidate.amount.toDouble(), com.mudasir.smartledger.capture.GuardThreshold.read(prefs)) -> "订单列表：点击金额未超过门槛"
+                else -> "订单列表：点击匹配成功"
+            })
             orderButtons = emptyList(); orderButtonsAt = 0L
             if (candidate != null && prefs.getBoolean("guard_enabled", false) &&
                 prefs.getBoolean("guard_visual_order_pages_enabled", false) &&
@@ -301,12 +309,20 @@ class AccessibilityCaptureService : AccessibilityService() {
             if (CheckoutPageParser.isTaobaoOrderList(pkg, nodes)) {
                 visualMonitor?.ensureTaobaoOrderList()
                 val metrics = resources.displayMetrics
+                val wasEmpty = orderButtons.isEmpty()
                 orderButtons = OrderListPaymentParser.candidates(nodes, metrics.widthPixels, metrics.heightPixels)
                 orderButtonsAt = SystemClock.uptimeMillis()
+                if (wasEmpty && orderButtons.isNotEmpty()) PurchaseGuardService.recordDetection(pkg, "", "订单列表：付款按钮快照已就绪")
                 handler.removeCallbacks(orderRefresh)
                 if (orderButtons.isNotEmpty()) handler.postDelayed(orderRefresh, 700L)
             } else if (pkg == VisualGuardTargets.TAOBAO) {
-                orderButtons = emptyList(); orderButtonsAt = 0L; handler.removeCallbacks(orderRefresh)
+                // A click may arrive just after the current root becomes temporarily empty.
+                // Preserve only the short-lived existing snapshot; explicit window/content
+                // changes and its 1.2 s expiry still invalidate it.
+                if (nodes.size > 1 || SystemClock.uptimeMillis() - orderButtonsAt !in 0..1_200L) {
+                    orderButtons = emptyList(); orderButtonsAt = 0L
+                }
+                handler.removeCallbacks(orderRefresh)
             }
             val threshold = com.mudasir.smartledger.capture.GuardThreshold.read(prefs)
             val result = CheckoutPageParser.analyze(pkg, nodes, threshold)
