@@ -65,6 +65,7 @@
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/divider"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnGuardDebug" style="@style/SettingsListAction" android:text="检测自检"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualGuard" style="@style/SettingsListAction" android:text="屏幕识别（测试）"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualTaobaoSku" style="@style/SettingsListAction" android:text="淘宝商品弹窗识别（测试）"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualMulti" style="@style/SettingsListAction" android:text="更多购物应用识别（测试）"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualAlipay" style="@style/SettingsListAction" android:text="支付宝付款金额识别（测试）"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnWishlist" style="@style/SettingsListAction" android:text="愿望清单"/>

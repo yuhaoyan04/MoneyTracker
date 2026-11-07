@@ -161,6 +161,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnGuardScope).setOnClickListener { editGuardScope() }
         findViewById<View>(R.id.btnGuardDebug).setOnClickListener { showGuardDebug() }
         findViewById<View>(R.id.btnVisualGuard).setOnClickListener { editVisualGuard() }
+        findViewById<View>(R.id.btnVisualTaobaoSku).setOnClickListener { editVisualTaobaoSku() }
         findViewById<View>(R.id.btnVisualMulti).setOnClickListener { editVisualMulti() }
         findViewById<View>(R.id.btnVisualAlipay).setOnClickListener { editVisualAlipay() }
         findViewById<View>(R.id.btnAppearance).setOnClickListener { editAppearance() }
@@ -358,6 +359,18 @@ class SettingsActivity : AppCompatActivity() {
                 prefs.edit().putBoolean("guard_visual_multi_app_enabled", !enabled).apply()
                 com.mudasir.smartledger.util.VisualPaymentHandoff.clear()
                 Toast.makeText(this, if (enabled) "更多应用识别已关闭" else "更多应用识别已开启", Toast.LENGTH_LONG).show()
+            }.setNegativeButton("取消", null).show()
+    }
+
+    private fun editVisualTaobaoSku() {
+        val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
+        val enabled = prefs.getBoolean("guard_visual_taobao_sku_enabled", false)
+        AlertDialog.Builder(this).setTitle("淘宝商品弹窗识别（测试）")
+            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。开启后，还需开启‘屏幕识别（测试）’和守护服务。淘宝商品规格或购买弹窗出现时，应用会短暂截取该购物页面，在本机寻找订单确认特征与明确待付金额。截图可能包含商品、订单及个人信息，图片和识别文字不保存、不上传；Google ML Kit 可能发送设备及性能指标。页面安全限制或识别错误可能导致漏检或误判，无法保证付款前弹出。")
+            .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
+                prefs.edit().putBoolean("guard_visual_taobao_sku_enabled", !enabled).apply()
+                com.mudasir.smartledger.util.VisualPaymentHandoff.clear()
+                Toast.makeText(this, if (enabled) "淘宝商品弹窗识别已关闭" else "已开启；请同时开启屏幕识别和守护服务", Toast.LENGTH_LONG).show()
             }.setNegativeButton("取消", null).show()
     }
 

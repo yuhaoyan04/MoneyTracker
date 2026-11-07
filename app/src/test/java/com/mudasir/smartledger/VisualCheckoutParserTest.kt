@@ -8,6 +8,13 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VisualCheckoutParserTest {
+    @Test fun `taobao sku selection alone cannot qualify as a final order`() {
+        val skuPrice = line("应付 ¥501", 0, 800)
+        val buy = line("立即付款", 700, 850)
+        assertNull(VisualCheckoutParser.amountForTaobaoSku(listOf(skuPrice, buy), 1000, 1000))
+        assertNull(VisualCheckoutParser.amountForTaobaoSku(listOf(line("确认订单"), buy, line("商品价格 ¥501")), 1000, 1000))
+        assertEquals(BigDecimal("501"), VisualCheckoutParser.amountForTaobaoSku(listOf(line("确认订单"), skuPrice, buy), 1000, 1000))
+    }
     @Test fun `jd payment button amount is preferred over add-on prices and zero down payment`() {
         val pay = line("立即支付¥137.42", 600, 900)
         assertEquals(BigDecimal("137.42"), parse(pay, line("¥3.99专享价", 100, 700),

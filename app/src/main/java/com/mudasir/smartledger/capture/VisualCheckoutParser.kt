@@ -18,6 +18,13 @@ object VisualCheckoutParser {
     private val listTitles = listOf("全部订单", "我的订单", "订单列表", "历史订单", "订单记录")
     private val listTabs = listOf("待付款", "待发货", "待收货", "待评价", "已完成")
 
+    /** SKU selection is not a checkout; require explicit order and payable labels. */
+    fun amountForTaobaoSku(lines: List<VisualText>, width: Int, height: Int): BigDecimal? {
+        val text = lines.joinToString(" ") { it.text.replace(Regex("\\s+"), "") }
+        if (listOf("确认订单", "订单确认", "提交订单").none(text::contains) || !label.containsMatchIn(text)) return null
+        return amount(lines, width, height)
+    }
+
     /** A payment label is mandatory; arbitrary small numbers are never treated as amounts. */
     fun amount(lines: List<VisualText>, width: Int, height: Int): BigDecimal? {
         if (width <= 0 || height <= 0 || lines.isEmpty()) return null

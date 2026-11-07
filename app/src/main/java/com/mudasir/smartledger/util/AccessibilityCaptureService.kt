@@ -184,6 +184,7 @@ class AccessibilityCaptureService : AccessibilityService() {
                 alipayVisualMonitor?.start()
             }
             if (VisualGuardTargets.isJdVerification(pkg, cls)) visualMonitor?.pauseForVerification(pkg)
+            else if (VisualGuardTargets.isTaobaoSkuDialog(pkg, cls)) visualMonitor?.checkoutWindow(pkg, cls)
             else if (VisualGuardTargets.sourceActivity(pkg, cls)) visualMonitor?.checkoutWindow(pkg, cls)
             else if (pkg in VisualGuardTargets.shopping && cls.endsWith("Activity")) visualMonitor?.leaveCheckout(VisualGuardTargets.isSourcePaymentTransition(cls))
             if (pkg == VisualGuardTargets.TAOBAO && cls == "android.app.Dialog") visualMonitor?.taobaoDialogOpened(pkg)

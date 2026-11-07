@@ -6,6 +6,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VisualGuardTargetsTest {
+    @Test fun `sku experiment is limited to the observed taobao dialog`() {
+        val cls = "com.taobao.android.sku.widget.SkuDialogFragment\$1"
+        assertTrue(VisualGuardTargets.isTaobaoSkuDialog("com.taobao.taobao", cls))
+        assertFalse(VisualGuardTargets.isTaobaoSkuDialog("com.other", cls))
+        assertFalse(VisualGuardTargets.isTaobaoSkuDialog("com.taobao.taobao", "android.app.Dialog"))
+    }
     @Test fun `only the same fresh taobao checkout event retains a candidate`() {
         val tb = "com.taobao.taobao"
         val checkout = "com.alibaba.android.ultron.UltronTradeHybridActivity"

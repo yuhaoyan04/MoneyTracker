@@ -10,6 +10,9 @@ object VisualGuardTargets {
     fun sourceAllowed(pkg: String, taobaoEnabled: Boolean, multiEnabled: Boolean): Boolean =
         pkg in shopping && if (pkg == TAOBAO) taobaoEnabled else multiEnabled
 
+    fun isTaobaoSkuDialog(pkg: String, cls: String): Boolean = pkg == TAOBAO &&
+        cls.startsWith("com.taobao.android.sku.widget.SkuDialogFragment")
+
     fun sourceActivity(pkg: String, cls: String): Boolean {
         if (pkg !in shopping || cls.isBlank()) return false
         if (pkg == TAOBAO) return cls.endsWith("UltronTradeHybridActivity") || cls.endsWith("TBOrderListActivity")

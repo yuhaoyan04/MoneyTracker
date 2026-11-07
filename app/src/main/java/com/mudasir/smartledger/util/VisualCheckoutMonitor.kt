@@ -92,13 +92,20 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     fun inspect(pkg: String, fast: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
         val prefs = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
+        val skuMode = VisualGuardTargets.isTaobaoSkuDialog(sourcePackage, sourceClass)
         if (pkg != sourcePackage || service.rootInActiveWindow?.packageName?.toString() != pkg ||
             !prefs.getBoolean("guard_enabled", false) ||
+            (skuMode && !prefs.getBoolean("guard_visual_taobao_sku_enabled", false)) ||
             !VisualGuardTargets.sourceAllowed(pkg, prefs.getBoolean("guard_visual_order_pages_enabled", false),
-                prefs.getBoolean("guard_visual_multi_app_enabled", false)) || now - checkoutSeenAt !in 0..60_000L ||
-            busy || now - lastAttempt < (if (fast) 650L else 2_500L)) return
+                prefs.getBoolean("guard_visual_multi_app_enabled", false)) || now - checkoutSeenAt !in 0..60_000L) return
+        if (busy) {
+            if (fast) PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：弹窗检查等待前次识别")
+            return
+        }
+        if (now - lastAttempt < (if (fast) 650L else 2_500L)) return
         busy = true
         lastAttempt = now
+        if (fast) PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：弹窗截图已请求")
         val capturedGeneration = generation
         try {
             service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor, object : AccessibilityService.TakeScreenshotCallback {
@@ -126,13 +133,18 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 val current = service.rootInActiveWindow?.packageName?.toString()
                                 val active = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
                                 if (generation != capturedGeneration || current != pkg || !active.getBoolean("guard_enabled", false) ||
+                                    (skuMode && !active.getBoolean("guard_visual_taobao_sku_enabled", false)) ||
                                     !VisualGuardTargets.sourceAllowed(pkg, active.getBoolean("guard_visual_order_pages_enabled", false),
-                                        active.getBoolean("guard_visual_multi_app_enabled", false)) || SystemClock.elapsedRealtime() - now > 8_000L) return@addOnSuccessListener
+                                        active.getBoolean("guard_visual_multi_app_enabled", false)) || SystemClock.elapsedRealtime() - now > 8_000L) {
+                                    if (fast) PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：弹窗结果过期已丢弃")
+                                    return@addOnSuccessListener
+                                }
                                 val lines = result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
                                     val b = line.boundingBox ?: return@mapNotNull null
                                     VisualText(line.text, b.left, b.top, b.right, b.bottom)
                                 }
-                                val value = VisualCheckoutParser.amount(lines, width, height)
+                                val value = if (skuMode) VisualCheckoutParser.amountForTaobaoSku(lines, width, height)
+                                    else VisualCheckoutParser.amount(lines, width, height)
                                 if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
                                     pendingOcrClear.cancel()
                                     VisualPaymentHandoff.remember(pkg, value.toDouble())
