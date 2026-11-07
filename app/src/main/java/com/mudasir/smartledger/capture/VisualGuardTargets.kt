@@ -23,6 +23,12 @@ object VisualGuardTargets {
     fun isJdOrderAfterVerification(pkg: String, cls: String): Boolean =
         pkg == "com.jingdong.app.mall" && cls.endsWith(".SettlementFillOrderTaroActivity")
 
+    /** Suppress only a very recent duplicate event for the same Taobao checkout. */
+    fun isFreshDuplicateCheckout(pkg: String, cls: String, previousPkg: String, previousCls: String,
+                                 qualifiedAt: Long, now: Long): Boolean =
+        pkg == TAOBAO && pkg == previousPkg && cls.isNotBlank() && cls == previousCls &&
+            qualifiedAt > 0 && now - qualifiedAt in 0..1_000L
+
     fun isSourcePaymentTransition(cls: String): Boolean =
         listOf("cashdesk", "cashier", "payactivity", "paymentactivity").any(cls.lowercase()::contains)
 

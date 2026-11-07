@@ -26,6 +26,8 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private var lastAttempt = 0L
     private var checkoutSeenAt = 0L
     private var sourcePackage = ""
+    private var sourceClass = ""
+    private var lastQualifiedAt = 0L
     private var verificationSource = ""
     private var generation = 0L
     private val pendingOcrClear = PendingOcrClear()
@@ -41,11 +43,18 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     }
 
     fun checkoutWindow(pkg: String, cls: String = "") {
+        val now = SystemClock.elapsedRealtime()
+        if (VisualGuardTargets.isFreshDuplicateCheckout(pkg, cls, sourcePackage, sourceClass, lastQualifiedAt, now)) {
+            PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：保留刚识别的同一付款页候选")
+            return
+        }
         generation++
         if (verificationSource != pkg || !VisualGuardTargets.isJdOrderAfterVerification(pkg, cls)) VisualPaymentHandoff.clear()
         verificationSource = ""
         sourcePackage = pkg
-        checkoutSeenAt = SystemClock.elapsedRealtime()
+        sourceClass = cls
+        lastQualifiedAt = 0L
+        checkoutSeenAt = now
         handler.removeCallbacks(refresh)
         handler.postDelayed(refresh, 1_000L)
     }
@@ -63,6 +72,8 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         generation++
         checkoutSeenAt = 0L
         sourcePackage = ""
+        sourceClass = ""
+        lastQualifiedAt = 0L
         verificationSource = ""
         handler.removeCallbacks(refresh)
         if (!preserveHandoff) VisualPaymentHandoff.clear()
@@ -125,12 +136,15 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
                                     pendingOcrClear.cancel()
                                     VisualPaymentHandoff.remember(pkg, value.toDouble())
+                                    lastQualifiedAt = SystemClock.elapsedRealtime()
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：识别到超门槛付款候选")
                                 } else if (value != null) {
                                     pendingOcrClear.cancel()
                                     VisualPaymentHandoff.clear()
+                                    lastQualifiedAt = 0L
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：金额未超过门槛")
                                 } else {
+                                    lastQualifiedAt = 0L
                                     // A blank transition frame may arrive just before the cashier activity.
                                     // Keep the candidate only if that activity transition changes the generation
                                     // within 500 ms; otherwise clear it, preventing stale amounts on this page.

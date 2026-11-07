@@ -6,6 +6,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VisualGuardTargetsTest {
+    @Test fun `only the same fresh taobao checkout event retains a candidate`() {
+        val tb = "com.taobao.taobao"
+        val checkout = "com.alibaba.android.ultron.UltronTradeHybridActivity"
+        assertTrue(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, tb, checkout, 1000, 1900))
+        assertFalse(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, tb, checkout, 1000, 2001))
+        assertFalse(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, tb, "another.Activity", 1000, 1900))
+        assertFalse(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, "com.other", checkout, 1000, 1900))
+        assertFalse(VisualGuardTargets.isFreshDuplicateCheckout(tb, checkout, tb, checkout, 0, 500))
+    }
     @Test fun `jd verification is distinct from an order page`() {
         val jd = "com.jingdong.app.mall"
         val challenge = "com.jingdong.app.mall.bundle.jdrhsdk.JDRiskHandleActivity"
