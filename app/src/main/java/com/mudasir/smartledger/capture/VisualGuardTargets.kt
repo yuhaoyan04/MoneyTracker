@@ -58,15 +58,16 @@ class VisualHandoffState {
     private var amount: Double? = null
     private var source = ""
     private var capturedAt = 0L
+    private var validityMillis = 20_000L
     private var wechatEntryAt = -1L
 
-    fun remember(sourcePackage: String, value: Double, now: Long) {
-        if (sourcePackage !in VisualGuardTargets.shopping || !value.isFinite() || value <= 0) { clear(); return }
-        source = sourcePackage; amount = value; capturedAt = now; wechatEntryAt = -1L
+    fun remember(sourcePackage: String, value: Double, now: Long, validForMillis: Long = 20_000L) {
+        if (sourcePackage !in VisualGuardTargets.shopping || !value.isFinite() || value <= 0 || validForMillis !in 1..20_000L) { clear(); return }
+        source = sourcePackage; amount = value; capturedAt = now; wechatEntryAt = -1L; validityMillis = validForMillis
     }
     fun clear() { amount = null; source = ""; capturedAt = 0; wechatEntryAt = -1L }
     fun observe(pkg: String, cls: String, now: Long): Double? {
-        if (amount == null || now - capturedAt !in 0..20_000L) { clear(); return null }
+        if (amount == null || now - capturedAt !in 0..validityMillis) { clear(); return null }
         if (VisualGuardTargets.isWechatEntry(pkg, cls)) { wechatEntryAt = now; return null }
         val accepted = (wechatEntryAt >= 0 && now - wechatEntryAt in 0..10_000L && VisualGuardTargets.isWechatCashier(pkg, cls)) ||
             VisualGuardTargets.isOtherCashier(pkg, cls)

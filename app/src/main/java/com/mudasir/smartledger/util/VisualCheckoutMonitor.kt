@@ -34,6 +34,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private val pendingOcrClear = PendingOcrClear()
     private val deferredCapture = DeferredTaobaoCapture()
     private var dialogTicket = 0L
+    private var deferredPending = false
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val refresh = object : Runnable {
         override fun run() {
@@ -53,6 +54,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         }
         generation++
         deferredCapture.invalidate()
+        deferredPending = false
         if (verificationSource != pkg || !VisualGuardTargets.isJdOrderAfterVerification(pkg, cls)) VisualPaymentHandoff.clear()
         verificationSource = ""
         sourcePackage = pkg
@@ -83,7 +85,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     }
     fun leaveCheckout(preserveHandoff: Boolean = false) {
         generation++
-        if (!preserveHandoff) deferredCapture.invalidate()
+        if (!preserveHandoff) { deferredCapture.invalidate(); deferredPending = false }
         checkoutSeenAt = 0L
         sourcePackage = ""
         sourceClass = ""
@@ -106,6 +108,11 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
 
     fun observedWindow(pkg: String, cls: String, at: Long, foreground: Boolean) {
         deferredCapture.window(pkg, cls, at, foreground)
+        if (deferredPending && foreground && ((pkg != VisualGuardTargets.TAOBAO && pkg != VisualGuardTargets.WECHAT) ||
+                (pkg == VisualGuardTargets.WECHAT && cls.endsWith("LauncherUI")))) {
+            deferredPending = false
+            VisualPaymentHandoff.clear()
+        }
     }
 
     fun inspect(pkg: String, fast: Boolean = false) {
@@ -163,12 +170,16 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 val current = service.rootInActiveWindow?.packageName?.toString()
                                 val active = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
                                 val deferred = if (fast && pkg == VisualGuardTargets.TAOBAO)
-                                    deferredCapture.accept(capturedDialogTicket, captureTime, SystemClock.uptimeMillis(), current) else null
+                                    deferredCapture.accept(capturedDialogTicket, captureTime, SystemClock.uptimeMillis(), current, allowSource = true) else null
                                 if (((generation != capturedGeneration || current != pkg) && deferred == null) || !active.getBoolean("guard_enabled", false) ||
                                     (skuMode && !active.getBoolean("guard_visual_taobao_sku_enabled", false)) ||
                                     !VisualGuardTargets.sourceAllowed(pkg, active.getBoolean("guard_visual_order_pages_enabled", false),
                                         active.getBoolean("guard_visual_multi_app_enabled", false)) || SystemClock.elapsedRealtime() - now > 8_000L) {
-                                    if (fast) PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：弹窗结果过期已丢弃")
+                                    if (fast) PurchaseGuardService.recordDetection(pkg, "", when (current) {
+                                        pkg -> "屏幕识别：弹窗结果过期（来源应用）"
+                                        VisualGuardTargets.WECHAT -> "屏幕识别：弹窗结果过期（微信）"
+                                        else -> "屏幕识别：弹窗结果过期（其他窗口）"
+                                    })
                                     return@addOnSuccessListener
                                 }
                                 val lines = result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
@@ -179,7 +190,8 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                     else VisualCheckoutParser.amount(lines, width, height)
                                 if (deferred != null) {
                                     if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
-                                        VisualPaymentHandoff.remember(pkg, value.toDouble())
+                                        VisualPaymentHandoff.remember(pkg, value.toDouble(), 5_000L)
+                                        deferredPending = !deferred.cashier
                                         if (deferred.entry) VisualPaymentHandoff.observe(VisualGuardTargets.WECHAT, "OrderHandlerUI")
                                         if (deferred.cashier) VisualPaymentHandoff.observe(VisualGuardTargets.WECHAT, "WxaLiteAppTransparentLiteUI")?.let {
                                             PurchaseGuardService.onVisualPaymentHandoff(service.applicationContext, VisualGuardTargets.WECHAT, it)
@@ -245,7 +257,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
 /** Short-lived, in-memory association. A WeChat entry alone never supplies an amount. */
 object VisualPaymentHandoff {
     private val state = VisualHandoffState()
-    @Synchronized fun remember(pkg: String, value: Double) = state.remember(pkg, value, SystemClock.elapsedRealtime())
+    @Synchronized fun remember(pkg: String, value: Double, validForMillis: Long = 20_000L) = state.remember(pkg, value, SystemClock.elapsedRealtime(), validForMillis)
     @Synchronized fun clear() = state.clear()
     @Synchronized fun observe(pkg: String, cls: String): Double? = state.observe(pkg, cls, SystemClock.elapsedRealtime())
 }
