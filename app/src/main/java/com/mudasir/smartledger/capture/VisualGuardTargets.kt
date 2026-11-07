@@ -73,6 +73,15 @@ class VisualHandoffState {
     fun clear() { amount = null; source = ""; capturedAt = 0; wechatEntryAt = -1L }
     fun observe(pkg: String, cls: String, now: Long): Double? {
         if (amount == null || now - capturedAt !in 0..validityMillis) { clear(); return null }
+        // A candidate must not survive a trip through an unrelated app and later be
+        // attributed to an unrelated payment. System UI and our own overlay are not
+        // payment transitions; WeChat may emit intermediate windows before its entry.
+        if (pkg.isNotBlank() && pkg != source && pkg != VisualGuardTargets.WECHAT &&
+            pkg != "com.mudasir.smartledger" && !pkg.startsWith("com.android.systemui") &&
+            !VisualGuardTargets.isOtherCashier(pkg, cls)) {
+            clear()
+            return null
+        }
         if (VisualGuardTargets.isWechatEntry(pkg, cls)) { wechatEntryAt = now; return null }
         val accepted = (wechatEntryAt >= 0 && now - wechatEntryAt in 0..10_000L && VisualGuardTargets.isWechatCashier(pkg, cls)) ||
             VisualGuardTargets.isOtherCashier(pkg, cls)

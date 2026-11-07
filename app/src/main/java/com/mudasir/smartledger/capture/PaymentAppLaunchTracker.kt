@@ -2,10 +2,10 @@ package com.mudasir.smartledger.capture
 
 /** Detect a recent shopping-app to payment-app transition; this is a hint, not proof of payment. */
 class PaymentAppLaunchTracker(private val ownPackage: String) {
-    private val shopping = setOf("com.taobao.taobao", "com.jingdong.app.mall", "com.sankuai.meituan",
-        "com.sankuai.meituan.takeoutnew", "com.xunmeng.pinduoduo", "com.sdu.didi.psnger")
+    private val shopping = VisualGuardTargets.shopping + "com.sdu.didi.psnger"
     private val payment = setOf("com.tencent.mm", "com.eg.android.AlipayGphone",
-        "com.eg.android.AlipayGphone.rc", "com.eg.android.AlipayGphone.lite")
+        "com.eg.android.AlipayGphone.rc", "com.eg.android.AlipayGphone.lite", "com.unionpay") +
+        CaptureWhitelist.bankPackages
     private var previousPackage: String? = null
     private var previousAt = 0L
 

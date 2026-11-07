@@ -68,10 +68,22 @@ class VisualGuardTargetsTest {
         val state = VisualHandoffState()
         state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
         assertNull(state.observe("com.fake.bank", "CashierActivity", 2000))
+        state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
         assertNull(state.observe("com.eg.android.AlipayGphone", "MainActivity", 2000))
+        state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
         assertNull(state.observe("com.eg.android.AlipayGphone", "CashierActivity", 3000))
+        state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
         assertEquals(600.0, state.observe("com.icbc", "CashierActivity", 3000)!!, 0.001)
         state.remember("com.sankuai.meituan", 800.0, 1000)
         assertNull(state.observe("com.icbc", "PaymentActivity", 21_001))
+    }
+    @Test fun `unrelated app invalidates candidate before a later cashier`() {
+        val state = VisualHandoffState()
+        state.remember("com.jingdong.app.mall", 600.0, 1000)
+        assertNull(state.observe("com.example.other", "HomeActivity", 1500))
+        assertNull(state.observe("com.icbc", "CashierActivity", 2000))
+        state.remember("com.jingdong.app.mall", 600.0, 3000)
+        assertNull(state.observe("com.android.systemui", "Dialog", 3500))
+        assertEquals(600.0, state.observe("com.icbc", "CashierActivity", 4000)!!, 0.001)
     }
 }
