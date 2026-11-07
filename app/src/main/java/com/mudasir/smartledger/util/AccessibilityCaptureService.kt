@@ -153,14 +153,17 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (eventPackage == VisualGuardTargets.TAOBAO && e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val prefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
             val bounds = android.graphics.Rect()
-            val source = e.source
-            source?.getBoundsInScreen(bounds)
+            val hasSourceBounds = runCatching {
+                val source = e.source ?: return@runCatching false
+                source.getBoundsInScreen(bounds)
+                true
+            }.getOrDefault(false)
             val recent = now - orderButtonsAt in 0..1_200L && e.eventTime - orderButtonsAt in 0..1_200L
-            val candidate = if (recent && source != null) OrderListPaymentParser.match(orderButtons,
+            val candidate = if (recent && hasSourceBounds) OrderListPaymentParser.match(orderButtons,
                 bounds.left, bounds.top, bounds.right, bounds.bottom) else null
             if (GuardDiagnosticLog.isRecording()) PurchaseGuardService.recordDetection(eventPackage, "", when {
                 orderButtons.isEmpty() -> "订单列表：点击时没有可用快照"
-                source == null -> "订单列表：点击来源不可读取"
+                !hasSourceBounds -> "订单列表：点击来源不可读取"
                 !recent -> "订单列表：点击快照已过期"
                 candidate == null -> "订单列表：点击未匹配唯一按钮"
                 !CheckoutPageParser.exceedsThreshold(candidate.amount.toDouble(), com.mudasir.smartledger.capture.GuardThreshold.read(prefs)) -> "订单列表：点击金额未超过门槛"
