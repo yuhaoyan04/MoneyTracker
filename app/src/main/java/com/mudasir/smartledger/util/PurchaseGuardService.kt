@@ -157,6 +157,7 @@ class PurchaseGuardService : Service() {
                     svc.requestGeneration++
                     svc.requestPackage = null
                     if (svc.overlayView != null) svc.removeOverlay()
+                    else svc.lastNudgeAt = 0L // A cancelled, never-shown request must not suppress the payment handoff.
                     recordDetection(pkg, "", "付款页面或金额已变化，关闭过期提醒")
                 }
             } }
@@ -494,6 +495,7 @@ class PurchaseGuardService : Service() {
             recordDetection(origin, "", "离开原应用，关闭未完成的冷静页面")
             removeOverlay()
         } else {
+            lastNudgeAt = 0L // No prompt was shown; permit the immediately following payment window.
             recordDetection(origin, "", "离开原应用，取消待显示提醒")
         }
     }
