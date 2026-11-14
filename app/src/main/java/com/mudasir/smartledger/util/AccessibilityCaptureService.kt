@@ -240,6 +240,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = e.packageName?.toString().orEmpty()
             val cls = e.className?.toString().orEmpty()
+            val embeddedAlipay = AlipayVisualPolicy.isTaobaoEmbeddedCashier(pkg, cls)
             if (pkg == VisualGuardTargets.TAOBAO && cls.endsWith("Activity") && !cls.endsWith("TBOrderListActivity")) {
                 orderShield.reset()
                 PurchaseGuardService.onOrderListLeft()
@@ -247,7 +248,7 @@ class AccessibilityCaptureService : AccessibilityService() {
             visualMonitor?.observedWindow(pkg, cls, e.eventTime, rootInActiveWindow?.packageName?.toString() == pkg)
             if (pkg == VisualGuardTargets.WECHAT && cls.endsWith("LauncherUI") &&
                 rootInActiveWindow?.packageName?.toString() == pkg) PurchaseGuardService.onWechatHome()
-            if (pkg != AlipayVisualPolicy.JD && pkg != AlipayVisualPolicy.ALIPAY ||
+            if ((!embeddedAlipay && pkg != AlipayVisualPolicy.JD && pkg != AlipayVisualPolicy.ALIPAY) ||
                 (pkg == AlipayVisualPolicy.ALIPAY && cls.endsWith("Activity") && !AlipayVisualPolicy.isAlipayCashier(pkg, cls))) {
                 alipayVisualMonitor?.cancel()
             }
@@ -270,9 +271,9 @@ class AccessibilityCaptureService : AccessibilityService() {
             if (AlipayVisualPolicy.isAlipayCashier(pkg, cls)) {
                 PurchaseGuardService.recordDetection(pkg, "", if (alipayEntry || multiEntry) "支付宝入口：已匹配付款窗口" else "支付宝入口：没有有效付款操作")
             }
-            if ((alipayEntry || multiEntry) && android.os.Build.VERSION.SDK_INT >= 30) {
+            if ((alipayEntry || multiEntry || (embeddedAlipay && isForeground)) && android.os.Build.VERSION.SDK_INT >= 30) {
                 if (alipayVisualMonitor == null) alipayVisualMonitor = AlipayVisualMonitor(this)
-                alipayVisualMonitor?.start(if (multiEntry) multiSource else null)
+                alipayVisualMonitor?.start(if (multiEntry) multiSource else null, embedded = embeddedAlipay)
             }
             if (VisualGuardTargets.isJdVerification(pkg, cls)) visualMonitor?.pauseForVerification(pkg)
             else if (VisualGuardTargets.isTaobaoSkuDialog(pkg, cls)) visualMonitor?.checkoutWindow(pkg, cls)

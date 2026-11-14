@@ -16,6 +16,8 @@ object AlipayVisualPolicy {
     private const val ALIPAY_CASHIER = "com.alipay.android.msp.ui.views.MspContainerActivity"
     fun isJdCashier(pkg: String, cls: String) = pkg == JD && cls == JD_CASHIER
     fun isAlipayCashier(pkg: String, cls: String) = pkg == ALIPAY && cls == ALIPAY_CASHIER
+    fun isTaobaoEmbeddedCashier(pkg: String, cls: String) =
+        pkg == VisualGuardTargets.TAOBAO && cls == ALIPAY_CASHIER
     fun isPayAction(texts: List<String>) = texts.any { it.trim() in setOf("确认付款", "立即付款", "继续付款", "确认支付", "立即支付", "确认并支付", "提交并支付", "去付款", "去支付") }
     data class CashierEvidence(val paymentButton: Boolean, val passwordOption: Boolean, val outcome: Boolean) {
         val pending: Boolean get() = paymentButton && passwordOption && !outcome

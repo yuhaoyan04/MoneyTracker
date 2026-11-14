@@ -31,24 +31,32 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
     private var attempts = 0
     private var stable = StableAlipayAmount()
     private var multiSource: String? = null
+    private var embeddedTaobao = false
+    private var running = false
 
-    fun start(source: String? = null) {
+    fun start(source: String? = null, embedded: Boolean = false) {
+        // Repeated events for the same embedded cashier must not discard the first
+        // amount observation; leaving the window still cancels this generation.
+        if (embedded && embeddedTaobao && running && alive(generation) && current(generation)) return
         cancel()
         multiSource = source
+        embeddedTaobao = embedded
         if (!enabled()) return
+        running = true
         startedAt = SystemClock.elapsedRealtime()
         attempts = 0
         stable = StableAlipayAmount()
         val token = generation
-        handler.postDelayed({ capture(token) }, 400L)
+        handler.postDelayed({ capture(token) }, 200L)
     }
 
-    fun cancel() { generation++; handler.removeCallbacksAndMessages(null) }
+    fun cancel() { running = false; generation++; handler.removeCallbacksAndMessages(null) }
 
     private fun enabled(): Boolean {
         val p = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         return p.getBoolean("guard_enabled", false) &&
-            (if (multiSource == null) p.getBoolean("guard_visual_multi_app_enabled", false) else true) &&
+            (if (embeddedTaobao) p.getBoolean("guard_visual_order_pages_enabled", false)
+             else if (multiSource == null) p.getBoolean("guard_visual_multi_app_enabled", false) else true) &&
             p.getBoolean("guard_visual_alipay_enabled", false) && (multiSource == null ||
                 (p.getBoolean("guard_visual_alipay_multi_enabled", false) && VisualGuardTargets.sourceAllowed(multiSource!!,
                     p.getBoolean("guard_visual_order_pages_enabled", false), p.getBoolean("guard_visual_multi_app_enabled", false))))
@@ -57,10 +65,12 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
     private fun alive(token: Long): Boolean = token == generation && enabled() &&
         SystemClock.elapsedRealtime() - startedAt in 0..10_000L
     private fun current(token: Long): Boolean = alive(token) &&
-        service.rootInActiveWindow?.packageName?.toString() == AlipayVisualPolicy.ALIPAY
+        service.rootInActiveWindow?.packageName?.toString() == targetPackage()
+
+    private fun targetPackage(): String = if (embeddedTaobao) VisualGuardTargets.TAOBAO else AlipayVisualPolicy.ALIPAY
 
     private fun retry(token: Long) {
-        if (alive(token) && attempts < 6) handler.postDelayed({ capture(token) }, 900L)
+        if (alive(token) && attempts < 10) handler.postDelayed({ capture(token) }, 450L)
     }
 
     private fun capture(token: Long) {
@@ -75,7 +85,7 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
                     busy = false
                     if (current(token)) {
                         stable.observe(null)
-                        PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝屏幕识别截图失败：$errorCode")
+                        PurchaseGuardService.recordDetection(targetPackage(), "", "支付宝屏幕识别截图失败：$errorCode")
                         retry(token)
                     }
                 }
@@ -117,15 +127,15 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
                                         candidates.size > 1 -> "金额区域多个候选"
                                         else -> "等待第二次一致金额"
                                     }
-                                    PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝识别细节：$detail")
-                                    PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝屏幕识别：等待稳定付款金额")
+                                    PurchaseGuardService.recordDetection(targetPackage(), "", "支付宝识别细节：$detail")
+                                    PurchaseGuardService.recordDetection(targetPackage(), "", "支付宝屏幕识别：等待稳定付款金额")
                                     retry(token)
                                 } else {
                                     val p = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
                                     if (CheckoutPageParser.exceedsThreshold(confirmed.toDouble(), GuardThreshold.read(p))) {
-                                        PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝屏幕识别：金额超过门槛")
-                                        PurchaseGuardService.onVisualPaymentHandoff(service.applicationContext, AlipayVisualPolicy.ALIPAY, confirmed.toDouble(), multiSource)
-                                    } else PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝屏幕识别：金额未超过门槛")
+                                        PurchaseGuardService.recordDetection(targetPackage(), "", "支付宝屏幕识别：金额超过门槛")
+                                        PurchaseGuardService.onVisualPaymentHandoff(service.applicationContext, targetPackage(), confirmed.toDouble(), multiSource)
+                                    } else PurchaseGuardService.recordDetection(targetPackage(), "", "支付宝屏幕识别：金额未超过门槛")
                                     cancel()
                                 }
                             } finally { crop.recycle(); bitmap.recycle(); busy = false }

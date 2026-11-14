@@ -10,6 +10,12 @@ import org.junit.Test
 import java.math.BigDecimal
 
 class AlipayVisualPolicyTest {
+    @Test fun `embedded cashier requires exact taobao package and payment activity`() {
+        val cls = "com.alipay.android.msp.ui.views.MspContainerActivity"
+        assertTrue(AlipayVisualPolicy.isTaobaoEmbeddedCashier("com.taobao.taobao", cls))
+        assertFalse(AlipayVisualPolicy.isTaobaoEmbeddedCashier("com.eg.android.AlipayGphone", cls))
+        assertFalse(AlipayVisualPolicy.isTaobaoEmbeddedCashier("com.taobao.taobao", "com.taobao.OtherActivity"))
+    }
     @Test fun `observed centered cashier amount line is within the crop`() {
         val crop = AlipayVisualPolicy.amountCrop(1080, 2400)!!
         assertTrue(crop.x <= 540 && crop.x + crop.width > 540)
