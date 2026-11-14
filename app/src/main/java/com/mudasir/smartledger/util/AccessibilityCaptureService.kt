@@ -250,7 +250,14 @@ class AccessibilityCaptureService : AccessibilityService() {
                 (pkg == AlipayVisualPolicy.ALIPAY && cls.endsWith("Activity") && !AlipayVisualPolicy.isAlipayCashier(pkg, cls))) {
                 alipayVisualMonitor?.cancel()
             }
-            val alipayEntry = jdAlipayEntry.onWindow(pkg, cls, SystemClock.elapsedRealtime())
+            val wasJdArmed = jdAlipayEntry.isArmed()
+            val isForeground = rootInActiveWindow?.packageName?.toString() == pkg
+            val alipayEntry = jdAlipayEntry.onWindow(pkg, cls, SystemClock.elapsedRealtime(), isForeground)
+            if (wasJdArmed && !alipayEntry && !AlipayVisualPolicy.isAlipayCashier(pkg, cls)) {
+                if (!jdAlipayEntry.isArmed()) PurchaseGuardService.recordDetection(AlipayVisualPolicy.JD, "", "支付宝入口：前台切换清除付款操作")
+                else if (!isForeground && pkg != AlipayVisualPolicy.JD && pkg != AlipayVisualPolicy.ALIPAY)
+                    PurchaseGuardService.recordDetection(AlipayVisualPolicy.JD, "", "支付宝入口：忽略后台窗口事件")
+            }
             val multiPrefs = getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
             val multiSource = if (multiPrefs.getBoolean("guard_visual_alipay_multi_enabled", false))
                 shoppingAlipayEntry.onWindow(pkg, cls, SystemClock.elapsedRealtime()) else {

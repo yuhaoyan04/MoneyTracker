@@ -46,6 +46,8 @@ object GuardLogPolicy {
         message.startsWith("支付宝入口：缺少有效京东收银台") -> "ALIPAY_ENTRY_CLICK_REJECTED"
         message.startsWith("支付宝入口：已匹配付款窗口") -> "ALIPAY_ENTRY_WINDOW_ACCEPTED"
         message.startsWith("支付宝入口：没有有效付款操作") -> "ALIPAY_ENTRY_WINDOW_REJECTED"
+        message.startsWith("支付宝入口：前台切换清除付款操作") -> "ALIPAY_ENTRY_CLEARED_FOREGROUND"
+        message.startsWith("支付宝入口：忽略后台窗口事件") -> "ALIPAY_ENTRY_BACKGROUND_IGNORED"
         message.startsWith("屏幕识别：识别到超门槛付款候选") -> "OCR_QUALIFIED"
         message.startsWith("屏幕识别：订单弹窗触发快速检查") -> "OCR_DIALOG_FAST_CHECK"
         message.startsWith("屏幕识别：通过订单列表结构启动检查") -> "OCR_ORDER_LIST_STRUCTURE"

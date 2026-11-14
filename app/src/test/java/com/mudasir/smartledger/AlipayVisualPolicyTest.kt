@@ -10,6 +10,19 @@ import org.junit.Test
 import java.math.BigDecimal
 
 class AlipayVisualPolicyTest {
+    @Test fun `background windows do not clear a recent jd action but foreground changes do`() {
+        val t = JdAlipayEntryTracker()
+        val cashier = "com.jd.cashier.app.cashier.tn.view.CashierTnPayPopActivity"
+        val target = "com.alipay.android.msp.ui.views.MspContainerActivity"
+        t.onWindow(AlipayVisualPolicy.JD, cashier, 1000)
+        assertTrue(t.onClick(AlipayVisualPolicy.JD, listOf("确认付款"), 1100))
+        assertFalse(t.onWindow("com.example.background", "BackgroundActivity", 1200, false))
+        assertTrue(t.onWindow(AlipayVisualPolicy.ALIPAY, target, 1500))
+        t.onWindow(AlipayVisualPolicy.JD, cashier, 2000)
+        assertTrue(t.onClick(AlipayVisualPolicy.JD, listOf("确认付款"), 2100))
+        t.onWindow("com.example.foreground", "HomeActivity", 2200, true)
+        assertFalse(t.onWindow(AlipayVisualPolicy.ALIPAY, target, 2500))
+    }
     @Test fun `duplicate window events preserve recent payment action`() {
         val target = "com.alipay.android.msp.ui.views.MspContainerActivity"
         val jd = JdAlipayEntryTracker()

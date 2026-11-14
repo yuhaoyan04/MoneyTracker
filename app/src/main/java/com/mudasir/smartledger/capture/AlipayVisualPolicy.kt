@@ -33,7 +33,7 @@ class JdAlipayEntryTracker {
     private var inCashier = false
     private var cashierAt = -1L
     private var armedAt = -1L
-    fun onWindow(pkg: String, cls: String, now: Long): Boolean {
+    fun onWindow(pkg: String, cls: String, now: Long, foreground: Boolean = true): Boolean {
         if (AlipayVisualPolicy.isJdCashier(pkg, cls)) {
             if (!inCashier || now - cashierAt !in 0..60_000L) { inCashier = true; cashierAt = now; armedAt = -1L }
             return false
@@ -43,11 +43,12 @@ class JdAlipayEntryTracker {
             inCashier = false; armedAt = -1L
             return accepted
         }
-        if (pkg == AlipayVisualPolicy.JD && cls.endsWith("Activity")) { inCashier = false; armedAt = -1L }
-        if (pkg.isNotBlank() && pkg != AlipayVisualPolicy.JD && pkg != AlipayVisualPolicy.ALIPAY &&
+        if (foreground && pkg == AlipayVisualPolicy.JD && cls.endsWith("Activity")) { inCashier = false; armedAt = -1L }
+        if (foreground && pkg.isNotBlank() && pkg != AlipayVisualPolicy.JD && pkg != AlipayVisualPolicy.ALIPAY &&
             pkg != "com.mudasir.smartledger" && !pkg.startsWith("com.android.systemui")) clear()
         return false
     }
+    fun isArmed(): Boolean = armedAt >= 0
     fun onClick(pkg: String, texts: List<String>, now: Long): Boolean {
         val accepted = inCashier && now - cashierAt in 0..60_000L && pkg == AlipayVisualPolicy.JD && AlipayVisualPolicy.isPayAction(texts)
         if (accepted) armedAt = now
