@@ -203,6 +203,7 @@ class AccessibilityCaptureService : AccessibilityService() {
         }
         if (e.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && !e.isPassword && eventPackage == AlipayVisualPolicy.JD) {
             val texts = e.text.take(5).map { it?.toString().orEmpty().take(80) }
+            visualMonitor?.onJdCashierClick(AlipayVisualPolicy.isPayAction(texts))
             val accepted = jdAlipayEntry.onClick(eventPackage, texts, SystemClock.elapsedRealtime())
             if (AlipayVisualPolicy.isPayAction(texts)) PurchaseGuardService.recordDetection(eventPackage, "", if (accepted) "支付宝入口：付款操作已接收" else "支付宝入口：缺少有效京东收银台")
         }

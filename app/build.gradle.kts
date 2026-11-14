@@ -16,8 +16,8 @@ android {
         targetSdk = 36
         // Compatibility rollback: v2.22.0 behavior with a higher version code so
         // devices already on v2.23.x can install it without uninstalling.
-        versionCode = 110
-        versionName = "2.44.27"
+        versionCode = 116
+        versionName = "2.44.33"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -126,6 +126,7 @@ dependencies {
 
     implementation(libs.gson)
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.github.chrisbanes:PhotoView:2.3.0")
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
     implementation("androidx.concurrent:concurrent-futures:1.2.0")

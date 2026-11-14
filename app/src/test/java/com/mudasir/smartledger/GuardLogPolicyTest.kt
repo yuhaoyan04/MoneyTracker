@@ -5,6 +5,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class GuardLogPolicyTest {
+    @org.junit.Test fun `price crop diagnostics contain format counts only`() {
+        val stats = com.mudasir.smartledger.util.GuardLogPolicy.jdPriceCropStats("商户 ¥ 497．06 尾号 1234", true)
+        org.junit.Assert.assertEquals("true", stats["currency"])
+        org.junit.Assert.assertEquals("true", stats["decimal"])
+        val rendered = stats.toString()
+        org.junit.Assert.assertFalse(rendered.contains("497"))
+        org.junit.Assert.assertFalse(rendered.contains("1234"))
+        org.junit.Assert.assertFalse(rendered.contains("商户"))
+        val lines = listOf(com.mudasir.smartledger.capture.VisualText("¥497.06 商户", 20, 30, 80, 50))
+        val geometry = GuardLogPolicy.jdPriceLineStats(lines, 100, 100)
+        assertEquals("20:30:60:20:5:1:1", geometry)
+        assertFalse(geometry.contains("497"))
+        assertFalse(geometry.contains("商户"))
+    }
     @Test fun `unknown message and arbitrary app names are not retained`() {
         assertEquals("OTHER", GuardLogPolicy.status("secret merchant paid 123456"))
         assertEquals("other", GuardLogPolicy.safePackage("com.private.chat", "com.mudasir.smartledger"))

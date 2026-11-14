@@ -64,6 +64,19 @@ class VisualGuardTargetsTest {
         assertEquals(600.0, state.observe("com.tencent.mm", "com.tencent.mm.plugin.lite.ui.WxaLiteAppTransparentLiteUI", 3000)!!, 0.001)
         assertNull(state.observe("com.tencent.mm", "com.tencent.mm.plugin.lite.ui.WxaLiteAppTransparentLiteUI", 4000))
     }
+    @Test fun `wechat only cashier candidate cannot be applied to bank or unrelated app`() {
+        val state = VisualHandoffState()
+        val jd = "com.jingdong.app.mall"
+        state.remember(jd, 600.0, 1000, 5000, onlyWechat = true)
+        assertNull(state.observe("com.icbc", "CashierActivity", 1500))
+        assertNull(state.observe("com.tencent.mm", "OrderHandlerUI", 2000))
+        assertNull(state.observe("com.tencent.mm", "WxaLiteAppTransparentLiteUI", 2500))
+        state.remember(jd, 600.0, 3000, 5000, onlyWechat = true)
+        assertNull(state.observe("com.tencent.mm", "OrderHandlerUI", 3500))
+        assertEquals(600.0, state.observe("com.tencent.mm", "WxaLiteAppTransparentLiteUI", 4000)!!, 0.001)
+        state.remember(jd, 600.0, 5000, 5000, onlyWechat = true)
+        assertNull(state.observe("com.tencent.mm", "OrderHandlerUI", 10001))
+    }
     @Test fun `other cashiers require allowlisted target and recent candidate`() {
         val state = VisualHandoffState()
         state.remember("com.taobao.taobao", 600.0, 1000)

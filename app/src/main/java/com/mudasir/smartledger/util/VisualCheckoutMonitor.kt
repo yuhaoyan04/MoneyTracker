@@ -7,9 +7,11 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.Display
 import androidx.annotation.RequiresApi
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.mudasir.smartledger.capture.CheckoutPageParser
 import com.mudasir.smartledger.capture.GuardThreshold
 import com.mudasir.smartledger.capture.VisualCheckoutParser
@@ -18,11 +20,15 @@ import com.mudasir.smartledger.capture.VisualGuardTargets
 import com.mudasir.smartledger.capture.VisualHandoffState
 import com.mudasir.smartledger.capture.PendingOcrClear
 import com.mudasir.smartledger.capture.DeferredTaobaoCapture
+import com.mudasir.smartledger.capture.AlipayVisualPolicy
+import com.mudasir.smartledger.capture.StableAlipayAmount
 
 /** Experimental opt-in OCR for allowed shopping apps; screen data stays in memory. */
 @RequiresApi(Build.VERSION_CODES.R)
 class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private val recognizer by lazy { TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build()) }
+    private val latinRecognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+    private var latinStarted = false
     private var busy = false
     private var lastAttempt = 0L
     private var checkoutSeenAt = 0L
@@ -36,6 +42,8 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
     private var dialogTicket = 0L
     private var deferredPending = false
     private var dialogOpenedAt = 0L
+    private var jdCashierStable = StableAlipayAmount()
+    private var lastJdStatsAt = 0L
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val refresh = object : Runnable {
         override fun run() {
@@ -43,7 +51,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
             if (checkoutSeenAt == 0L || elapsed !in 0..60_000L ||
                 service.rootInActiveWindow?.packageName?.toString() != sourcePackage) return
             inspect(sourcePackage)
-            handler.postDelayed(this, 4_000L)
+            handler.postDelayed(this, if (AlipayVisualPolicy.isJdCashier(sourcePackage, sourceClass)) 1_200L else 4_000L)
         }
     }
 
@@ -54,6 +62,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
             return
         }
         generation++
+        jdCashierStable = StableAlipayAmount()
         deferredCapture.invalidate()
         deferredPending = false
         dialogOpenedAt = 0L
@@ -64,7 +73,21 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         lastQualifiedAt = 0L
         checkoutSeenAt = now
         handler.removeCallbacks(refresh)
-        handler.postDelayed(refresh, 1_000L)
+        handler.postDelayed(refresh, if (AlipayVisualPolicy.isJdCashier(pkg, cls)) 400L else 1_000L)
+    }
+    /** Changing payment selection invalidates any amount read before the click. */
+    fun onJdCashierClick(isPayAction: Boolean) {
+        if (!AlipayVisualPolicy.isJdCashier(sourcePackage, sourceClass) || isPayAction) return
+        generation++
+        jdCashierStable = StableAlipayAmount()
+        lastQualifiedAt = 0L
+        lastAttempt = 0L
+        VisualPaymentHandoff.clear()
+        PurchaseGuardService.recordDetection(sourcePackage, "", "京东收银台：付款选项变化，清除金额候选")
+        val ticket = generation
+        listOf(300L, 1_200L).forEach { delay -> handler.postDelayed({
+            if (generation == ticket && sourcePackage == AlipayVisualPolicy.JD) inspect(sourcePackage)
+        }, delay) }
     }
     fun ensureCheckoutWindow(pkg: String, cls: String) {
         if (pkg != sourcePackage || checkoutSeenAt == 0L || SystemClock.elapsedRealtime() - checkoutSeenAt > 4_000L) checkoutWindow(pkg, cls)
@@ -141,6 +164,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         val now = SystemClock.elapsedRealtime()
         val prefs = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
         val skuMode = VisualGuardTargets.isTaobaoSkuDialog(sourcePackage, sourceClass)
+        val jdCashierMode = AlipayVisualPolicy.isJdCashier(sourcePackage, sourceClass)
         if (VisualGuardTargets.skipBackgroundOrderListOcr(pkg, sourceClass, fast)) return
         if (pkg != sourcePackage || service.rootInActiveWindow?.packageName?.toString() != pkg ||
             !prefs.getBoolean("guard_enabled", false) ||
@@ -151,7 +175,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
             if (fast) PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：弹窗检查等待前次识别")
             return
         }
-        if (now - lastAttempt < (if (fast) 650L else 2_500L)) return
+        if (now - lastAttempt < (if (fast || jdCashierMode) 650L else 2_500L)) return
         busy = true
         lastAttempt = now
         if (fast) PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：弹窗截图已请求")
@@ -186,9 +210,26 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                     if (bitmap == null) { busy = false; return }
                     val width = bitmap.width
                     val height = bitmap.height
+                    val jdCrop = if (jdCashierMode) runCatching {
+                        val base = Bitmap.createBitmap(bitmap, width / 5, height * 8 / 100,
+                            width * 3 / 5, height * 20 / 100)
+                        try { Bitmap.createScaledBitmap(base, base.width * 2, base.height * 2, true) }
+                        finally { base.recycle() }
+                    }.getOrNull() else null
                     try {
-                        recognizer.process(InputImage.fromBitmap(bitmap, 0))
-                            .addOnSuccessListener(service.mainExecutor) { result ->
+                        val fullTask = recognizer.process(InputImage.fromBitmap(bitmap, 0))
+                        val cropTask = jdCrop?.let { recognizer.process(InputImage.fromBitmap(it, 0)) }
+                        val latinTask = jdCrop?.let { latinStarted = true; latinRecognizer.process(InputImage.fromBitmap(it, 0)) }
+                        val both = if (cropTask != null && latinTask != null) Tasks.whenAllComplete(fullTask, cropTask, latinTask) else Tasks.whenAllComplete(fullTask)
+                        both.addOnSuccessListener(service.mainExecutor) {
+                                if (!fullTask.isSuccessful) {
+                                    fullTask.exception?.let(GuardDiagnosticLog::failure)
+                                    jdCashierStable = StableAlipayAmount()
+                                    VisualPaymentHandoff.clear()
+                                    PurchaseGuardService.recordDetection(pkg, "", "屏幕识别失败")
+                                    return@addOnSuccessListener
+                                }
+                                val result = fullTask.result
                                 val current = service.rootInActiveWindow?.packageName?.toString()
                                 val active = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
                                 val deferred = if (fast && pkg == VisualGuardTargets.TAOBAO)
@@ -208,8 +249,49 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                     val b = line.boundingBox ?: return@mapNotNull null
                                     VisualText(line.text, b.left, b.top, b.right, b.bottom)
                                 }
-                                val value = if (skuMode) VisualCheckoutParser.amountForTaobaoSku(lines, width, height)
-                                    else VisualCheckoutParser.amount(lines, width, height)
+                                val priceText = if (cropTask?.isSuccessful == true) cropTask.result.text else null
+                                val latinPriceText = if (latinTask?.isSuccessful == true) latinTask.result.text else null
+                                val latinScreenLines = if (latinTask?.isSuccessful == true && jdCrop != null) {
+                                    val cropLeft = width / 5; val cropTop = height * 8 / 100
+                                    val cropWidth = width * 3 / 5; val cropHeight = height * 20 / 100
+                                    latinTask.result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
+                                        val b = line.boundingBox ?: return@mapNotNull null
+                                        VisualText(line.text,
+                                            cropLeft + b.left * cropWidth / jdCrop.width,
+                                            cropTop + b.top * cropHeight / jdCrop.height,
+                                            cropLeft + b.right * cropWidth / jdCrop.width,
+                                            cropTop + b.bottom * cropHeight / jdCrop.height)
+                                    }
+                                } else emptyList()
+                                if (jdCashierMode && SystemClock.elapsedRealtime() - lastJdStatsAt >= 3_000L) {
+                                    lastJdStatsAt = SystemClock.elapsedRealtime()
+                                    GuardDiagnosticLog.jdPriceCropStats(priceText, cropTask?.isSuccessful == true)
+                                    GuardDiagnosticLog.jdPriceCropStats(latinPriceText, latinTask?.isSuccessful == true, "latin")
+                                    GuardDiagnosticLog.jdPriceLineStats(lines.filter { it.top in (height * 8 / 100)..(height * 28 / 100) }, width, height, "full")
+                                    if (latinTask?.isSuccessful == true && jdCrop != null) {
+                                        val cropLines = latinTask.result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
+                                            val b = line.boundingBox ?: return@mapNotNull null
+                                            VisualText(line.text, b.left, b.top, b.right, b.bottom)
+                                        }
+                                        GuardDiagnosticLog.jdPriceLineStats(cropLines, jdCrop.width, jdCrop.height)
+                                    }
+                                }
+                                val jdResult = if (jdCashierMode) VisualCheckoutParser.inspectJdCashier(lines, width, height, priceText, latinPriceText, latinScreenLines) else null
+                                val rawValue = when {
+                                    skuMode -> VisualCheckoutParser.amountForTaobaoSku(lines, width, height)
+                                    jdCashierMode -> jdResult?.amount
+                                    else -> VisualCheckoutParser.amount(lines, width, height)
+                                }
+                                val value = if (jdCashierMode) {
+                                    val stable = jdCashierStable.observe(rawValue)
+                                    if (stable == null) {
+                                        VisualPaymentHandoff.clear()
+                                        PurchaseGuardService.recordDetection(pkg, "", if (rawValue == null)
+                                            "京东收银台诊断：${jdResult?.status?.name ?: "NO_PAGE"}" else "京东收银台：等待金额再次确认")
+                                    }
+                                    stable
+                                } else rawValue
+                                if (jdCashierMode && value == null) return@addOnSuccessListener
                                 if (deferred != null) {
                                     if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
                                         VisualPaymentHandoff.remember(pkg, value.toDouble(), 5_000L)
@@ -229,7 +311,8 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                 }
                                 if (value != null && CheckoutPageParser.exceedsThreshold(value.toDouble(), GuardThreshold.read(active))) {
                                     pendingOcrClear.cancel()
-                                    VisualPaymentHandoff.remember(pkg, value.toDouble())
+                                    if (jdCashierMode) VisualPaymentHandoff.rememberWechatOnly(pkg, value.toDouble())
+                                    else VisualPaymentHandoff.remember(pkg, value.toDouble())
                                     lastQualifiedAt = SystemClock.elapsedRealtime()
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：识别到超门槛付款候选")
                                 } else if (value != null) {
@@ -259,9 +342,9 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
                                     PurchaseGuardService.recordDetection(pkg, "", "屏幕识别失败")
                                 }
                             }
-                            .addOnCompleteListener(service.mainExecutor) { bitmap.recycle(); busy = false }
+                            .addOnCompleteListener(service.mainExecutor) { jdCrop?.recycle(); bitmap.recycle(); busy = false }
                     } catch (error: Exception) {
-                        bitmap.recycle(); busy = false
+                        jdCrop?.recycle(); bitmap.recycle(); busy = false
                         GuardDiagnosticLog.failure(error)
                     }
                 }
@@ -272,7 +355,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
         }
     }
 
-    fun close() { deferredCapture.invalidate(); handler.removeCallbacks(refresh); if (recognizerInitialized()) recognizer.close() }
+    fun close() { deferredCapture.invalidate(); handler.removeCallbacks(refresh); if (recognizerInitialized()) recognizer.close(); if (latinStarted) latinRecognizer.close() }
     private fun recognizerInitialized() = lastAttempt != 0L
 }
 
@@ -280,6 +363,7 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
 object VisualPaymentHandoff {
     private val state = VisualHandoffState()
     @Synchronized fun remember(pkg: String, value: Double, validForMillis: Long = 20_000L) = state.remember(pkg, value, SystemClock.elapsedRealtime(), validForMillis)
+    @Synchronized fun rememberWechatOnly(pkg: String, value: Double) = state.remember(pkg, value, SystemClock.elapsedRealtime(), 5_000L, onlyWechat = true)
     @Synchronized fun clear() = state.clear()
     @Synchronized fun observe(pkg: String, cls: String): Double? = state.observe(pkg, cls, SystemClock.elapsedRealtime())
 }

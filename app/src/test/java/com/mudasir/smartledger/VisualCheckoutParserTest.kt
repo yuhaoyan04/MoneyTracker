@@ -8,6 +8,40 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VisualCheckoutParserTest {
+    @Test fun `jd fallback requires matching digits and aligned prominent price with checkout controls`() {
+        val fullPrice = VisualText("49706", 350, 130, 630, 160)
+        val latinPrice = VisualText("497.06", 356, 130, 632, 164)
+        val controls = listOf(line("微信支付", 100, 590), line("确认付款", 700, 900))
+        fun inspect(full: List<VisualText>, latin: List<VisualText>) =
+            VisualCheckoutParser.inspectJdCashier(full, 1000, 1000, latinScreenLines = latin).amount
+        assertEquals(BigDecimal("497.06"), inspect(controls + fullPrice, listOf(latinPrice)))
+        assertNull(inspect(controls + fullPrice.copy(text = "49606"), listOf(latinPrice)))
+        assertNull(inspect(controls + fullPrice.copy(left = 50, right = 330), listOf(latinPrice)))
+        assertNull(inspect(controls.drop(1) + fullPrice, listOf(latinPrice)))
+        assertNull(inspect(controls + fullPrice, listOf(latinPrice.copy(bottom = 140))))
+        assertNull(inspect(controls + fullPrice + fullPrice.copy(text = "49606"), listOf(latinPrice, latinPrice.copy(text = "496.06"))))
+        assertNull(inspect(controls + fullPrice.copy(text = "订单号49706"), listOf(latinPrice)))
+    }
+    @Test fun `jd cashier requires unique centered currency and explicit payment controls`() {
+        val price = line("¥ 497．00", 450, 140)
+        val wechat = line("微信支付", 100, 590)
+        val confirm = line("确认付款", 700, 900)
+        fun jd(vararg lines: VisualText) = VisualCheckoutParser.amountForJdCashier(lines.toList(), 1000, 1000)
+        assertEquals(BigDecimal("497.00"), jd(price, wechat, confirm))
+        assertNull(jd(price, confirm))
+        assertNull(jd(price, wechat, line("查看优惠", 700, 900)))
+        assertNull(jd(price, wechat, confirm, line("￥496.00", 450, 170)))
+        assertNull(jd(line("订单号 12345678", 450, 140), wechat, confirm))
+        assertNull(jd(line("¥497.00", 0, 140), wechat, confirm))
+        assertNull(jd(price, wechat, confirm, line("付款成功")))
+        val noPrice = listOf(wechat, confirm)
+        assertEquals(BigDecimal("497.00"), VisualCheckoutParser.inspectJdCashier(noPrice, 1000, 1000, "¥ 497 ． 0 0").amount)
+        assertNull(VisualCheckoutParser.inspectJdCashier(noPrice, 1000, 1000, "497.00").amount)
+        assertNull(VisualCheckoutParser.inspectJdCashier(noPrice, 1000, 1000, "¥497.00 ¥496.00").amount)
+        assertEquals(BigDecimal("497.00"), VisualCheckoutParser.inspectJdCashier(noPrice, 1000, 1000, null, "¥497.00").amount)
+        assertNull(VisualCheckoutParser.inspectJdCashier(noPrice, 1000, 1000, "¥497.00", "¥496.00").amount)
+        assertNull(VisualCheckoutParser.inspectJdCashier(listOf(confirm), 1000, 1000, "¥497.00").amount)
+    }
     @Test fun `taobao sku selection alone cannot qualify as a final order`() {
         val skuPrice = line("应付 ¥501", 0, 800)
         val buy = line("立即付款", 700, 850)

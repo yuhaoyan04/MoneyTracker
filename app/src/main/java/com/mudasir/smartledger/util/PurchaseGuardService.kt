@@ -628,7 +628,12 @@ class PurchaseGuardService : Service() {
         val view = CooldownOverlayFactory.create(this)
 
         val spendText = buildString {
-            append("${if (orderButtonPrompt) "订单页应付" else "本次待付"} ¥${"%.2f".format(amount)} · 本月已支出 ¥${"%.0f".format(spent)}")
+            val amountLabel = when {
+                orderButtonPrompt -> "订单页应付"
+                visualHandoffRequest && pkg == com.mudasir.smartledger.capture.VisualGuardTargets.WECHAT -> "订单页应付（优惠可能变化）"
+                else -> "本次待付"
+            }
+            append("$amountLabel ¥${"%.2f".format(amount)} · 本月已支出 ¥${"%.0f".format(spent)}")
             budgetPct?.let { append(" · 预算已用 $it%") }
         }
         view.findViewById<TextView>(R.id.tvCooldownSpend).text = spendText

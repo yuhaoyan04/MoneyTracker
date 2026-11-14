@@ -120,6 +120,19 @@ object GuardDiagnosticLog {
         enqueue(kind, "self", "", emptyMap())
     }
 
+    /** Bounded OCR format counts only; the recognized text and number values never enter the log. */
+    @Synchronized fun jdPriceCropStats(text: String?, successful: Boolean, engine: String = "chinese") {
+        if (!isRecording()) return
+        val safeEngine = engine.takeIf { it == "chinese" || it == "latin" } ?: return
+        enqueue("JD_CASHIER_CROP_STATS", "com.jingdong.app.mall", "", GuardLogPolicy.jdPriceCropStats(text, successful) + ("engine" to safeEngine))
+    }
+    @Synchronized fun jdPriceLineStats(lines: List<com.mudasir.smartledger.capture.VisualText>, width: Int, height: Int, scope: String = "crop") {
+        if (!isRecording()) return
+        val safeScope = scope.takeIf { it == "crop" || it == "full" } ?: return
+        enqueue("JD_CASHIER_CROP_LINES", "com.jingdong.app.mall", "",
+            mapOf("scope" to safeScope, "lines" to GuardLogPolicy.jdPriceLineStats(lines, width, height)))
+    }
+
     /** Coarse window metadata only: never record node text or unlisted app identities. */
     @Synchronized fun windowLayers(windows: List<String>) {
         if (!isRecording()) return

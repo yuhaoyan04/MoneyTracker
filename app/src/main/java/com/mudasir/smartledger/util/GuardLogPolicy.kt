@@ -4,6 +4,29 @@ import com.mudasir.smartledger.capture.CheckoutPageParser
 
 /** Converts diagnostics to a small allowlist; never forwards page text or exception messages. */
 object GuardLogPolicy {
+    /** Geometry and character counts only; never copies recognized content. */
+    fun jdPriceLineStats(lines: List<com.mudasir.smartledger.capture.VisualText>, width: Int, height: Int): String {
+        if (width <= 0 || height <= 0) return ""
+        return lines.take(12).map { line ->
+            fun pct(n: Int, d: Int) = (n.toLong() * 100L / d).coerceIn(0L, 100L)
+            listOf(pct(line.left, width), pct(line.top, height), pct(line.right - line.left, width),
+                pct(line.bottom - line.top, height), line.text.count { it in '0'..'9' }.coerceAtMost(20),
+                if (line.text.any { it == '.' || it == '．' || it == '·' }) 1 else 0,
+                if (line.text.any { it == '¥' || it == '￥' }) 1 else 0).joinToString(":")
+        }.joinToString("|")
+    }
+    /** Diagnostic shape only; never returns recognized content or numeric values. */
+    fun jdPriceCropStats(text: String?, successful: Boolean): Map<String, String> {
+        val sample = text.orEmpty().take(2_000)
+        val runs = Regex("[0-9]+").findAll(sample).map { it.value.length.coerceAtMost(8) }.take(12).toList()
+        return mapOf(
+            "ocr_ok" to successful.toString(),
+            "currency" to sample.any { it == '¥' || it == '￥' }.toString(),
+            "decimal" to sample.any { it == '.' || it == '．' || it == '·' }.toString(),
+            "digit_count" to sample.count { it in '0'..'9' }.coerceAtMost(50).toString(),
+            "digit_run_lengths" to runs.joinToString(",")
+        )
+    }
     private val idPattern = Regex("[A-Za-z_.$][A-Za-z0-9_.$]{0,199}")
     private val longDigits = Regex("[0-9]{4,}")
     private val evidenceNames = mapOf("节点" to "nodes", "操作" to "actions", "应付标签" to "payable_labels",
@@ -85,6 +108,15 @@ object GuardLogPolicy {
         message.startsWith("订单按钮保护：已添加按钮浮层") -> "ORDER_SHIELD_ADDED"
         message.startsWith("订单按钮保护：无法添加浮层") -> "ORDER_SHIELD_ADD_FAILED"
         message.startsWith("订单按钮保护：用户点击高额按钮") -> "ORDER_SHIELD_CLICKED"
+        message.startsWith("京东收银台：付款选项变化") -> "JD_CASHIER_SELECTION_CHANGED"
+        message.startsWith("京东收银台：没有唯一金额") -> "JD_CASHIER_NO_AMOUNT"
+        message.startsWith("京东收银台：等待金额再次确认") -> "JD_CASHIER_FIRST_AMOUNT"
+        message == "京东收银台诊断：NO_PAGE" -> "JD_CASHIER_NO_PAGE"
+        message == "京东收银台诊断：OUTCOME" -> "JD_CASHIER_OUTCOME"
+        message == "京东收银台诊断：NO_WECHAT" -> "JD_CASHIER_NO_WECHAT"
+        message == "京东收银台诊断：NO_ACTION" -> "JD_CASHIER_NO_ACTION"
+        message == "京东收银台诊断：NO_AMOUNT" -> "JD_CASHIER_NO_AMOUNT"
+        message == "京东收银台诊断：MULTIPLE_AMOUNTS" -> "JD_CASHIER_MULTIPLE_AMOUNTS"
         message.startsWith("支付宝入口：其他购物应用付款操作已接收") -> "ALIPAY_MULTI_CLICK_ACCEPTED"
         message.startsWith("支付宝入口：其他购物应用缺少有效页面") -> "ALIPAY_MULTI_CLICK_NO_SOURCE"
         message.startsWith("屏幕识别：保留刚识别的同一付款页候选") -> "OCR_FRESH_DUPLICATE_PRESERVED"

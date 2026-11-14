@@ -24,6 +24,7 @@ object VisualGuardTargets {
     fun sourceActivity(pkg: String, cls: String): Boolean {
         if (pkg !in shopping || cls.isBlank()) return false
         if (pkg == TAOBAO) return cls.endsWith("UltronTradeHybridActivity") || cls.endsWith("TBOrderListActivity")
+        if (AlipayVisualPolicy.isJdCashier(pkg, cls)) return true
         if (isJdVerification(pkg, cls)) return false
         if (isSourcePaymentTransition(cls)) return false
         return '.' in cls && !cls.startsWith("android.") && cls.endsWith("Activity")
@@ -64,12 +65,13 @@ class VisualHandoffState {
     private var capturedAt = 0L
     private var validityMillis = 20_000L
     private var wechatEntryAt = -1L
+    private var wechatOnly = false
 
-    fun remember(sourcePackage: String, value: Double, now: Long, validForMillis: Long = 20_000L) {
+    fun remember(sourcePackage: String, value: Double, now: Long, validForMillis: Long = 20_000L, onlyWechat: Boolean = false) {
         if (sourcePackage !in VisualGuardTargets.shopping || !value.isFinite() || value <= 0 || validForMillis !in 1..20_000L) { clear(); return }
-        source = sourcePackage; amount = value; capturedAt = now; wechatEntryAt = -1L; validityMillis = validForMillis
+        source = sourcePackage; amount = value; capturedAt = now; wechatEntryAt = -1L; validityMillis = validForMillis; wechatOnly = onlyWechat
     }
-    fun clear() { amount = null; source = ""; capturedAt = 0; wechatEntryAt = -1L }
+    fun clear() { amount = null; source = ""; capturedAt = 0; wechatEntryAt = -1L; wechatOnly = false }
     fun observe(pkg: String, cls: String, now: Long): Double? {
         if (amount == null || now - capturedAt !in 0..validityMillis) { clear(); return null }
         // A candidate must not survive a trip through an unrelated app and later be
@@ -77,13 +79,13 @@ class VisualHandoffState {
         // payment transitions; WeChat may emit intermediate windows before its entry.
         if (pkg.isNotBlank() && pkg != source && pkg != VisualGuardTargets.WECHAT &&
             pkg != "com.mudasir.smartledger" && !pkg.startsWith("com.android.systemui") &&
-            !VisualGuardTargets.isOtherCashier(pkg, cls)) {
+            (wechatOnly || !VisualGuardTargets.isOtherCashier(pkg, cls))) {
             clear()
             return null
         }
         if (VisualGuardTargets.isWechatEntry(pkg, cls)) { wechatEntryAt = now; return null }
         val accepted = (wechatEntryAt >= 0 && now - wechatEntryAt in 0..10_000L && VisualGuardTargets.isWechatCashier(pkg, cls)) ||
-            VisualGuardTargets.isOtherCashier(pkg, cls)
+            (!wechatOnly && VisualGuardTargets.isOtherCashier(pkg, cls))
         if (!accepted || pkg == source) return null
         return amount.also { clear() }
     }
