@@ -102,6 +102,14 @@ class AlipayVisualPolicyTest {
         assertTrue(AlipayVisualPolicy.isPendingCashier(listOf(l("使用密码", 200), l("支付成功得20积分", 400), l("付款", 900)), 1000))
         assertFalse(AlipayVisualPolicy.isPendingCashier(listOf(l("使用密码", 200), l("付款", 900), l("支付成功", 400)), 1000))
         assertFalse(AlipayVisualPolicy.isPendingCashier(listOf(l("付款", 900)), 1000))
+        val missingPassword = AlipayVisualPolicy.cashierEvidence(listOf(l("付款", 900)), 1000)
+        assertTrue(missingPassword.paymentButton)
+        assertFalse(missingPassword.passwordOption)
+        assertFalse(missingPassword.outcome)
+        assertFalse(missingPassword.pending)
+        val terminal = AlipayVisualPolicy.cashierEvidence(listOf(l("使用密码", 200), l("付款", 900), l("支付成功", 400)), 1000)
+        assertTrue(terminal.outcome)
+        assertFalse(terminal.pending)
     }
     @Test fun `cashier entry survives short system transitions but expires and clears for another JD page`() {
         val t = JdAlipayEntryTracker()
@@ -126,5 +134,7 @@ class AlipayVisualPolicyTest {
         assertEquals(BigDecimal("123.45"), AlipayVisualPolicy.cropAmount("¥ 123.45"))
         assertNull(AlipayVisualPolicy.cropAmount("123.45 124.45"))
         assertNull(AlipayVisualPolicy.cropAmount("支付编号12345678"))
+        assertEquals(0, AlipayVisualPolicy.cropCandidates("支付编号12345678").size)
+        assertEquals(2, AlipayVisualPolicy.cropCandidates("123.45 124.45").size)
     }
 }

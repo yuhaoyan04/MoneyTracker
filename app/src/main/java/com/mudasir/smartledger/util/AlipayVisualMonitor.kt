@@ -99,10 +99,24 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
                                     val b = line.boundingBox ?: return@mapNotNull null
                                     VisualText(line.text, b.left, b.top, b.right, b.bottom)
                                 }.orEmpty()
-                                val amount = if (AlipayVisualPolicy.isPendingCashier(lines, bitmap.height))
-                                    cropped?.text?.let(AlipayVisualPolicy::cropAmount) else null
+                                val evidence = AlipayVisualPolicy.cashierEvidence(lines, bitmap.height)
+                                val candidates = if (evidence.pending && cropped != null)
+                                    AlipayVisualPolicy.cropCandidates(cropped.text) else emptySet()
+                                val amount = candidates.singleOrNull()
                                 val confirmed = stable.observe(amount)
                                 if (confirmed == null) {
+                                    val detail = when {
+                                        !fullTask.isSuccessful -> "全屏识别失败"
+                                        !cropTask.isSuccessful -> "金额区域识别失败"
+                                        evidence.outcome -> "识别到结果页"
+                                        !evidence.paymentButton && !evidence.passwordOption -> "缺少付款按钮和密码选项"
+                                        !evidence.paymentButton -> "缺少付款按钮"
+                                        !evidence.passwordOption -> "缺少密码选项"
+                                        candidates.isEmpty() -> "金额区域无候选"
+                                        candidates.size > 1 -> "金额区域多个候选"
+                                        else -> "等待第二次一致金额"
+                                    }
+                                    PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝识别细节：$detail")
                                     PurchaseGuardService.recordDetection(AlipayVisualPolicy.ALIPAY, "", "支付宝屏幕识别：等待稳定付款金额")
                                     retry(token)
                                 } else {
