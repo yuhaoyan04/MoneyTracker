@@ -18,7 +18,7 @@ private data class Sub(val name: String, val color: String, val parent: String, 
         TransactionRecord::class, Category::class, PaymentChannel::class,
         WishlistItem::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -177,6 +177,28 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Keep transaction names, category IDs, and custom categories intact. Only
+        // move existing built-in children with an unambiguous canonical meaning.
+        internal val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) = seedCanonicalTaxonomy(database)
+        }
+
+        private fun seedCanonicalTaxonomy(db: SupportSQLiteDatabase) {
+            val now = System.currentTimeMillis()
+            fun seed(type: String, groups: List<ExpenseTaxonomy.Group>) = groups.forEachIndexed { rootOrder, group ->
+                db.execSQL("INSERT OR IGNORE INTO categories(name,type,color,iconName,sortOrder,isDefault,parentName,level,createdAt) VALUES(?, ?, ?, NULL, ?, 1, NULL, 1, ?)",
+                    arrayOf(group.name, type, group.color, rootOrder, now))
+                group.children.forEachIndexed { order, name ->
+                    db.execSQL("INSERT OR IGNORE INTO categories(name,type,color,iconName,sortOrder,isDefault,parentName,level,createdAt) VALUES(?, ?, ?, NULL, ?, 1, ?, 2, ?)",
+                        arrayOf(name, type, group.color, order, group.name, now))
+                    db.execSQL("UPDATE categories SET parentName=?, level=2, sortOrder=?, color=? WHERE name=? AND type=? AND isDefault=1 AND level=2",
+                        arrayOf(group.name, order, group.color, name, type))
+                }
+            }
+            seed("EXPENSE", ExpenseTaxonomy.groups)
+            seed("INCOME", IncomeTaxonomy.groups)
+        }
+
         /**
          * 幂等播种全量分类与渠道（一级大类 + 二级小类 + 支付方式）。
          * 同时用于：v7→v8、v8→v9、v9→v10 迁移，以及 onCreate（全新安装）。
@@ -329,11 +351,12 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_ledger_db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     // 全新安装时 onCreate 播种全量分类（迁移不会在全新库上执行）
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             seedTaxonomy(db)
+                            seedCanonicalTaxonomy(db)
                         }
                     })
                     .build()

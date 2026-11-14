@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface CategoryDao {
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // Replacing a name collision deletes the old row and changes its ID. Keep the
+    // existing category, including when importing an older backup.
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(category: Category): Long
 
     @Query("SELECT * FROM categories ORDER BY sortOrder ASC, id ASC")

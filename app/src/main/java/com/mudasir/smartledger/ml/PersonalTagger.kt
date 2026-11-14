@@ -7,6 +7,8 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializer
 import com.google.gson.reflect.TypeToken
 import com.mudasir.smartledger.data.TransactionRecord
+import com.mudasir.smartledger.data.ExpenseTaxonomy
+import com.mudasir.smartledger.data.IncomeTaxonomy
 import java.util.Calendar
 import kotlin.math.abs
 import kotlin.math.exp
@@ -311,10 +313,15 @@ object PersonalTagger {
         } else null
 
         // Layer 3: Rules (keyword + amount/time + location)
-        val ruleHit: String? = rulePredict(type, timestamp, amount, channel, merchant, rawText, locationName)
+        val ruleHit: String? = rulePredict(type, timestamp, amount, channel, merchant, rawText, locationName)?.let {
+            if (type == TransactionRecord.TYPE_EXPENSE) ExpenseTaxonomy.canonicalRuleSuggestion(it) else IncomeTaxonomy.canonicalRuleSuggestion(it)
+        }
 
         // Layer 4: Cold start decision table
-        val coldHit: Pair<String, Float>? = coldStartPredict(type, timestamp, amount, channel)
+        val coldHit: Pair<String, Float>? = (if (type == TransactionRecord.TYPE_EXPENSE &&
+            ExpenseTaxonomy.isCommercePlatform(channel, merchant)) null else coldStartPredict(type, timestamp, amount, channel))?.let { (category, confidence) ->
+            (if (type == TransactionRecord.TYPE_EXPENSE) ExpenseTaxonomy.canonicalRuleSuggestion(category) else IncomeTaxonomy.canonicalRuleSuggestion(category)) to confidence
+        }
 
         // === Adaptive weighted voting ===
         val merchantSamples = m.merchantMap[norm]?.values?.sum() ?: 0
@@ -936,6 +943,10 @@ object PersonalTagger {
         fun mHas(vararg kw: String) = kw.any { mRaw.contains(it) }
         fun locHas(vararg kw: String) = kw.any { loc.contains(it) }
 
+        if (type != TransactionRecord.TYPE_INCOME && ExpenseTaxonomy.isCommercePlatform(channel, merchant)) {
+            return ExpenseTaxonomy.shoppingSuggestion(merchant.orEmpty() + " " + rawText.orEmpty())
+        }
+
         // ===== TIER 0: 地理位置信号（最强优先级） =====
         // 注意：地点名来自 GPS 反地理编码，常驻地址常含「学院路/教育新村/书香雅苑/
         // 银行家属院」等词——教育类场所词误触发率远高于真命中率，已整类移除；
@@ -956,7 +967,7 @@ object PersonalTagger {
             if (locHas("影院", "电影", "剧院", "大麦", "演出")) return "电影演出"
             if (locHas("酒店", "旅馆", "民宿", "宾馆")) return "旅行出游"
             if (locHas("健身", " gym", "瑜伽", "游泳", "运动")) return "娱乐"
-            if (locHas("理发", "美容", "美甲", "美发", "沙龙")) return "日用品"
+            if (locHas("理发", "美容", "美甲", "美发", "沙龙")) return "美容美发"
             if (locHas("菜市场", "农贸")) return "超市日用"
             if (locHas("充电", "充电桩", "新能源")) return "加油停车"
         }

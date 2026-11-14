@@ -143,15 +143,14 @@ class AddEditTransactionActivity : AppCompatActivity() {
     private fun pickCategory() {
         val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
         lifecycleScope.launch(Dispatchers.IO) {
-            val roots = db.categoryDao().getRoots(type)
+            val all = db.categoryDao().getByType(type)
+            val roots = all.filter { it.level == 1 }
             if (roots.isEmpty()) {
                 withContext(Dispatchers.Main) { Toast.makeText(this@AddEditTransactionActivity, "暂无分类", Toast.LENGTH_SHORT).show() }
                 return@launch
             }
             val childrenByRoot = mutableMapOf<String, List<Category>>()
-            for (root in roots) {
-                childrenByRoot[root.name] = db.categoryDao().getChildren(root.name, type)
-            }
+            for (root in roots) childrenByRoot[root.name] = all.filter { it.parentName == root.name }
             withContext(Dispatchers.Main) { showCategorySheet(roots, childrenByRoot, type) }
         }
     }
@@ -167,18 +166,19 @@ class AddEditTransactionActivity : AppCompatActivity() {
     private fun showCategorySheet(
         roots: List<Category>,
         childrenByRoot: Map<String, List<Category>>,
-        type: String
+        type: String,
+        showLegacy: Boolean = false
     ) {
         val sheet = BottomSheetDialog(this)
         val ctx = sheet.context
-        val container = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(28, 24, 28, 48)
-        }
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
+        val container = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(24))
+        }
         container.addView(TextView(ctx).apply {
-            text = "先选择大类"
+            text = if (showLegacy) "历史分类" else "选择分类"
             textSize = 16f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(getColor(R.color.text_primary))
@@ -187,7 +187,9 @@ class AddEditTransactionActivity : AppCompatActivity() {
             }
         })
         container.addView(TextView(ctx).apply {
-            text = "下一步可选择或新建该大类下的小类"
+            text = if (showLegacy) "历史分类仍可使用，已有记录保持不变"
+                else if (type == TransactionRecord.TYPE_EXPENSE) "按消费用途选择；购买渠道可单独填写"
+                else "按收入来源选择；收款渠道可单独填写"
             textSize = 13f
             setTextColor(getColor(R.color.text_secondary))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -196,27 +198,52 @@ class AddEditTransactionActivity : AppCompatActivity() {
         })
         val scroll = android.widget.ScrollView(ctx).apply { isFillViewport = true }
         val list = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        for (root in roots) {
+        val expense = type == TransactionRecord.TYPE_EXPENSE
+        val groups = if (expense) com.mudasir.smartledger.data.ExpenseTaxonomy.groups else com.mudasir.smartledger.data.IncomeTaxonomy.groups
+        val rootNames = groups.map { it.name }.toSet()
+        fun legacyChildren(root: Category): List<Category> {
+            val expected = groups.firstOrNull { it.name == root.name }?.children.orEmpty()
+            return childrenByRoot[root.name].orEmpty().filter {
+                (root.isDefault && root.name !in rootNames) || (it.isDefault && it.name !in expected)
+            }
+        }
+        val visibleRoots = if (showLegacy) {
+            roots.filter { root -> (root.isDefault && root.name !in rootNames) || legacyChildren(root).isNotEmpty() }
+        } else {
+            roots.filter { !it.isDefault || it.name in rootNames }
+                .sortedBy { root -> groups.indexOfFirst { it.name == root.name }.let { if (it < 0) Int.MAX_VALUE else it } }
+        }
+        for (root in visibleRoots) {
+            val expected = groups.firstOrNull { it.name == root.name }?.children.orEmpty()
+            val children = if (showLegacy) legacyChildren(root)
+                else childrenByRoot[root.name].orEmpty().filter { !it.isDefault || it.name in expected }
             list.addView(TextView(ctx).apply {
-                text = root.name
+                text = "${root.name}    ›"
                 textSize = 16f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(if (root.name == selectedCategory) getColor(R.color.teal_main) else getColor(R.color.text_primary))
+                setTextColor(if (root.name == selectedCategory || children.any { it.name == selectedCategory }) getColor(R.color.teal_main) else getColor(R.color.text_primary))
                 setPadding(dp(12), dp(15), dp(12), dp(15))
                 background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
                 setOnClickListener {
                     sheet.dismiss()
-                    showChildCategorySheet(root, childrenByRoot[root.name].orEmpty(), type)
+                    showChildCategorySheet(root, children, type) { showCategorySheet(roots, childrenByRoot, type, showLegacy) }
                 }
             })
         }
         scroll.addView(list)
         container.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        sheet.setContentView(container)
-        sheet.show()
+        if (!showLegacy && roots.any { root ->
+                (root.isDefault && root.name !in rootNames) || legacyChildren(root).isNotEmpty()
+            }) {
+            container.addView(MaterialButton(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "查看历史分类"
+                setOnClickListener { sheet.dismiss(); showCategorySheet(roots, childrenByRoot, type, true) }
+            })
+        }
+        presentCategorySheet(sheet, container)
     }
 
-    private fun showChildCategorySheet(root: Category, children: List<Category>, type: String) {
+    private fun showChildCategorySheet(root: Category, children: List<Category>, type: String, onBack: () -> Unit) {
         val sheet = BottomSheetDialog(this)
         val ctx = sheet.context
         val density = resources.displayMetrics.density
@@ -225,6 +252,13 @@ class AddEditTransactionActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(32))
         }
+        container.addView(TextView(ctx).apply {
+            text = "‹  返回分类"
+            textSize = 14f
+            setTextColor(getColor(R.color.teal_main))
+            setPadding(0, dp(4), 0, dp(12))
+            setOnClickListener { sheet.dismiss(); onBack() }
+        })
         container.addView(TextView(ctx).apply {
             text = root.name
             textSize = 18f
@@ -263,23 +297,33 @@ class AddEditTransactionActivity : AppCompatActivity() {
             text = "＋ 新建「${root.name}」小类"
             setOnClickListener { sheet.dismiss(); promptCustomChild(root, type) }
         })
-        sheet.setContentView(container)
+        presentCategorySheet(sheet, container)
+    }
+
+    private fun presentCategorySheet(sheet: BottomSheetDialog, content: View) {
+        sheet.setContentView(content)
+        sheet.setOnShowListener {
+            sheet.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.let { panel ->
+                panel.layoutParams = panel.layoutParams.apply { height = (resources.displayMetrics.heightPixels * 0.76f).toInt() }
+            }
+            sheet.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+        }
         sheet.show()
     }
 
     /** 在指定大类下创建自定义小类：输入名称 → 归一化去重 → 存库 → 选中。 */
     private fun promptCustomChild(root: Category, type: String) {
-        promptCustomText("在「${root.name}」下添加小类", "小类名称（如 寿司、小龙虾）") { childName ->
+        promptCustomText("在「${root.name}」下添加小类", "输入小类名称") { childName ->
             lifecycleScope.launch(Dispatchers.IO) {
-                val siblings = db.categoryDao().getChildren(root.name, type)
-                val existing = siblings.find { it.name.trim().equals(childName, ignoreCase = true) }
-                val finalName = if (existing != null) {
-                    existing.name
-                } else {
-                    db.categoryDao().insert(
-                        Category(name = childName, type = type, isDefault = false, parentName = root.name, level = 2, color = root.color)
-                    )
-                    childName
+                val existing = db.categoryDao().getByType(type).find { it.name.trim().equals(childName, ignoreCase = true) }
+                if (existing != null && existing.parentName != root.name) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@AddEditTransactionActivity, "该名称已存在于「${existing.parentName ?: existing.name}」，请使用其他名称", Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
+                }
+                val finalName = existing?.name ?: childName.also {
+                    db.categoryDao().insert(Category(name = it, type = type, isDefault = false, parentName = root.name, level = 2, color = root.color))
                 }
                 withContext(Dispatchers.Main) {
                     applyCategory(finalName)
@@ -596,7 +640,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
             val child = name.substring(dashIdx + 1).trim()
             val parentCat = all.find { it.name.equals(parent, ignoreCase = true) }
             if (parentCat != null && child.isNotBlank()) {
-                val existingChild = all.find { it.name.equals(child, true) && it.parentName == parentCat.name }
+                val existingChild = all.find { it.name.equals(child, true) }
                 if (existingChild != null) return existingChild.name
                 db.categoryDao().insert(
                     Category(name = child, type = type, isDefault = false, parentName = parentCat.name, level = 2, color = parentCat.color)
@@ -607,12 +651,6 @@ class AddEditTransactionActivity : AppCompatActivity() {
 
         val exact = all.find { it.name.trim().equals(name.trim(), ignoreCase = true) }
         if (exact != null) return exact.name
-
-        val contains = all.filter {
-            val a = it.name.trim(); val b = name.trim()
-            a.length > 1 && b.length > 1 && (a.contains(b, true) || b.contains(a, true))
-        }
-        if (contains.size == 1) return contains.first().name
 
         db.categoryDao().insert(Category(name = name.trim(), type = type, isDefault = false))
         return name.trim()

@@ -2,6 +2,8 @@ package com.mudasir.smartledger.util
 
 import android.content.Context
 import android.graphics.Color
+import com.mudasir.smartledger.data.ExpenseTaxonomy
+import com.mudasir.smartledger.data.IncomeTaxonomy
 
 /**
  * 分类 → 颜色映射，复用于交易列表、收件箱、统计图表。
@@ -35,7 +37,11 @@ object CategoryStyle {
     )
 
     fun color(context: Context, categoryName: String?, parentName: String? = null): Int {
+        val canonicalColor = (ExpenseTaxonomy.groups + IncomeTaxonomy.groups).firstOrNull {
+            it.name == categoryName || it.name == parentName || categoryName in it.children
+        }?.color
         val hex = when {
+            canonicalColor != null -> canonicalColor
             categoryName != null && rootColors.containsKey(categoryName) -> rootColors[categoryName]
             parentName != null && rootColors.containsKey(parentName) -> rootColors[parentName]
             categoryName != null && childToRoot.containsKey(categoryName) -> rootColors[childToRoot[categoryName]]
