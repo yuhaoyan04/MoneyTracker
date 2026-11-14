@@ -2,6 +2,12 @@
     <style name="Base.Theme.SmartLedger" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/teal_main</item>
         <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/teal_main</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="colorSecondaryContainer">@color/selected_item_bg</item>
+        <item name="colorOnSecondaryContainer">@color/text_primary</item>
+        <item name="android:statusBarColor">@color/surface_dim</item>
+        <item name="android:windowLightStatusBar">true</item>
 
         <item name="colorOutline">@color/divider</item>
         <item name="colorOnSurfaceVariant">@color/text_secondary</item>

@@ -2,6 +2,9 @@ package com.mudasir.smartledger.activity
 
 import android.app.DatePickerDialog
 import android.os.Bundle
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
@@ -11,6 +14,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.core.graphics.ColorUtils
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
@@ -23,7 +27,6 @@ import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.ml.PersonalTagger
 import com.mudasir.smartledger.ml.HabitLearning
 import com.mudasir.smartledger.util.AutoBackupManager
-import com.mudasir.smartledger.util.FormatUtil
 import com.mudasir.smartledger.util.LocationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -71,21 +74,11 @@ class AddEditTransactionActivity : AppCompatActivity() {
 
         val btnExpense: MaterialButton = findViewById(R.id.btnExpense)
         val btnIncome: MaterialButton = findViewById(R.id.btnIncome)
-        btnExpense.setOnClickListener {
-            expenseSelected = true
-            selectedCategory = ""
-            categoryManuallySelected = false
-            maybePrefillSuggestion()
-        }
-        btnIncome.setOnClickListener {
-            expenseSelected = false
-            selectedCategory = ""
-            categoryManuallySelected = false
-            maybePrefillSuggestion()
-        }
+        btnExpense.setOnClickListener { selectTransactionType(true) }
+        btnIncome.setOnClickListener { selectTransactionType(false) }
         btnExpense.isChecked = true
 
-        tvDate.text = FormatUtil.day(selectedTs) + " " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(selectedTs))
+        tvDate.text = transactionDateLabel(selectedTs)
 
         findViewById<View>(R.id.cardDate).setOnClickListener { pickDate() }
         findViewById<View>(R.id.cardCategory).setOnClickListener { pickCategory() }
@@ -114,12 +107,34 @@ class AddEditTransactionActivity : AppCompatActivity() {
         }
     }
 
+    private fun selectTransactionType(expense: Boolean) {
+        if (expenseSelected == expense) return
+        expenseSelected = expense
+        suggestionJob?.cancel()
+        selectedCategory = ""
+        categoryManuallySelected = false
+        tvCategoryValue.text = "未选择"
+        tvCategoryValue.setTextColor(getColor(R.color.text_secondary))
+        maybePrefillSuggestion()
+    }
+
+    private fun transactionDateLabel(timestamp: Long): String =
+        java.text.SimpleDateFormat("yyyy年M月d日 HH:mm", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+
     /** 手动新记账时，用打标器给个默认分类建议。位置反查是网络请求，必须异步，绝不能阻塞主线程。 */
     private fun maybePrefillSuggestion() {
         if (editingId > 0 || pendingId > 0) return
         if (categoryManuallySelected) return
         val type = if (expenseSelected) TransactionRecord.TYPE_EXPENSE else TransactionRecord.TYPE_INCOME
         val amount = etAmount.text?.toString()?.trim()?.toDoubleOrNull() ?: 0.0
+        if (!amount.isFinite() || amount <= 0.0) {
+            suggestionJob?.cancel()
+            suggestedCategory = null
+            selectedCategory = ""
+            tvCategoryValue.text = "未选择"
+            tvCategoryValue.setTextColor(getColor(R.color.text_secondary))
+            return
+        }
         val timestamp = selectedTs
         val channel = selectedChannel
         val note = etNote.text?.toString()
@@ -217,18 +232,61 @@ class AddEditTransactionActivity : AppCompatActivity() {
             val expected = groups.firstOrNull { it.name == root.name }?.children.orEmpty()
             val children = if (showLegacy) legacyChildren(root)
                 else childrenByRoot[root.name].orEmpty().filter { !it.isDefault || it.name in expected }
-            list.addView(TextView(ctx).apply {
-                text = "${root.name}    ›"
-                textSize = 16f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(if (root.name == selectedCategory || children.any { it.name == selectedCategory }) getColor(R.color.teal_main) else getColor(R.color.text_primary))
-                setPadding(dp(12), dp(15), dp(12), dp(15))
+            val selected = root.name == selectedCategory || children.any { it.name == selectedCategory }
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                minimumHeight = dp(64)
+                setPadding(dp(4), dp(8), dp(4), dp(8))
+                isClickable = true
+                isFocusable = true
+                contentDescription = "${root.name}，${children.size}个小类${if (selected) "，当前分类" else ""}"
                 background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
                 setOnClickListener {
                     sheet.dismiss()
                     showChildCategorySheet(root, children, type) { showCategorySheet(roots, childrenByRoot, type, showLegacy) }
                 }
-            })
+            }
+            val tint = runCatching { Color.parseColor(root.color) }.getOrDefault(getColor(R.color.teal_main))
+            row.addView(TextView(ctx).apply {
+                text = root.name.take(1)
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = android.view.Gravity.CENTER
+                setTextColor(getColor(R.color.text_primary))
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(12).toFloat()
+                    setColor(ColorUtils.blendARGB(getColor(R.color.surface_card), tint, 0.17f))
+                }
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(44), dp(44)))
+            row.addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, dp(4), 0)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                addView(TextView(ctx).apply {
+                    text = root.name
+                    textSize = 16f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(getColor(R.color.text_primary))
+                })
+                addView(TextView(ctx).apply {
+                    text = if (selected) "当前：$selectedCategory" else "${children.size} 个小类"
+                    textSize = 12f
+                    setTextColor(getColor(R.color.text_secondary))
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(ctx).apply {
+                text = if (selected) "✓" else "›"
+                textSize = 21f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(getColor(if (selected) R.color.accent_text else R.color.text_secondary))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(32), dp(44)))
+            list.addView(row)
         }
         scroll.addView(list)
         container.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -237,6 +295,8 @@ class AddEditTransactionActivity : AppCompatActivity() {
             }) {
             container.addView(MaterialButton(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
                 text = "查看历史分类"
+                setTextColor(getColor(R.color.accent_text))
+                strokeColor = android.content.res.ColorStateList.valueOf(getColor(R.color.divider))
                 setOnClickListener { sheet.dismiss(); showCategorySheet(roots, childrenByRoot, type, true) }
             })
         }
@@ -255,8 +315,11 @@ class AddEditTransactionActivity : AppCompatActivity() {
         container.addView(TextView(ctx).apply {
             text = "‹  返回分类"
             textSize = 14f
-            setTextColor(getColor(R.color.teal_main))
+            setTextColor(getColor(R.color.accent_text))
             setPadding(0, dp(4), 0, dp(12))
+            minimumHeight = dp(48)
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            isFocusable = true
             setOnClickListener { sheet.dismiss(); onBack() }
         })
         container.addView(TextView(ctx).apply {
@@ -276,17 +339,19 @@ class AddEditTransactionActivity : AppCompatActivity() {
         list.addView(TextView(ctx).apply {
             text = "直接使用「${root.name}」"
             textSize = 15f
-            setTextColor(getColor(R.color.teal_main))
+            setTextColor(getColor(R.color.accent_text))
             setPadding(dp(8), dp(13), dp(8), dp(13))
             background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
             setOnClickListener { applyCategory(root.name); sheet.dismiss() }
         })
         children.forEach { child ->
             list.addView(TextView(ctx).apply {
-                text = child.name
+                text = if (child.name == selectedCategory) "${child.name}  ✓" else child.name
                 textSize = 15f
-                setTextColor(if (child.name == selectedCategory) getColor(R.color.teal_main) else getColor(R.color.text_primary))
+                setTextColor(if (child.name == selectedCategory) getColor(R.color.accent_text) else getColor(R.color.text_primary))
                 setPadding(dp(8), dp(13), dp(8), dp(13))
+                minimumHeight = dp(56)
+                gravity = android.view.Gravity.CENTER_VERTICAL
                 background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
                 setOnClickListener { applyCategory(child.name); sheet.dismiss() }
             })
@@ -295,6 +360,8 @@ class AddEditTransactionActivity : AppCompatActivity() {
         container.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         container.addView(MaterialButton(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             text = "＋ 新建「${root.name}」小类"
+            setTextColor(getColor(R.color.accent_text))
+            strokeColor = android.content.res.ColorStateList.valueOf(getColor(R.color.divider))
             setOnClickListener { sheet.dismiss(); promptCustomChild(root, type) }
         })
         presentCategorySheet(sheet, container)
@@ -304,6 +371,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
         sheet.setContentView(content)
         sheet.setOnShowListener {
             sheet.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.let { panel ->
+                panel.backgroundTintList = android.content.res.ColorStateList.valueOf(getColor(R.color.surface_card))
                 panel.layoutParams = panel.layoutParams.apply { height = (resources.displayMetrics.heightPixels * 0.76f).toInt() }
             }
             sheet.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
@@ -488,10 +556,10 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 tvChannelValue.text = selectedChannel
                 tvChannelValue.setTextColor(getColor(R.color.text_primary))
                 selectedPayment = r.paymentMethod
-                tvPaymentValue.text = r.paymentMethod ?: "余额"
+                tvPaymentValue.text = r.paymentMethod?.takeIf { it.isNotBlank() } ?: "不填"
                 tvPaymentValue.setTextColor(getColor(if (r.paymentMethod.isNullOrBlank()) R.color.text_secondary else R.color.text_primary))
                 etNote.setText(r.note.orEmpty())
-                tvDate.text = FormatUtil.date(r.timestamp)
+                tvDate.text = transactionDateLabel(r.timestamp)
                 // 支付发生地（抓取时记录；无名时回退显示坐标）
                 val locName = r.locationName?.takeIf { it.isNotBlank() }
                     ?: if (r.latitude != null && r.latitude != 0.0 && r.longitude != null && r.longitude != 0.0)
@@ -510,7 +578,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
         DatePickerDialog(this, { _, y, m, d ->
             cal.set(y, m, d)
             selectedTs = cal.timeInMillis
-            tvDate.text = FormatUtil.date(selectedTs)
+            tvDate.text = transactionDateLabel(selectedTs)
             maybePrefillSuggestion()
         }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
     }

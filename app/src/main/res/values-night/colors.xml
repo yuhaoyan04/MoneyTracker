@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 深色模式：暖色调深色背景，非冷灰 -->
+    <color name="accent_text">#DE9676</color>
 
     <color name="text_primary">#EDEAE3</color>
     <color name="text_secondary">#A8A49C</color>

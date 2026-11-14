@@ -5,6 +5,8 @@
 
     <!-- 品牌主色 — 暖陶土色 (Anthropic-inspired) -->
     <color name="teal_main">#C15F3C</color>
+    <color name="accent_text">#B45332</color>
+    <color name="accent_action">#B45332</color>
     <color name="teal_dark">#A04E30</color>
     <color name="teal_light">#F0D9CE</color>
     <color name="tile_add_bg">#E8E6E1</color>

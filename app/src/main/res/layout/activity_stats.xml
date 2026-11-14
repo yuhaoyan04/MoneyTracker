@@ -222,6 +222,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="20dp"
                 android:layout_marginTop="16dp"
+                app:checkedButton="@id/btnDimCategory"
                 app:singleSelection="true"
                 app:selectionRequired="true">
 
@@ -258,6 +259,7 @@
                     android:layout_height="wrap_content"
                     android:layout_gravity="center"
                     android:layout_marginTop="16dp"
+                    app:checkedButton="@id/btnPieExpense"
                     app:singleSelection="true"
                     app:selectionRequired="true">
 
@@ -328,6 +330,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginHorizontal="16dp"
                     android:layout_marginTop="16dp"
+                    app:checkedButton="@id/btnRangeMonth"
                     app:singleSelection="true"
                     app:selectionRequired="true">
 
@@ -381,6 +384,7 @@
                     android:layout_marginHorizontal="16dp"
                     android:layout_marginTop="8dp"
                     android:visibility="gone"
+                    app:checkedButton="@id/btnAggDay"
                     app:singleSelection="true"
                     app:selectionRequired="true">
 

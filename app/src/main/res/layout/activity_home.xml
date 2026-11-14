@@ -67,7 +67,7 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="本月结余"
-                            android:textColor="@color/teal_main"
+                            android:textColor="@color/accent_text"
                             android:textSize="12sp"
                             android:textStyle="bold"
                             android:letterSpacing="0.08" />
@@ -82,7 +82,7 @@
                             android:clickable="true"
                             android:focusable="true"
                             android:text="设置预算"
-                            android:textColor="@color/teal_main"
+                            android:textColor="@color/accent_text"
                             android:textSize="13sp" />
                     </LinearLayout>
 
@@ -182,7 +182,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
                                 android:text="0"
-                                android:textColor="@color/teal_main"
+                                android:textColor="@color/accent_text"
                                 android:textSize="16sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
@@ -330,7 +330,7 @@
                     android:background="?attr/selectableItemBackground"
                     android:padding="6dp"
                     android:text="统计 ›"
-                    android:textColor="@color/teal_main"
+                    android:textColor="@color/accent_text"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -390,7 +390,10 @@
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="12dp"
         android:text="记一笔"
+        android:textColor="@color/white"
+        app:backgroundTint="@color/accent_action"
         app:icon="@drawable/ic_add"
+        app:iconTint="@color/white"
         app:layout_constraintBottom_toTopOf="@id/bottomNav"
         app:layout_constraintEnd_toEndOf="parent" />
 
