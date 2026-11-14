@@ -84,8 +84,9 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
                     val bitmap = try { Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)?.copy(Bitmap.Config.ARGB_8888, false) }
                     catch (_: Exception) { null } finally { buffer.close() }
                     if (bitmap == null) { busy = false; retry(token); return }
-                    val crop = try { Bitmap.createBitmap(bitmap, bitmap.width / 5, bitmap.height * 27 / 100,
-                        bitmap.width * 3 / 5, bitmap.height * 10 / 100) }
+                    val region = AlipayVisualPolicy.amountCrop(bitmap.width, bitmap.height)
+                    if (region == null) { bitmap.recycle(); busy = false; retry(token); return }
+                    val crop = try { Bitmap.createBitmap(bitmap, region.x, region.y, region.width, region.height) }
                     catch (_: Exception) { bitmap.recycle(); busy = false; retry(token); return }
                     try {
                         val fullTask = recognizer.process(InputImage.fromBitmap(bitmap, 0))

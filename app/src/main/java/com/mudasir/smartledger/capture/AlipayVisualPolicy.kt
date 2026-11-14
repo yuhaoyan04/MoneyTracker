@@ -6,6 +6,12 @@ import java.math.BigDecimal
 object AlipayVisualPolicy {
     const val JD = "com.jingdong.app.mall"
     const val ALIPAY = "com.eg.android.AlipayGphone"
+    data class AmountCrop(val x: Int, val y: Int, val width: Int, val height: Int)
+    /** Observed centered amount line on the tested Alipay cashier, not a universal layout. */
+    fun amountCrop(width: Int, height: Int): AmountCrop? {
+        if (width < 100 || height < 100) return null
+        return AmountCrop(width / 5, height * 34 / 100, width * 3 / 5, height * 12 / 100)
+    }
     private const val JD_CASHIER = "com.jd.cashier.app.cashier.tn.view.CashierTnPayPopActivity"
     private const val ALIPAY_CASHIER = "com.alipay.android.msp.ui.views.MspContainerActivity"
     fun isJdCashier(pkg: String, cls: String) = pkg == JD && cls == JD_CASHIER
@@ -28,8 +34,8 @@ object AlipayVisualPolicy {
         return cashierEvidence(lines, height).pending
     }
     fun cropCandidates(text: String): Set<BigDecimal> {
-        return Regex("(?<![0-9.,])(?:[¥￥]\\s*)?([0-9]{1,6}\\.[0-9]{2})(?![0-9.,])")
-            .findAll(text).mapNotNull { runCatching { BigDecimal(it.groupValues[1]) }.getOrNull() }
+        return Regex("(?<![0-9.,．])(?:[¥￥]\\s*)?([0-9]{1,6})\\s*[.．]\\s*([0-9]{2})(?![0-9.,．])")
+            .findAll(text).mapNotNull { runCatching { BigDecimal(it.groupValues[1] + "." + it.groupValues[2]) }.getOrNull() }
             .filter { it > BigDecimal.ZERO && it <= BigDecimal("1000000") }.toSet()
     }
     fun cropAmount(text: String): BigDecimal? = cropCandidates(text).singleOrNull()

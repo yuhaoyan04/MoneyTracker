@@ -129,6 +129,7 @@ object GuardLogPolicy {
         message.startsWith("页面已切换") -> "STALE_REQUEST_CANCELLED"
         message.startsWith("提醒开关或门槛已变化") -> "SETTINGS_CHANGED_CANCELLED"
         message.startsWith("无悬浮窗权限") -> "OVERLAY_PERMISSION_MISSING"
+        message.startsWith("无障碍浮层不可用") -> "ACCESSIBILITY_OVERLAY_UNAVAILABLE"
         message.startsWith("通知模式") -> "NOTIFICATION_MODE"
         message.startsWith("提醒失败") -> "PROMPT_ERROR"
         message.startsWith("系统已接受悬浮窗请求") -> "OVERLAY_ADDED"

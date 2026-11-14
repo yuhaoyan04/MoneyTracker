@@ -611,7 +611,16 @@ class PurchaseGuardService : Service() {
 
     private fun showCooldownOverlay(spent: Double, budgetPct: Int?, pkg: String, amount: Double) {
         if (overlayView != null) return
-        val a11yWm = if (visualHandoffRequest) AccessibilityCaptureService.overlayWindowManager() else null
+        // Structured detections may arrive before OCR and require the same overlay
+        // as visual handoffs; a payment app may hide a normal application overlay.
+        val a11yWm = AccessibilityCaptureService.overlayWindowManager()
+        val choice = com.mudasir.smartledger.capture.OverlayPresentationPolicy.choose(pkg, a11yWm != null)
+        if (choice == com.mudasir.smartledger.capture.OverlayPresentationPolicy.Choice.NOTIFICATION) {
+            recordDetection(pkg, "", "无障碍浮层不可用，尝试通知")
+            PurchaseGuardNotifier.notifyThink(applicationContext, spent, budgetPct)
+            if (orderButtonPrompt) removeOverlay()
+            return
+        }
         val wm = a11yWm ?: getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: run {
             if (orderButtonPrompt) removeOverlay()
             return

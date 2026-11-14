@@ -10,6 +10,13 @@ import org.junit.Test
 import java.math.BigDecimal
 
 class AlipayVisualPolicyTest {
+    @Test fun `observed centered cashier amount line is within the crop`() {
+        val crop = AlipayVisualPolicy.amountCrop(1080, 2400)!!
+        assertTrue(crop.x <= 540 && crop.x + crop.width > 540)
+        assertTrue(crop.y <= 912 && crop.y + crop.height >= 984)
+        assertTrue(crop.y > 2400 * 30 / 100)
+        assertNull(AlipayVisualPolicy.amountCrop(0, 2400))
+    }
     @Test fun `background windows do not clear a recent jd action but foreground changes do`() {
         val t = JdAlipayEntryTracker()
         val cashier = "com.jd.cashier.app.cashier.tn.view.CashierTnPayPopActivity"
@@ -132,6 +139,7 @@ class AlipayVisualPolicyTest {
     }
     @Test fun `cropped price requires one unambiguous decimal amount`() {
         assertEquals(BigDecimal("123.45"), AlipayVisualPolicy.cropAmount("¥ 123.45"))
+        assertEquals(BigDecimal("123.45"), AlipayVisualPolicy.cropAmount("¥ 123 ． 45"))
         assertNull(AlipayVisualPolicy.cropAmount("123.45 124.45"))
         assertNull(AlipayVisualPolicy.cropAmount("支付编号12345678"))
         assertEquals(0, AlipayVisualPolicy.cropCandidates("支付编号12345678").size)
