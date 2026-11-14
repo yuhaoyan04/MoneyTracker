@@ -34,7 +34,10 @@ class JdAlipayEntryTracker {
     private var cashierAt = -1L
     private var armedAt = -1L
     fun onWindow(pkg: String, cls: String, now: Long): Boolean {
-        if (AlipayVisualPolicy.isJdCashier(pkg, cls)) { inCashier = true; cashierAt = now; armedAt = -1L; return false }
+        if (AlipayVisualPolicy.isJdCashier(pkg, cls)) {
+            if (!inCashier || now - cashierAt !in 0..60_000L) { inCashier = true; cashierAt = now; armedAt = -1L }
+            return false
+        }
         if (AlipayVisualPolicy.isAlipayCashier(pkg, cls)) {
             val accepted = armedAt >= 0 && now - armedAt in 0..15_000L
             inCashier = false; armedAt = -1L
@@ -57,6 +60,7 @@ class JdAlipayEntryTracker {
  * specific Alipay cashier are hints only; the cashier OCR must prove the amount. */
 class ShoppingAlipayEntryTracker {
     private var source = ""
+    private var sourceClass = ""
     private var sourceAt = -1L
     private var armedAt = -1L
 
@@ -67,9 +71,12 @@ class ShoppingAlipayEntryTracker {
             return accepted
         }
         if (pkg in VisualGuardTargets.shopping && pkg != AlipayVisualPolicy.JD && cls.endsWith("Activity")) {
-            source = pkg
-            sourceAt = now
-            armedAt = -1L
+            if (source != pkg || sourceClass != cls || now - sourceAt !in 0..60_000L) {
+                source = pkg
+                sourceClass = cls
+                sourceAt = now
+                armedAt = -1L
+            }
         } else if (pkg.isNotBlank() && pkg != source && pkg != "com.mudasir.smartledger" &&
             !pkg.startsWith("com.android.systemui") && pkg != AlipayVisualPolicy.ALIPAY) {
             clear()
@@ -84,7 +91,7 @@ class ShoppingAlipayEntryTracker {
         return accepted
     }
 
-    fun clear() { source = ""; sourceAt = -1L; armedAt = -1L }
+    fun clear() { source = ""; sourceClass = ""; sourceAt = -1L; armedAt = -1L }
 }
 
 class StableAlipayAmount {

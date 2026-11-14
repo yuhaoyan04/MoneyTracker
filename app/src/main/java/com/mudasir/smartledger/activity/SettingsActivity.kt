@@ -367,12 +367,12 @@ class SettingsActivity : AppCompatActivity() {
     private fun editVisualMulti() {
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
         val enabled = prefs.getBoolean("guard_visual_multi_app_enabled", false)
-        AlertDialog.Builder(this).setTitle("更多购物应用识别（测试）")
-            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。开启后，在京东、拼多多、美团、美团外卖及 12306 等受支持应用的部分页面，本应用会截取当前屏幕并在本机判断付款信息。画面可能包含地址、订单和其他个人信息；图片和识别文字不保存、不上传。Google ML Kit 可能向 Google 发送设备和性能指标。各应用及支付宝、银行支付交接尚未全部真机验证，可能漏检或误判。")
+        AlertDialog.Builder(this).setTitle("京东订单识别（测试）")
+            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。开启后，在京东的部分页面截取屏幕，在本机识别付款信息。画面可能包含地址、订单和其他个人信息；图片和识别文字不保存、不上传。Google ML Kit 可能发送设备和性能指标。页面及浮层限制可能导致漏检或误判。")
             .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
                 prefs.edit().putBoolean("guard_visual_multi_app_enabled", !enabled).apply()
                 com.mudasir.smartledger.util.VisualPaymentHandoff.clear()
-                Toast.makeText(this, if (enabled) "更多应用识别已关闭" else "更多应用识别已开启", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, if (enabled) "京东订单识别已关闭" else "京东订单识别已开启", Toast.LENGTH_LONG).show()
             }.setNegativeButton("取消", null).show()
     }
 
@@ -392,7 +392,7 @@ class SettingsActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
         val enabled = prefs.getBoolean("guard_visual_alipay_enabled", false)
         AlertDialog.Builder(this).setTitle("支付宝付款金额识别（测试）")
-            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。开启后，还需开启‘更多购物应用识别’和守护服务。仅在识别到京东待付款收银台的确认付款操作、随后进入支付宝指定付款窗口时，短暂截取支付宝画面以在本机识别优惠后的金额。画面可能包含账号、银行卡和交易信息；图片和识别文字不保存、不上传。Google ML Kit 可能发送设备和性能指标。安全窗口可能无法读取，识别及浮层可能失败；不会自动付款。")
+            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。京东需同时开启京东订单识别；淘宝需同时开启淘宝屏幕识别和淘宝跳转支付宝。检测到付款操作并进入支付宝指定收银台后，尝试在本机识别优惠后的金额。画面可能包含账号、银行卡和交易信息；图片和识别文字不保存、不上传。Google ML Kit 可能发送设备和性能指标。安全窗口可能无法读取，识别及浮层可能失败；不会自动付款。")
             .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
                 prefs.edit().putBoolean("guard_visual_alipay_enabled", !enabled).apply()
                 Toast.makeText(this, if (enabled) "支付宝付款识别已关闭" else "支付宝付款识别已开启；请同时开启其他购物应用识别", Toast.LENGTH_LONG).show()
@@ -402,11 +402,11 @@ class SettingsActivity : AppCompatActivity() {
     private fun editVisualAlipayMulti() {
         val prefs = getSharedPreferences("guard_prefs", MODE_PRIVATE)
         val enabled = prefs.getBoolean("guard_visual_alipay_multi_enabled", false)
-        AlertDialog.Builder(this).setTitle("其他购物应用跳转支付宝（测试）")
-            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。还需开启守护服务和支付宝付款金额识别，并开启相应购物应用的屏幕识别。在受支持购物应用出现明确付款操作后，如果进入指定支付宝收银台，会短暂截取支付宝画面，在本机识别最终金额。画面可能包含账号、银行卡和交易信息；图片和识别文字不保存、不上传，Google ML Kit 可能发送设备及性能指标。页面安全限制、系统浮层层级和识别错误可能导致漏提醒或误提醒；不会自动付款。")
+        AlertDialog.Builder(this).setTitle("淘宝跳转支付宝（测试）")
+            .setMessage("${if (enabled) "当前已开启" else "当前已关闭"}。还需开启守护服务、淘宝屏幕识别和支付宝付款金额识别。淘宝出现明确付款操作后，如果进入指定支付宝收银台，会短暂截取支付宝画面，在本机识别最终金额。画面可能包含账号、银行卡和交易信息；图片和识别文字不保存、不上传，Google ML Kit 可能发送设备及性能指标。页面安全限制和识别错误可能导致漏提醒或误提醒；不会自动付款。")
             .setPositiveButton(if (enabled) "关闭" else "开启") { _, _ ->
                 prefs.edit().putBoolean("guard_visual_alipay_multi_enabled", !enabled).apply()
-                Toast.makeText(this, if (enabled) "其他购物应用跳转支付宝识别已关闭" else "实验已开启；请同时开启支付宝付款金额识别", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, if (enabled) "淘宝跳转支付宝识别已关闭" else "实验已开启；请同时开启支付宝付款金额识别", Toast.LENGTH_LONG).show()
             }.setNegativeButton("取消", null).show()
     }
 

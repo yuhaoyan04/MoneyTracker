@@ -27,9 +27,9 @@ class PaymentAppLaunchTrackerTest {
     @Test fun `railway and bank transitions are hints without proving a payment`() {
         val tracker = PaymentAppLaunchTracker("ledger")
         assertFalse(tracker.observe("com.MobileTicket", 1000))
-        assertTrue(tracker.observe("com.icbc", 2000))
+        assertFalse(tracker.observe("com.icbc", 2000))
         assertFalse(tracker.observe("com.xunmeng.pinduoduo", 3000))
-        assertTrue(tracker.observe("com.unionpay", 4000))
+        assertFalse(tracker.observe("com.unionpay", 4000))
         assertFalse(tracker.observe("com.sankuai.meituan", 5000))
         assertFalse(tracker.observe("com.fake.bank", 6000))
     }

@@ -86,6 +86,6 @@ class CheckoutPageParserTest {
         assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze(pkg, split, threshold).status)
         assertEquals(Status.NO_AMOUNT, CheckoutPageParser.analyze(pkg, listOf(n("确认付款"), n("实付款", 2), n("¥999", 3)), threshold).status)
         assertEquals(Status.AMBIGUOUS, CheckoutPageParser.analyze(pkg, listOf(n("确认付款"), n("实付款 ¥600"), n("应付 ¥900")), threshold).status)
-        assertEquals(Status.QUALIFIED, CheckoutPageParser.analyze("com.MobileTicket", listOf(n("提交订单"), n("应付金额 800元")), threshold).status)
+        assertEquals(Status.NOT_CHECKOUT, CheckoutPageParser.analyze("com.MobileTicket", listOf(n("提交订单"), n("应付金额 800元")), threshold).status)
     }
 }

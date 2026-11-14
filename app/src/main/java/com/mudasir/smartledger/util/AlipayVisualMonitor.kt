@@ -47,7 +47,8 @@ class AlipayVisualMonitor(private val service: AccessibilityCaptureService) {
 
     private fun enabled(): Boolean {
         val p = service.getSharedPreferences("guard_prefs", Context.MODE_PRIVATE)
-        return p.getBoolean("guard_enabled", false) && p.getBoolean("guard_visual_multi_app_enabled", false) &&
+        return p.getBoolean("guard_enabled", false) &&
+            (if (multiSource == null) p.getBoolean("guard_visual_multi_app_enabled", false) else true) &&
             p.getBoolean("guard_visual_alipay_enabled", false) && (multiSource == null ||
                 (p.getBoolean("guard_visual_alipay_multi_enabled", false) && VisualGuardTargets.sourceAllowed(multiSource!!,
                     p.getBoolean("guard_visual_order_pages_enabled", false), p.getBoolean("guard_visual_multi_app_enabled", false))))

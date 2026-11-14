@@ -52,8 +52,8 @@ class VisualGuardTargetsTest {
         assertTrue(VisualGuardTargets.sourceAllowed("com.taobao.taobao", true, false))
         assertFalse(VisualGuardTargets.sourceAllowed("com.jingdong.app.mall", true, false))
         assertTrue(VisualGuardTargets.sourceAllowed("com.jingdong.app.mall", false, true))
-        assertTrue(VisualGuardTargets.sourceAllowed("com.xunmeng.pinduoduo", false, true))
-        assertTrue(VisualGuardTargets.sourceAllowed("com.sankuai.meituan", false, true))
+        assertFalse(VisualGuardTargets.sourceAllowed("com.xunmeng.pinduoduo", false, true))
+        assertFalse(VisualGuardTargets.sourceAllowed("com.sankuai.meituan", false, true))
         assertFalse(VisualGuardTargets.sourceAllowed("com.unknown.shop", true, true))
     }
     @Test fun `wechat requires recent entry and consumes source candidate once`() {
@@ -66,15 +66,15 @@ class VisualGuardTargetsTest {
     }
     @Test fun `other cashiers require allowlisted target and recent candidate`() {
         val state = VisualHandoffState()
-        state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
+        state.remember("com.taobao.taobao", 600.0, 1000)
         assertNull(state.observe("com.fake.bank", "CashierActivity", 2000))
-        state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
+        state.remember("com.taobao.taobao", 600.0, 1000)
         assertNull(state.observe("com.eg.android.AlipayGphone", "MainActivity", 2000))
-        state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
+        state.remember("com.taobao.taobao", 600.0, 1000)
         assertNull(state.observe("com.eg.android.AlipayGphone", "CashierActivity", 3000))
-        state.remember("com.xunmeng.pinduoduo", 600.0, 1000)
+        state.remember("com.taobao.taobao", 600.0, 1000)
         assertEquals(600.0, state.observe("com.icbc", "CashierActivity", 3000)!!, 0.001)
-        state.remember("com.sankuai.meituan", 800.0, 1000)
+        state.remember("com.jingdong.app.mall", 800.0, 1000)
         assertNull(state.observe("com.icbc", "PaymentActivity", 21_001))
     }
     @Test fun `unrelated app invalidates candidate before a later cashier`() {

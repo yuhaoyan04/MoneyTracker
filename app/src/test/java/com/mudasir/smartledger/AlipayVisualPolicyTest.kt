@@ -10,9 +10,24 @@ import org.junit.Test
 import java.math.BigDecimal
 
 class AlipayVisualPolicyTest {
+    @Test fun `duplicate window events preserve recent payment action`() {
+        val target = "com.alipay.android.msp.ui.views.MspContainerActivity"
+        val jd = JdAlipayEntryTracker()
+        val cashier = "com.jd.cashier.app.cashier.tn.view.CashierTnPayPopActivity"
+        jd.onWindow(AlipayVisualPolicy.JD, cashier, 1000)
+        assertTrue(jd.onClick(AlipayVisualPolicy.JD, listOf("确认付款"), 1100))
+        jd.onWindow(AlipayVisualPolicy.JD, cashier, 1150)
+        assertTrue(jd.onWindow(AlipayVisualPolicy.ALIPAY, target, 1200))
+        val taobao = ShoppingAlipayEntryTracker()
+        val pkg = "com.taobao.taobao"
+        taobao.onWindow(pkg, "a.CheckoutActivity", 1000)
+        assertTrue(taobao.onClick(pkg, listOf("继续付款"), 1100))
+        taobao.onWindow(pkg, "a.CheckoutActivity", 1150)
+        assertEquals(pkg, taobao.onWindow(AlipayVisualPolicy.ALIPAY, target, 1200))
+    }
     @Test fun `other shopping app must click before specific alipay cashier and handoff is one shot`() {
         val target = "com.alipay.android.msp.ui.views.MspContainerActivity"
-        val apps = listOf("com.taobao.taobao", "com.xunmeng.pinduoduo", "com.sankuai.meituan", "com.MobileTicket")
+        val apps = listOf("com.taobao.taobao")
         apps.forEach { pkg ->
             val t = ShoppingAlipayEntryTracker()
             assertNull(t.onWindow(pkg, "$pkg.CheckoutActivity", 1000))
@@ -27,7 +42,7 @@ class AlipayVisualPolicyTest {
 
     @Test fun `other shopping handoff expires and is cleared when leaving the source`() {
         val t = ShoppingAlipayEntryTracker()
-        val source = "com.xunmeng.pinduoduo"
+        val source = "com.taobao.taobao"
         val target = "com.alipay.android.msp.ui.views.MspContainerActivity"
         t.onWindow(source, "$source.CheckoutActivity", 1000)
         assertTrue(t.onClick(source, listOf("立即支付"), 1500))

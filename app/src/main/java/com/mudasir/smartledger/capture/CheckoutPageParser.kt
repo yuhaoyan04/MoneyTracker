@@ -10,8 +10,7 @@ data class CheckoutResult(val status: Status, val amount: BigDecimal? = null) {
 }
 
 object CheckoutPageParser {
-    val shoppingPackages = setOf("com.taobao.taobao", "com.jingdong.app.mall", "com.xunmeng.pinduoduo",
-        "com.sankuai.meituan", "com.sankuai.meituan.takeoutnew", "com.MobileTicket")
+    val shoppingPackages = VisualGuardTargets.shopping
     fun isSupported(pkg: String): Boolean = pkg in shoppingPackages || CaptureWhitelist.isPageWatched(pkg)
     fun exceedsThreshold(amount: Double, threshold: Float): Boolean =
         amount.isFinite() && threshold.isFinite() && threshold >= 0f &&

@@ -4,8 +4,7 @@ package com.mudasir.smartledger.capture
 object VisualGuardTargets {
     const val TAOBAO = "com.taobao.taobao"
     const val WECHAT = "com.tencent.mm"
-    val shopping = setOf(TAOBAO, "com.jingdong.app.mall", "com.xunmeng.pinduoduo",
-        "com.sankuai.meituan", "com.sankuai.meituan.takeoutnew", "com.MobileTicket")
+    val shopping = setOf(TAOBAO, "com.jingdong.app.mall")
 
     fun sourceAllowed(pkg: String, taobaoEnabled: Boolean, multiEnabled: Boolean): Boolean =
         pkg in shopping && if (pkg == TAOBAO) taobaoEnabled else multiEnabled
