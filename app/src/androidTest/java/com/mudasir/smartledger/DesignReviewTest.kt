@@ -1,8 +1,12 @@
 package com.mudasir.smartledger
 
 import android.app.Activity
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -139,6 +143,27 @@ class DesignReviewTest {
         try {
             view.draw(Canvas(bitmap))
             destination.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            // UTP uninstalls test packages before the host can pull their private outputs.
+            // Only the fresh CI emulator opts into persisting these synthetic previews.
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            if (Build.VERSION.SDK_INT >= 29 &&
+                InstrumentationRegistry.getArguments().getString("persistDesignPreviews") == "true") {
+                val resolver = instrumentation.targetContext.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, destination.name)
+                    put(MediaStore.Downloads.MIME_TYPE, "image/png")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Zhiyu-QA")
+                }
+                val uri = checkNotNull(resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+                try {
+                    checkNotNull(resolver.openOutputStream(uri)).use { output ->
+                        destination.inputStream().use { it.copyTo(output) }
+                    }
+                } catch (e: Exception) {
+                    resolver.delete(uri, null, null)
+                    throw e
+                }
+            }
         } finally { bitmap.recycle() }
     }
 }

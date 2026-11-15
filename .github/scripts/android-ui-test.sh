@@ -7,9 +7,10 @@ classes="com.mudasir.smartledger.CaptureDiagnosticsTest,com.mudasir.smartledger.
 ./gradlew :app:testDebugUnitTest :app:connectedDebugAndroidTest \
   -PisolatedDeviceTest=true \
   "-Pandroid.testInstrumentationRunnerArguments.class=$classes" \
+  -Pandroid.testInstrumentationRunnerArguments.persistDesignPreviews=true \
   --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8' --console=plain
 result=$?
 
 # Collect only programmatically rendered synthetic UI, never an emulator-wide dump.
-adb pull /sdcard/Android/data/com.mudasir.smartledger.isolated/files/design-review app/build/design-review || true
+adb pull /sdcard/Download/Zhiyu-QA app/build/design-review || true
 exit "$result"
