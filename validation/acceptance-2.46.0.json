@@ -1,0 +1,123 @@
+{
+  "version": "2.46.0",
+  "brand": "知余",
+  "date": "2026-11-15",
+  "scope": "Brand/UI release and core ledger data-flow regression; no live payments",
+  "applicationSourceCommit": "5523797be67205293d4f617976d03027ec5d7f99",
+  "package": {
+    "version": "2.46.0",
+    "versionCode": 128,
+    "debuggable": false,
+    "signatureVerified": true,
+    "sha256": "b338f75d2df9b9c5fcc7f993908afae48822897deb99b9d4c3b2213b6cd93783",
+    "bytes": 56089788
+  },
+  "signingCertificateSha256": "ce080202dff86e0d05952ab8e0dc306a04a940b4c2fb42761af49508272372c5",
+  "releaseBuild": {
+    "result": "passed",
+    "r8": true,
+    "lintVitalRelease": true,
+    "log": "zhiyu-compatible-release-build.log"
+  },
+  "unitTests": {
+    "tests": 156,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "android11Emulator": {
+    "result": "passed",
+    "tests": {
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "ciRun": "https://github.com/yuhaoyan04/MoneyTracker/actions/runs/43677879147",
+    "candidateCommit": "ef54b7654686604694896df77d59c0f602f09439",
+    "syntheticPreviewsExported": 11
+  },
+  "huaweiDevice": {
+    "model": "NCO-AL00",
+    "os": "HarmonyOS 4.2",
+    "androidApi": 31,
+    "result": "passed",
+    "tests": 28,
+    "failures": 0,
+    "durationSeconds": 76.409,
+    "testPackage": "com.mudasir.smartledger.isolated"
+  },
+  "deviceReleaseReview": {
+    "inPlaceUpgradeSucceeded": true,
+    "installedVersion": "2.46.0",
+    "installedVersionCode": 128,
+    "existingLedgerStillVisible": true,
+    "homeStatisticsAndSettingsOpened": true,
+    "originalAppearanceRetained": true,
+    "accessibilityAndNotificationListenerRetained": true,
+    "guardServiceRunningInForeground": true,
+    "testPackagesRemoved": true,
+    "temporaryPrivateScreenshotsRemoved": true,
+    "usbStayAwakeSettingRestored": true
+  },
+  "visualReview": {
+    "source": "Synthetic data only in isolated test package",
+    "screens": [
+      "Home",
+      "Inbox",
+      "Statistics",
+      "Settings",
+      "Transaction form"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "reminder": "Dedicated opaque dark-green surface with native buttons and scrollable content",
+    "previewFiles": 11,
+    "realUserScreenshotsPublished": false
+  },
+  "compatibilityFix": {
+    "initialFailureRun": "https://github.com/yuhaoyan04/MoneyTracker/actions/runs/43676426767",
+    "rootCause": "TypedArray was used as AutoCloseable, causing ClassCastException on Android API 30",
+    "fix": "All six themed drawable call sites use ThemeDrawables with explicit try/finally recycle",
+    "regression": "Category, child-category, channel and payment-method selection plus statistics rendering pass on API 30 and API 31"
+  },
+  "executedDeviceTests": [
+    "com.mudasir.smartledger.CaptureDiagnosticsTest.optInCountsCanBeStoppedAndReset",
+    "com.mudasir.smartledger.CaptureDuplicateDaoTest.crossSourceMatchIsFlaggedWithoutDiscardingEitherRecord",
+    "com.mudasir.smartledger.CaptureDuplicateDaoTest.concurrentExactRedeliveryInsertsOnceButDifferentTimesRemain",
+    "com.mudasir.smartledger.CategorySelectionFlowTest.categorySelectionAndTypeSwitchStayConsistent",
+    "com.mudasir.smartledger.CooldownOverlayInflationTest.inflateWithApplicationContext",
+    "com.mudasir.smartledger.CoreScreensSmokeTest.statisticsChartViewsOpen",
+    "com.mudasir.smartledger.CoreScreensSmokeTest.inboxOpens",
+    "com.mudasir.smartledger.CoreScreensSmokeTest.homeOpens",
+    "com.mudasir.smartledger.ExpenseTaxonomyMigrationTest.upgradingPreservesTransactionsIdsAndCustomCategories",
+    "com.mudasir.smartledger.ExpenseTaxonomyMigrationTest.wishlistUpgradeKeepsRowsAndAssignsDistinctPortableIds",
+    "com.mudasir.smartledger.GuardThresholdStorageTest.preservesExactDecimalAndReadsLegacyPreferences",
+    "com.mudasir.smartledger.InboxConfirmFlowTest.confirmMovesPendingToConfirmed",
+    "com.mudasir.smartledger.LegacyBackupFlowTest.olderZipWithoutDailyRecordsCanBeRestored",
+    "com.mudasir.smartledger.LegacyBackupFlowTest.conflictingCustomLedgerSchemaDoesNotReceiveEntries",
+    "com.mudasir.smartledger.LegacyBackupFlowTest.sameNamedAndSharedImagesSurviveExportAndRestore",
+    "com.mudasir.smartledger.LegacyBackupFlowTest.directLocalBackupIsPublishedAndReadable",
+    "com.mudasir.smartledger.LegacyBackupFlowTest.restoreKeepsLocalConflictsAndIsRepeatable",
+    "com.mudasir.smartledger.LegacyBackupFlowTest.missingImageCausesBackupFailure",
+    "com.mudasir.smartledger.LegacyTaxonomyMigrationTest.conflictingLegacyNamesPreserveBothCategoriesAndRecords",
+    "com.mudasir.smartledger.LegacyTaxonomyMigrationTest.versionSevenSeedsOnlyAfterHierarchyColumnsExist",
+    "com.mudasir.smartledger.LegacyTaxonomyMigrationTest.unambiguousDefaultRenameKeepsChildAndTransactionLinks",
+    "com.mudasir.smartledger.SettingsLayoutTest.appearanceAppliesLightAndDarkToSettings",
+    "com.mudasir.smartledger.SettingsLayoutTest.sectionsExpandAndKeepTheirStateAfterRecreation",
+    "com.mudasir.smartledger.SettingsLayoutTest.diagnosticSnapshotKeepsCopyAndRefreshAccessible",
+    "com.mudasir.smartledger.WishlistBackupFlowTest.backupRestoresOnceAndDoesNotOverwriteResolvedLocalWish",
+    "com.mudasir.smartledger.WishlistBackupFlowTest.simultaneousBackupsProduceReadableLatestSnapshot",
+    "com.mudasir.smartledger.DesignReviewTest.seededLightAndDarkScreensAndScrollableReminder",
+    "com.mudasir.smartledger.DesignReviewTest.balanceAnimationEndsWithExactMonetaryValue"
+  ],
+  "paymentEvidence": "payment-acceptance-2.45.7.json",
+  "limitations": [
+    "Four real-wallet combinations were not repeated in this UI release; earlier device evidence remains scoped to its recorded versions and orders.",
+    "Alipay OCR may wait for stable frames; no zero-latency guarantee.",
+    "Other shopping apps, independent bank cashiers and every OEM/payment variant are outside this acceptance scope."
+  ],
+  "realPaymentsPerformed": false
+}

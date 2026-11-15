@@ -10,6 +10,7 @@
 - 一级标题强调内容，金额优先于装饰；卡片圆角 20dp、表单与按钮圆角 16dp。主要操作保留明确文字与至少 48dp 的触控区域。
 - 设置按用途折叠，常用提醒参数在前，实验识别与诊断单独展开；旋转或重建页面后保留展开状态。
 - 图表与明细共用分类色。环图负责比例概览，金额和百分比在下方明细显示；图例允许换行。趋势使用主题强调色，动画缩短并尊重系统动画开关。
+- 分类色由 `ChartPalette` 按分类名称确定，与当月排名无关；统计页和导出月报共用。主题 drawable 通过兼容旧系统的显式回收方式读取。
 - 冷静提醒使用独立的深绿色不透明表面、可滚动内容和原生按钮，以兼容服务上下文及较小屏幕。倒计时结束后才启用继续操作。
 - 分类依据消费用途划分，渠道作为另一维度；历史标签映射保留原记录，不能因为视觉重构而删除旧标签或覆盖用户自定义项。
 
@@ -18,3 +19,13 @@
 本轮按用户要求安装并应用 [frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) 和 [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) 的设计审视流程；采用原生 Android 组件实现，未复制其网页模板或图像资产。
 
 `DesignReviewTest` 只允许在 `.isolated` 测试包运行，使用合成账目生成浅色、深色和提醒预览。仓库展示图不得来自真实账本、通知正文、账号或付款页面截图。
+
+| 页面 | 浅色预览 | 深色预览 |
+|---|---|---|
+| 账本 | [查看](brand/home-light.png) | [查看](brand/home-dark.png) |
+| 收件箱 | [查看](brand/inbox-light.png) | [查看](brand/inbox-dark.png) |
+| 统计 | [查看](brand/stats-light.png) | [查看](brand/stats-dark.png) |
+| 设置 | [查看](brand/settings-light.png) | [查看](brand/settings-dark.png) |
+| 记账表单 | [查看](brand/form-light.png) | [查看](brand/form-dark.png) |
+
+[冷静提醒预览](brand/reminder.png) 使用独立配色。
