@@ -6,6 +6,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VisualGuardTargetsTest {
+    @Test fun `repeated JD cashier events preserve the active OCR session only within its lease`() {
+        val jd = com.mudasir.smartledger.capture.AlipayVisualPolicy.JD
+        val cashier = "com.jd.cashier.app.cashier.tn.view.CashierTnPayPopActivity"
+        assertTrue(VisualGuardTargets.isSameActiveJdCashier(jd, cashier, jd, cashier, 1000, 5500))
+        assertTrue(VisualGuardTargets.isSameActiveJdCashier(jd, cashier, jd, cashier, 1000, 61000))
+        assertFalse(VisualGuardTargets.isSameActiveJdCashier(jd, cashier, jd, cashier, 1000, 61001))
+        assertFalse(VisualGuardTargets.isSameActiveJdCashier(jd, cashier, jd, "other.Activity", 1000, 5500))
+        assertFalse(VisualGuardTargets.isSameActiveJdCashier(jd, cashier, "other.app", cashier, 1000, 5500))
+        assertFalse(VisualGuardTargets.isSameActiveJdCashier(jd, cashier, jd, cashier, 0, 5500))
+    }
     @Test fun `structured handoff is limited to a recent taobao order list dialog`() {
         val t = VisualGuardTargets.TAOBAO
         assertTrue(VisualGuardTargets.isRecentTaobaoOrderDialog(t, "taobao_order_list_nodes", 1000, 1300))

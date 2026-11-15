@@ -24,7 +24,7 @@
         android:gravity="center"
         android:hint="0"
         android:inputType="numberDecimal"
-        android:textColor="@color/teal_main"
+        android:textColor="@color/accent_text"
         android:textStyle="bold"/>
 
     <TextView

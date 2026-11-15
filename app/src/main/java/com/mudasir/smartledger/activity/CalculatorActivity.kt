@@ -96,7 +96,7 @@ class CalculatorActivity : AppCompatActivity() {
     }
 
     private fun toggleHistoryUI() {
-        val tealColor = ContextCompat.getColor(this, R.color.teal_main)
+        val tealColor = ContextCompat.getColor(this, R.color.accent_text)
         val greyColor = ContextCompat.getColor(this, R.color.text_secondary)
 
         btnHistoryToggle.imageTintList = ColorStateList.valueOf(if (isHistoryOpen) tealColor else greyColor)

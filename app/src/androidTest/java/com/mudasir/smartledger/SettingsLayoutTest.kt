@@ -32,10 +32,14 @@ class SettingsLayoutTest {
                 assertNotNull(activity.findViewById<View>(R.id.btnThreshold))
                 assertNotNull(activity.findViewById<View>(R.id.btnGuardDebug))
                 assertNotNull(activity.findViewById<View>(R.id.btnImportBill))
+                assertEquals(View.GONE, activity.findViewById<View>(R.id.guardAdvanced).visibility)
+                activity.findViewById<View>(R.id.btnGuardAdvanced).performClick()
+                assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.guardAdvanced).visibility)
             }
             scenario.recreate()
             scenario.onActivity { activity ->
                 assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.bodyGuard).visibility)
+                assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.guardAdvanced).visibility)
             }
         }
     }
@@ -44,6 +48,7 @@ class SettingsLayoutTest {
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.findViewById<View>(R.id.headerGuard).performClick()
+                activity.findViewById<View>(R.id.btnGuardAdvanced).performClick()
                 activity.findViewById<View>(R.id.btnGuardDebug).performClick()
             }
             onView(withText("复制诊断")).check(matches(isDisplayed())).perform(click())

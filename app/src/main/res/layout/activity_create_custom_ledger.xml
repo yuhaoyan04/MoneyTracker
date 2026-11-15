@@ -43,9 +43,9 @@
                         android:id="@+id/btnSelectIcon"
                         android:layout_width="64dp" android:layout_height="64dp"
                         app:cardCornerRadius="32dp" app:cardBackgroundColor="@color/tile_bg">
-                        <ImageView android:id="@+id/ivSelectedIcon" android:layout_width="32dp" android:layout_height="32dp" android:layout_gravity="center" android:src="@drawable/ic_star" app:tint="@color/teal_main" />
+                        <ImageView android:id="@+id/ivSelectedIcon" android:layout_width="32dp" android:layout_height="32dp" android:layout_gravity="center" android:src="@drawable/ic_star" app:tint="@color/accent_text" />
                     </com.google.android.material.card.MaterialCardView>
-                    <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginStart="16dp" style="@style/Widget.Material3.TextInputLayout.OutlinedBox" android:hint="Ledger Name">
+                    <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginStart="16dp" style="@style/Widget.App.TextInputLayout" android:hint="Ledger Name">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/etLedgerName"
                             android:layout_width="match_parent"
@@ -108,7 +108,7 @@
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Unit Configuration" android:textSize="18sp" android:textStyle="bold"/>
 
                     <com.google.android.material.textfield.TextInputLayout
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        style="@style/Widget.App.TextInputLayout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
@@ -122,7 +122,7 @@
                     </com.google.android.material.textfield.TextInputLayout>
 
                     <com.google.android.material.textfield.TextInputLayout
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        style="@style/Widget.App.TextInputLayout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
@@ -143,7 +143,7 @@
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Define Fields" android:textSize="18sp" android:textStyle="bold"/>
                 <TextView android:id="@+id/tvFieldsSubtitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Add specific fields you want to track." android:textSize="12sp" android:textColor="@color/text_secondary" android:layout_marginTop="4dp"/>
                 <LinearLayout android:id="@+id/containerFields" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="16dp" />
-                <Button android:id="@+id/btnAddField" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="+ Add Field" android:textColor="@color/teal_main" />
+                <Button android:id="@+id/btnAddField" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="+ Add Field" android:textColor="@color/accent_text" />
                 <TextView
                     android:id="@+id/tvMaxFieldsNote"
                     android:layout_width="wrap_content"
@@ -190,7 +190,7 @@
                             android:text="Pricing Options Guide"
                             android:textStyle="bold"
                             android:textSize="14sp"
-                            android:textColor="@color/teal_main"
+                            android:textColor="@color/accent_text"
                             android:drawableStart="@drawable/ic_info"
                             android:drawablePadding="8dp"
                             android:gravity="center_vertical"/>

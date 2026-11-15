@@ -141,7 +141,7 @@ class TrashAdapter(
                     tvBadge.text = "Ledger"
                     tvTitle.text = item.ledger.name
                     tvAmount.text = "${item.entryCount} Record(s)"
-                    tvAmount.setTextColor(ContextCompat.getColor(itemView.context, R.color.teal_main))
+                    tvAmount.setTextColor(ContextCompat.getColor(itemView.context, R.color.accent_text))
                     tvDate.text = sdf.format(item.ledger.createdAt)
                 }
                 is TrashItem.CustomDailyRecordItem -> {
@@ -180,17 +180,17 @@ class TrashAdapter(
                 }
                 totalHoursLeft < 1 -> {
                     tvDaysLeft.text = "$totalMinutesLeft Mins Left"
-                    tvDaysLeft.setTextColor(ContextCompat.getColor(itemView.context, R.color.teal_main))
+                    tvDaysLeft.setTextColor(ContextCompat.getColor(itemView.context, R.color.accent_text))
                     tvDaysLeft.setTypeface(null, android.graphics.Typeface.BOLD)
                 }
                 totalHoursLeft < 24 -> {
                     tvDaysLeft.text = "$totalHoursLeft Hours Left"
-                    tvDaysLeft.setTextColor(ContextCompat.getColor(itemView.context, R.color.teal_main))
+                    tvDaysLeft.setTextColor(ContextCompat.getColor(itemView.context, R.color.accent_text))
                     tvDaysLeft.setTypeface(null, android.graphics.Typeface.BOLD)
                 }
                 else -> {
                     tvDaysLeft.text = "$totalDaysLeft Days Left"
-                    tvDaysLeft.setTextColor(ContextCompat.getColor(itemView.context, R.color.teal_main))
+                    tvDaysLeft.setTextColor(ContextCompat.getColor(itemView.context, R.color.accent_text))
                     tvDaysLeft.setTypeface(null, android.graphics.Typeface.BOLD)
                 }
             }

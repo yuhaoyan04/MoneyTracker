@@ -22,6 +22,9 @@ interface WishlistDao {
     @Query("SELECT * FROM wishlist_items WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): WishlistItem?
 
+    @Query("SELECT * FROM wishlist_items WHERE stableId = :stableId LIMIT 1")
+    suspend fun getByStableId(stableId: String): WishlistItem?
+
     @Query("UPDATE wishlist_items SET status = :status, resolvedAt = :now WHERE id = :id AND status = 'WAITING'")
     suspend fun resolve(id: Long, status: String, now: Long = System.currentTimeMillis()): Int
 

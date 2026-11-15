@@ -123,7 +123,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                     rec.type, rec.timestamp, rec.amount, rec.channelName, enrichedMerchant, rec.rawText,
                     place?.name
                 )
-                dao.insert(rec.copy(
+                val inserted = dao.insertExactCaptureOnce(rec.copy(
                     categoryName = rec.categoryName.ifBlank { suggestion.category },
                     merchant = enrichedMerchant,
                     latitude = place?.latitude,
@@ -131,6 +131,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                     locationName = place?.name,
                     aiConfidence = suggestion.confidence
                 ))
+                if (inserted == -1L) { CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.DUPLICATE); return@launch }
                 CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.SAVED)
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
                 // 有新的待确认交易 → 刷新常驻通知
@@ -156,7 +157,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                         captureTime
                     ) > 0
                 ) { CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.DUPLICATE); return@launch }
-                dao.insert(
+                val inserted = dao.insertExactCaptureOnce(
                     TransactionRecord(
                         type = TransactionRecord.TYPE_EXPENSE,
                         amount = 0.0,
@@ -169,6 +170,7 @@ class LedgerNotificationListener : NotificationListenerService() {
                         timestamp = captureTime
                     )
                 )
+                if (inserted == -1L) { CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.DUPLICATE); return@launch }
                 CaptureDiagnostics.record(applicationContext, CaptureDiagnostics.Stage.SAVED)
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
                 com.mudasir.smartledger.util.PendingNotifier.update(applicationContext)

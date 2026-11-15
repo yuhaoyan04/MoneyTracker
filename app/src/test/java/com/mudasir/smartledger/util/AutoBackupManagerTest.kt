@@ -4,6 +4,8 @@ import com.google.gson.JsonParser
 import com.mudasir.smartledger.data.LedgerBackupPayload
 import com.mudasir.smartledger.data.LedgerJournalEntry
 import com.mudasir.smartledger.data.TransactionBackupDto
+import com.mudasir.smartledger.data.WishlistBackupDto
+import com.mudasir.smartledger.data.WishlistItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -29,7 +31,25 @@ class AutoBackupManagerTest {
 
         assertEquals(payload, decoded.payload)
         assertEquals(journal, decoded.journal)
+        assertEquals(2, decoded.schemaVersion)
+    }
+
+    @Test fun schemaOneWithoutWishlistStillPassesItsOriginalChecksum() {
+        val original = AutoBackupManager.encodeEnvelope(LedgerBackupPayload(), emptyList(), 1, "old")
+        val root = JsonParser.parseString(original).asJsonObject
+        root.addProperty("schemaVersion", 1)
+        val decoded = AutoBackupManager.decodeEnvelope(root.toString())
         assertEquals(1, decoded.schemaVersion)
+        assertEquals(null, decoded.payload.wishlist)
+    }
+
+    @Test fun wishlistRoundTripIsCoveredByChecksum() {
+        val wish = WishlistBackupDto("stable-wish", "耳机", 100.0, 1000L, WishlistItem.STATUS_WAITING)
+        val json = AutoBackupManager.encodeEnvelope(LedgerBackupPayload(wishlist = listOf(wish)), emptyList(), 1, "test")
+        assertEquals(wish, AutoBackupManager.decodeEnvelope(json).payload.wishlist?.single())
+        val root = JsonParser.parseString(json).asJsonObject
+        root.getAsJsonObject("payload").getAsJsonArray("wishlist").first().asJsonObject.addProperty("amount", 999)
+        assertThrows(IllegalArgumentException::class.java) { AutoBackupManager.decodeEnvelope(root.toString()) }
     }
 
     @Test

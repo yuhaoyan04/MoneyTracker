@@ -17,6 +17,7 @@ object WishlistNotifier {
 
     const val CHANNEL_ID = "wishlist_revisit"
     const val NOTIFICATION_ID = 3001
+    fun notificationTag(itemId: Long): String = "wishlist:$itemId"
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -68,6 +69,7 @@ object WishlistNotifier {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIFICATION_ID, n)
+        // Separate tags prevent one wish from replacing another's reminder.
+        nm.notify(notificationTag(item.id), NOTIFICATION_ID, n)
     }
 }

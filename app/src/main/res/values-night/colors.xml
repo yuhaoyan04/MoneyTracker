@@ -1,29 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 深色模式：暖色调深色背景，非冷灰 -->
-    <color name="accent_text">#DE9676</color>
+    <color name="accent_text">#A9D8C5</color>
 
-    <color name="text_primary">#EDEAE3</color>
-    <color name="text_secondary">#A8A49C</color>
-    <color name="text_tertiary">#7A7670</color>
-    <color name="text_hint">#6A6660</color>
+    <color name="text_primary">#E4EDE5</color>
+    <color name="text_secondary">#B0BFB4</color>
+    <color name="text_tertiary">#A0B1A4</color>
+    <color name="text_hint">#A0B1A4</color>
 
-    <color name="surface_card">#252420</color>
-    <color name="surface_dim">#1A1916</color>
-    <color name="tile_bg">#252420</color>
-    <color name="divider">#3A3833</color>
+    <color name="surface_card">#202C27</color>
+    <color name="surface_dim">#141F1A</color>
+    <color name="tile_bg">#202C27</color>
+    <color name="divider">#39483E</color>
 
-    <color name="tile_add_bg">#2E2C28</color>
-    <color name="selected_item_bg">#3A2A22</color>
-    <color name="tag_teal_bg">#C15F3C</color>
+    <color name="tile_add_bg">#293B30</color>
+    <color name="selected_item_bg">#2B4336</color>
+    <color name="tag_teal_bg">#21665B</color>
 
-    <color name="splash_bg">#1A1916</color>
-    <color name="ic_launcher_bg">#1A1916</color>
+    <color name="splash_bg">#141F1A</color>
+    <color name="ic_launcher_bg">#174B43</color>
 
     <!-- 收支色在深色下稍提亮 -->
-    <color name="color_expense">#D67270</color>
-    <color name="color_income">#8AB864</color>
-    <color name="color_warning">#D9AE56</color>
+    <color name="color_expense">#E6A299</color>
+    <color name="color_income">#9BCDAD</color>
+    <color name="color_warning">#E1C487</color>
 
-    <color name="ai_bg_gradient_start">#0A0908</color>
+    <color name="ai_bg_gradient_start">#141F1A</color>
 </resources>

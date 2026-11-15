@@ -89,7 +89,7 @@
                     android:layout_height="wrap_content"
                     android:text="15 Days Left"
                     android:textSize="12sp"
-                    android:textColor="@color/teal_main"
+                    android:textColor="@color/accent_text"
                     android:textStyle="bold"/>
             </LinearLayout>
         </LinearLayout>
@@ -106,7 +106,7 @@
                 android:layout_height="32dp"
                 android:padding="6dp"
                 android:src="@drawable/ic_refresh"
-                app:tint="@color/teal_main"
+                app:tint="@color/accent_text"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Recover"/>
 

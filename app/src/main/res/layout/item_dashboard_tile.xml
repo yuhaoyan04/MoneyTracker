@@ -9,7 +9,7 @@
     app:cardCornerRadius="24dp"
     app:cardElevation="4dp"
     app:cardBackgroundColor="@color/tile_bg"
-    app:strokeColor="@color/teal_main"
+    app:strokeColor="@color/accent_text"
     app:strokeWidth="1dp">
 
     <!-- Remove the ConstraintLayout with ratio — it collapses to 0 inside wrap_content -->
@@ -24,7 +24,7 @@
             android:id="@+id/ivTileIcon"
             android:layout_width="56dp"
             android:layout_height="56dp"
-            app:tint="@color/teal_main" />
+            app:tint="@color/accent_text" />
 
         <TextView
             android:id="@+id/tvTileName"

@@ -179,8 +179,11 @@ class PurchaseGuardService : Service() {
 
         fun isOrderButtonPromptActive(): Boolean = instance?.let { it.orderButtonPrompt && it.requestPackage == "com.taobao.taobao" } == true
 
-        fun onOrderListLeft() {
+        fun onOrderListLeft(backgroundScroll: Boolean = false) {
             instance?.let { svc -> svc.handler.post {
+                // A full-screen reminder owns touch input. Scroll events from the covered
+                // merchant window cannot represent the user leaving the payment flow.
+                if (backgroundScroll && svc.overlayView != null) return@post
                 if (svc.orderButtonPrompt) {
                     svc.requestGeneration++
                     svc.removeOverlay()
@@ -656,7 +659,8 @@ class PurchaseGuardService : Service() {
                     tvCountdown.text = remain.toString()
                     handler.postDelayed(this, 1000)
                 } else {
-                    tvCountdown.text = "🧘"
+                    tvCountdown.text = "就绪"
+                    tvCountdown.textSize = 24f
                     btnContinue.isEnabled = true
                     btnContinue.alpha = 1f
                     btnContinue.text = if (orderButtonPrompt) "我已三思，返回后再次点击付款" else "我已三思，继续操作"
@@ -810,7 +814,7 @@ class PurchaseGuardService : Service() {
             // 渐变陶土色 + 半透明白环：精致不突兀
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.parseColor("#F2D98273"), Color.parseColor("#F2C15F3C"))
+                intArrayOf(Color.parseColor("#F2488F7A"), Color.parseColor("#F221665B"))
             ).apply {
                 shape = GradientDrawable.OVAL
                 setStroke(dp(2), Color.parseColor("#59FFFFFF"))
@@ -971,7 +975,7 @@ class PurchaseGuardService : Service() {
                     floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
                 else
                     floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
-                setColor(Color.parseColor("#B3C15F3C"))
+                setColor(Color.parseColor("#B321665B"))
             }
         }
         dock.setOnClickListener {

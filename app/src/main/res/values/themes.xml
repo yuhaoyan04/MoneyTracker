@@ -1,7 +1,13 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Base.Theme.SmartLedger" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/teal_main</item>
-        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorPrimary">@color/accent_text</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="android:colorBackground">@color/surface_dim</item>
+        <item name="android:navigationBarColor">@color/surface_dim</item>
+        <item name="materialButtonStyle">@style/Widget.App.Button</item>
+        <item name="textInputStyle">@style/Widget.App.TextInputLayout</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.App.Control</item>
+        <item name="colorOnPrimary">@color/surface_card</item>
         <item name="colorSecondary">@color/teal_main</item>
         <item name="colorOnSecondary">@color/white</item>
         <item name="colorSecondaryContainer">@color/selected_item_bg</item>
@@ -51,8 +57,8 @@
     <style name="App.MaterialDatePicker" parent="ThemeOverlay.Material3.MaterialCalendar">
         <item name="materialCalendarHeaderLayout">@style/App.MaterialDatePicker.Header</item>
         <item name="colorOnSurface">@color/text_primary</item>
-        <item name="colorPrimary">@color/teal_main</item>
-        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorPrimary">@color/accent_text</item>
+        <item name="colorOnPrimary">@color/surface_card</item>
         <item name="colorPrimaryVariant">@color/teal_main</item>
     </style>
 
@@ -74,13 +80,15 @@
         <item name="boxStrokeColor">@color/selector_text_input_stroke</item>
         <item name="boxStrokeWidth">1dp</item>
         <item name="boxStrokeWidthFocused">1.5dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.App.Control</item>
+        <item name="hintTextColor">@color/accent_text</item>
     </style>
 
     <style name="DetailHeader">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_marginTop">16dp</item>
-        <item name="android:textColor">@color/teal_main</item>
+        <item name="android:textColor">@color/accent_text</item>
         <item name="android:textSize">12sp</item>
         <item name="android:textStyle">bold</item>
         <item name="android:letterSpacing">0.05</item>
@@ -105,7 +113,7 @@
         <item name="android:textSize">13sp</item>
         <item name="android:textStyle">bold</item>
         <item name="android:letterSpacing">0.06</item>
-        <item name="android:textColor">@color/teal_main</item>
+        <item name="android:textColor">@color/accent_text</item>
     </style>
 
     <style name="TextAppearance.App.ItemTitle" parent="TextAppearance.Material3.BodyLarge">

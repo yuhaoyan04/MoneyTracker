@@ -235,7 +235,7 @@ class TrashBinActivity : AppCompatActivity(), NavigationView.OnNavigationItemSel
                 is TrashItem.TrashedLedgerItem -> {
                     tvDetailTitle.text = item.ledger.name
                     tvDetailAmount.text = "${item.entryCount} Records"
-                    tvDetailAmount.setTextColor(getColor(R.color.teal_main))
+                    tvDetailAmount.setTextColor(getColor(R.color.accent_text))
                 }
                 is TrashItem.CustomEntryItem -> {
                     val type = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type
@@ -338,7 +338,7 @@ class TrashBinActivity : AppCompatActivity(), NavigationView.OnNavigationItemSel
                 is TrashItem.TrashedLedgerItem -> {
                     tvDetailTitle.text = item.ledger.name
                     tvDetailAmount.text = "${item.entryCount} Records"
-                    tvDetailAmount.setTextColor(getColor(R.color.teal_main))
+                    tvDetailAmount.setTextColor(getColor(R.color.accent_text))
                 }
                 is TrashItem.CustomEntryItem -> {
                     val type = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type

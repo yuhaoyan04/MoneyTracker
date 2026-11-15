@@ -1,0 +1,13 @@
+{
+  "testedVersion": "2.45.6",
+  "device": "Huawei NCO-AL00 / HarmonyOS 4.2",
+  "paths": [
+    {"source": "Taobao", "destination": "WeChat", "result": "passed", "evidence": "User confirmed reminder appeared, was clickable and amount matched final cashier"},
+    {"source": "Taobao", "destination": "embedded Alipay cashier", "result": "passed", "evidence": "Agent observed pre-payment reminder; user confirmed final amount matched"},
+    {"source": "JD", "destination": "Alipay", "result": "passed", "evidence": "Agent observed reminder over final cashier, matching amount, countdown finished; clicked reminder continue and cashier remained pending"},
+    {"source": "JD", "destination": "WeChat", "result": "failed", "evidence": "User confirmed no reminder on a repeated flow after unlocking WeChat; diagnostic history showed repeated unstable or missing source amounts"}
+  ],
+  "revisionUnderTest": "2.45.7 preserves same JD cashier OCR session across repeated foreground observations; selection changes and navigation still invalidate candidates",
+  "realPaymentsPerformed": false,
+  "allPathsAccepted": false
+}

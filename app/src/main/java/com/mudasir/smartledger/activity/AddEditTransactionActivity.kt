@@ -475,7 +475,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
             list.addView(TextView(ctx).apply {
                 text = opt
                 textSize = 15f
-                setTextColor(if (opt == current) getColor(R.color.teal_main) else getColor(R.color.text_primary))
+                setTextColor(if (opt == current) getColor(R.color.accent_text) else getColor(R.color.text_primary))
                 setPadding(dp(4), dp(12), dp(4), dp(12))
                 background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
                 setOnClickListener {
@@ -492,7 +492,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
             ctx, null, com.google.android.material.R.style.Widget_Material3_Button_TextButton
         ).apply {
             text = "自定义输入"
-            setTextColor(getColor(R.color.teal_main))
+            setTextColor(getColor(R.color.accent_text))
             setOnClickListener {
                 sheet.dismiss()
                 onSelect(null)

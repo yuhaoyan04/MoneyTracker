@@ -14,10 +14,8 @@ android {
         applicationId = "com.mudasir.smartledger"
         minSdk = 24
         targetSdk = 36
-        // Compatibility rollback: v2.22.0 behavior with a higher version code so
-        // devices already on v2.23.x can install it without uninstalling.
-        versionCode = 122
-        versionName = "2.45.2"
+        versionCode = 128
+        versionName = "2.46.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

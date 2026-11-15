@@ -21,6 +21,8 @@ import com.mudasir.smartledger.data.LedgerRestoreReport
 import com.mudasir.smartledger.data.PaymentChannel
 import com.mudasir.smartledger.data.TransactionBackupDto
 import com.mudasir.smartledger.data.TransactionRecord
+import com.mudasir.smartledger.data.WishlistItem
+import com.mudasir.smartledger.data.WishlistBackupDto
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.security.MessageDigest
@@ -56,6 +58,7 @@ object AutoBackupManager {
         val channels: List<PaymentChannel>? = emptyList()
     )
 
+    @Synchronized
     fun backup(context: Context): Boolean = runCatching {
         val json = createBackupJson(context)
         writePrivateGeneration(context, json)
@@ -70,6 +73,7 @@ object AutoBackupManager {
     }.getOrDefault(false)
 
     /** Explicit user action: always emits a new immutable shared-storage snapshot. */
+    @Synchronized
     fun backupNow(context: Context): Boolean = runCatching {
         val json = createBackupJson(context)
         writePrivateGeneration(context, json)
@@ -80,6 +84,7 @@ object AutoBackupManager {
     }.getOrDefault(false)
 
     /** Writes a portable backup selected by the user through ACTION_CREATE_DOCUMENT. */
+    @Synchronized
     fun exportToUri(context: Context, uri: Uri): Boolean = runCatching {
         val json = createBackupJson(context)
         context.contentResolver.openOutputStream(uri, "wt")?.use {
@@ -90,19 +95,23 @@ object AutoBackupManager {
     }.getOrDefault(false)
 
     /** Restore the newest backup visible to this installation. */
+    @Synchronized
     fun restore(context: Context): LedgerRestoreReport? {
         val json = readLatestPrivate(context) ?: readNewestOwnedPublic(context) ?: return null
         return runCatching { restoreJson(context, json) }.getOrNull()
     }
 
     /** 供 WebDAV 云同步：生成当前账本的可迁移信封 JSON。 */
+    @Synchronized
     fun envelopeJsonForSync(context: Context): String? = runCatching { createBackupJson(context) }.getOrNull()
 
     /** 供 WebDAV 云同步：解析并恢复云端下载的信封 JSON（走同一校验+合并管线）。 */
+    @Synchronized
     fun restoreFromEnvelopeJson(context: Context, json: String): LedgerRestoreReport? =
         runCatching { restoreJson(context, json) }.getOrNull()
 
     /** Restore a user-selected backup; this remains reliable across reinstall and OEM variants. */
+    @Synchronized
     fun restoreFromUri(context: Context, uri: Uri): LedgerRestoreReport =
         context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
             restoreJson(context, it.readText())
@@ -152,6 +161,7 @@ object AutoBackupManager {
                 channels = legacy.channels.orEmpty().map { it.toDto() }
             )
             return LedgerBackupEnvelope(
+                schemaVersion = 1,
                 exportedAt = legacy.exportedAt,
                 appVersion = "legacy-v2.23",
                 payload = payload,
@@ -163,6 +173,7 @@ object AutoBackupManager {
         require(schema in 1..LedgerBackupEnvelope.CURRENT_SCHEMA) { "备份版本过新：$schema" }
         val envelope = gson.fromJson(root, LedgerBackupEnvelope::class.java)
         require(envelope.payload.transactions.size <= 1_000_000) { "备份记录数量异常" }
+        require(envelope.payload.wishlist.orEmpty().size <= 100_000) { "愿望清单数量异常" }
         require(envelope.checksumSha256 == sha256(gson.toJson(envelope.payload))) { "备份校验失败，文件可能已损坏" }
         return envelope
     }
@@ -173,7 +184,10 @@ object AutoBackupManager {
             LedgerBackupPayload(
                 transactions = db.transactionDao().getAllForBackup().map { it.toDto() },
                 categories = db.categoryDao().getAll().map { it.toDto() },
-                channels = db.channelDao().getAll().map { it.toDto() }
+                channels = db.channelDao().getAll().map { it.toDto() },
+                wishlist = db.wishlistDao().getAll().map {
+                    WishlistBackupDto(it.stableId, it.name, it.amount, it.createdAt, it.status, it.resolvedAt)
+                }
             )
         }
         val previous = readLatestPrivate(context)?.let { runCatching { decodeEnvelope(it) }.getOrNull() }
@@ -209,6 +223,8 @@ object AutoBackupManager {
         var inserted = 0
         var updated = 0
         var skipped = 0
+        var wishlistInserted = 0
+        val revisit = mutableListOf<Pair<Long, Long>>()
         runBlocking {
             db.withTransaction {
                 envelope.payload.categories.forEach { db.categoryDao().insert(it.toEntity()) }
@@ -248,23 +264,34 @@ object AutoBackupManager {
                         }
                     }
                 }
+                envelope.payload.wishlist.orEmpty().forEach { dto ->
+                    require(dto.stableId.isNotBlank() && dto.stableId.length <= 128 && dto.name.isNotBlank() &&
+                        dto.amount.isFinite() && dto.amount > 0 && dto.createdAt >= 0 &&
+                        dto.createdAt <= Long.MAX_VALUE - 86_400_000L &&
+                        dto.status in setOf(WishlistItem.STATUS_WAITING, WishlistItem.STATUS_BOUGHT, WishlistItem.STATUS_DROPPED)) {
+                        "备份包含非法愿望清单条目"
+                    }
+                    if (db.wishlistDao().getByStableId(dto.stableId) == null) {
+                        val id = db.wishlistDao().insert(WishlistItem(stableId = dto.stableId, name = dto.name,
+                            amount = dto.amount, createdAt = dto.createdAt, status = dto.status, resolvedAt = dto.resolvedAt))
+                        wishlistInserted++
+                        if (dto.status == WishlistItem.STATUS_WAITING) revisit += id to dto.createdAt
+                    }
+                }
             }
         }
-        // Normalize legacy imports immediately so every local generation has a checksum and version.
-        val normalized = encodeEnvelope(
-            envelope.payload,
-            envelope.journal,
-            System.currentTimeMillis(),
-            BuildConfig.VERSION_NAME
-        )
-        writePrivateGeneration(context, normalized)
+        // The import merges with existing rows. Snapshot the merged database, not
+        // just the imported payload, so local-only data stays in the next backup.
+        writePrivateGeneration(context, createBackupJson(context))
+        revisit.forEach { (id, createdAt) -> runCatching { WishlistRevisitWorker.schedule(context, id, createdAt) } }
         return LedgerRestoreReport(
             inserted = inserted,
             updated = updated,
             skipped = skipped,
             categories = envelope.payload.categories.size,
             channels = envelope.payload.channels.size,
-            sourceSchema = envelope.schemaVersion
+            sourceSchema = envelope.schemaVersion,
+            wishlistInserted = wishlistInserted
         )
     }
 

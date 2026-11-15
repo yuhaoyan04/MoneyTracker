@@ -57,6 +57,9 @@ class VisualCheckoutMonitor(private val service: AccessibilityCaptureService) {
 
     fun checkoutWindow(pkg: String, cls: String = "") {
         val now = SystemClock.elapsedRealtime()
+        // Usage events and accessibility events can repeatedly report the same cashier.
+        // Preserve its two-frame OCR evidence until navigation, selection change, or expiry.
+        if (VisualGuardTargets.isSameActiveJdCashier(pkg, cls, sourcePackage, sourceClass, checkoutSeenAt, now)) return
         if (VisualGuardTargets.isFreshDuplicateCheckout(pkg, cls, sourcePackage, sourceClass, lastQualifiedAt, now)) {
             PurchaseGuardService.recordDetection(pkg, "", "屏幕识别：保留刚识别的同一付款页候选")
             return

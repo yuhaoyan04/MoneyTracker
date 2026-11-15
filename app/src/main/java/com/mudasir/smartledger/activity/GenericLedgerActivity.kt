@@ -409,8 +409,8 @@ class GenericLedgerActivity : AppCompatActivity(), NavigationView.OnNavigationIt
             ).apply {
                 layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = 24 }
                 hint = "Rate (applies to all fields)"
-                setBoxStrokeColor(getColor(R.color.teal_main))
-                setHintTextColor(android.content.res.ColorStateList.valueOf(getColor(R.color.teal_main)))
+                setBoxStrokeColor(getColor(R.color.accent_text))
+                setHintTextColor(android.content.res.ColorStateList.valueOf(getColor(R.color.accent_text)))
             }
             val et = TextInputEditText(til.context).apply {
                 inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -437,8 +437,8 @@ class GenericLedgerActivity : AppCompatActivity(), NavigationView.OnNavigationIt
                 ).apply {
                     layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = 24 }
                     hint = "Rate for ${field.fieldName}"
-                    setBoxStrokeColor(getColor(R.color.teal_main))
-                    setHintTextColor(android.content.res.ColorStateList.valueOf(getColor(R.color.teal_main)))
+                    setBoxStrokeColor(getColor(R.color.accent_text))
+                    setHintTextColor(android.content.res.ColorStateList.valueOf(getColor(R.color.accent_text)))
                 }
                 val et = TextInputEditText(til.context).apply {
                     inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -598,7 +598,7 @@ class GenericLedgerActivity : AppCompatActivity(), NavigationView.OnNavigationIt
         val dialog = DialogHelper.createConfirmationDialog(this) { views ->
             views.details.visibility = View.GONE
             views.title.text = "Delete Ledger"
-            views.title.setTextColor(resources.getColor(R.color.teal_main, theme))
+            views.title.setTextColor(resources.getColor(R.color.accent_text, theme))
             views.message.text = "Are you sure you want to delete '${ledger.name}'? This will move all associated records to the Trash Bin."
             views.btnConfirm.text = "Delete"
             views.btnConfirm.setBackgroundResource(R.drawable.bg_btn_pill_red)

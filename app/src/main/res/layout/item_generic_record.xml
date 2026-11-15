@@ -34,7 +34,7 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:src="@drawable/ic_star"
-                app:tint="@color/teal_main"
+                app:tint="@color/accent_text"
                 android:layout_gravity="center"/>
         </FrameLayout>
 
@@ -63,7 +63,7 @@
                 android:layout_marginTop="2dp"
                 android:text="Jan 19, 2026"
                 android:textSize="11sp"
-                android:textColor="@color/teal_main"/>
+                android:textColor="@color/accent_text"/>
         </LinearLayout>
 
         <TextView

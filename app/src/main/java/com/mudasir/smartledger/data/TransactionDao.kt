@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -165,6 +166,17 @@ interface TransactionDao {
         cutoff: Long,
         ceiling: Long
     ): Int
+
+    /** Check and insert in one transaction: concurrent redelivery must not race.
+     * Exact timestamp is deliberate: equal-value, equal-text purchases at different
+     * times remain separate. Call only for notification/SMS captures. */
+    @Transaction
+    suspend fun insertExactCaptureOnce(record: TransactionRecord): Long {
+        val raw = record.rawText
+        if (!raw.isNullOrBlank() && countExactCapture(record.source, record.packageName, raw,
+                record.timestamp, record.timestamp) > 0) return -1L
+        return insert(record)
+    }
 
     // ---- 汇总 ----
     @Query(

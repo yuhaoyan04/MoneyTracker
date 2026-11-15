@@ -215,8 +215,8 @@ class HomeActivity : AppCompatActivity() {
         }
         findViewById<TextView>(R.id.tvTrendDailyAvg).text = "日均 ${FormatUtil.money(monthExpense / days)}"
 
-        val lineColorRes = ContextCompat.getColor(this, R.color.teal_main)
-        val fillColorRes = ContextCompat.getColor(this, R.color.teal_light)
+        val lineColorRes = ContextCompat.getColor(this, R.color.accent_text)
+        val fillColorRes = lineColorRes
         val dataSet = com.github.mikephil.charting.data.LineDataSet(entries, "").apply {
             color = lineColorRes
             lineWidth = 1.5f
@@ -225,7 +225,7 @@ class HomeActivity : AppCompatActivity() {
             mode = com.github.mikephil.charting.data.LineDataSet.Mode.CUBIC_BEZIER
             setDrawFilled(true)
             fillColor = fillColorRes
-            fillAlpha = 90
+            fillAlpha = 35
         }
         chart.apply {
             data = com.github.mikephil.charting.data.LineData(dataSet)
@@ -249,21 +249,38 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private var currentBalanceValue = 0.0
+    private var balanceAnimator: android.animation.ValueAnimator? = null
 
     private fun animateBalance(target: Double) {
+        balanceAnimator?.cancel()
         val tv = findViewById<android.widget.TextView>(R.id.tvBalance)
-        if (kotlin.math.abs(target - currentBalanceValue) < 0.005) {
+        if (kotlin.math.abs(target - currentBalanceValue) < 0.005 ||
+            (android.os.Build.VERSION.SDK_INT >= 26 && !android.animation.ValueAnimator.areAnimatorsEnabled())) {
             tv.text = FormatUtil.money(target)
+            currentBalanceValue = target
             return
         }
         val animator = android.animation.ValueAnimator.ofFloat(currentBalanceValue.toFloat(), target.toFloat())
-        animator.duration = 650
+        animator.duration = 300
         animator.interpolator = android.view.animation.DecelerateInterpolator()
         animator.addUpdateListener { anim ->
             tv.text = FormatUtil.money((anim.animatedValue as Float).toDouble())
         }
+        animator.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                // Do not leave a Float-rounded monetary value on screen.
+                tv.text = FormatUtil.money(target)
+            }
+        })
+        balanceAnimator = animator
         animator.start()
         currentBalanceValue = target
+    }
+
+    override fun onDestroy() {
+        balanceAnimator?.cancel()
+        balanceAnimator = null
+        super.onDestroy()
     }
 
     private fun updateBudgetProgress(expense: Double) {

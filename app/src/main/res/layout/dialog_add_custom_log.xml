@@ -18,7 +18,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Add Month Record"
-            android:textColor="@color/teal_main"
+            android:textColor="@color/accent_text"
             android:textSize="20sp"
             android:textStyle="bold"
             android:gravity="center"
@@ -36,8 +36,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:hint="Month"
-                app:hintTextColor="@color/teal_main"
-                app:boxStrokeColor="@color/teal_main">
+                app:hintTextColor="@color/accent_text"
+                app:boxStrokeColor="@color/accent_text">
                 <AutoCompleteTextView
                     android:id="@+id/spinnerMonth"
                     android:layout_width="match_parent"
@@ -47,13 +47,13 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.App.TextInputLayout"
                 android:layout_width="0dp"
                 android:layout_weight="1"
                 android:layout_height="wrap_content"
                 android:hint="Year"
-                app:hintTextColor="@color/teal_main"
-                app:boxStrokeColor="@color/teal_main">
+                app:hintTextColor="@color/accent_text"
+                app:boxStrokeColor="@color/accent_text">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etYear"
                     android:layout_width="match_parent"
@@ -65,14 +65,14 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/layoutFebDays"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            style="@style/Widget.App.TextInputLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:hint="Days in Feb (28 or 29)"
             android:visibility="gone"
-            app:hintTextColor="@color/teal_main"
-            app:boxStrokeColor="@color/teal_main">
+            app:hintTextColor="@color/accent_text"
+            app:boxStrokeColor="@color/accent_text">
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etFebDays"
                 android:layout_width="match_parent"
@@ -106,7 +106,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Cancel"
-                android:textColor="@color/teal_main"
+                android:textColor="@color/accent_text"
                 android:textStyle="bold"
                 android:padding="12dp"
                 android:background="?attr/selectableItemBackground"/>

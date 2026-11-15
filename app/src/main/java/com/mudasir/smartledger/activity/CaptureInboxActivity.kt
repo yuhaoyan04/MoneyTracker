@@ -64,7 +64,9 @@ class CaptureInboxActivity : AppCompatActivity() {
                                 }
                                 if (place != null) db.transactionDao().fillMissingLocation(fresh.id, place.latitude, place.longitude, place.name)
                             }
-                            runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
+                            withContext(Dispatchers.IO) {
+                                runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
+                            }
                         }
                         com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
                     } finally {
@@ -130,7 +132,9 @@ class CaptureInboxActivity : AppCompatActivity() {
                         }
                     }
                 }
-                runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
+                withContext(Dispatchers.IO) {
+                    runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(this@CaptureInboxActivity) }
+                }
                 com.mudasir.smartledger.util.PendingNotifier.update(this@CaptureInboxActivity)
                 android.widget.Toast.makeText(this@CaptureInboxActivity, "已处理所选交易", android.widget.Toast.LENGTH_SHORT).show()
             }

@@ -3,6 +3,8 @@ package com.mudasir.smartledger.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
+import java.util.UUID
 
 /**
  * 想好再买 · 愿望清单条目。
@@ -14,11 +16,15 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "wishlist_items",
-    indices = [Index(value = ["createdAt"]), Index(value = ["status"])]
+    indices = [Index(value = ["createdAt"]), Index(value = ["status"]), Index(value = ["stableId"], unique = true)]
 )
 data class WishlistItem(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+
+    /** Portable identity allows repeated restores without duplicating a wish. */
+    @ColumnInfo(defaultValue = "''")
+    val stableId: String = UUID.randomUUID().toString(),
 
     val name: String,
 

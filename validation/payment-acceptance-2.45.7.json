@@ -1,0 +1,22 @@
+{
+  "release": "2.45.7",
+  "scope": "High-value existing unpaid orders on the connected Huawei NCO-AL00 running HarmonyOS 4.2; no real payments",
+  "unitTests": {"passed": 156, "failed": 0},
+  "releaseBuild": "passed including R8 and lintVitalRelease",
+  "fix": "Repeated observations of the same active JD cashier no longer rebuild the OCR session and discard two-frame stability evidence. Payment selection changes, navigation, and session expiry retain invalidation behavior.",
+  "matrix": [
+    {"source": "Taobao", "destination": "WeChat", "testedVersion": "2.45.6", "result": "passed", "evidence": "User confirmed reminder appeared, was clickable and matched final WeChat payable. No Taobao path code changed in 2.45.7."},
+    {"source": "Taobao", "destination": "embedded Alipay", "testedVersion": "2.45.6", "result": "passed", "evidence": "Agent observed reminder before checkout; user confirmed final payable matched. No Taobao path code changed in 2.45.7."},
+    {"source": "JD", "destination": "WeChat", "testedVersion": "2.45.7", "result": "passed", "evidence": "Agent screenshot showed full-screen reminder over WeChat cashier with source payable; user clicked continue and confirmed amount matched. Pre-fix 2.45.6 failed this same route."},
+    {"source": "JD", "destination": "Alipay", "testedVersion": "2.45.7", "result": "passed", "evidence": "Agent observed reminder and countdown over Alipay, matched final payable, clicked reminder continue and observed cashier still waiting for payment."}
+  ],
+  "paymentMatrixAcceptedForTestedCases": true,
+  "limitations": [
+    "This is evidence for the observed device, app versions and existing orders; it does not establish all possible merchants, promotions, future app versions or OEMs.",
+    "Wallet application locks required user authentication; no authentication or CAPTCHA was bypassed.",
+    "Taobao wallet paths were tested on 2.45.6; the narrowly scoped JD fix was validated on 2.45.7.",
+    "Low-value threshold regressions remain covered by prior tests; no additional real purchases were made."
+  ],
+  "realPaymentsPerformed": false,
+  "githubUploadPerformed": false
+}

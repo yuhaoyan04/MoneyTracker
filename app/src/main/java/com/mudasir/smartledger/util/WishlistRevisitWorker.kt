@@ -25,9 +25,10 @@ class WishlistRevisitWorker(
 ) : CoroutineWorker(context, params) {
 
     companion object {
-        fun schedule(context: Context, itemId: Long) {
+        fun schedule(context: Context, itemId: Long, createdAt: Long = System.currentTimeMillis()) {
+            val remaining = (createdAt + TimeUnit.HOURS.toMillis(24) - System.currentTimeMillis()).coerceAtLeast(0L)
             val req = OneTimeWorkRequestBuilder<WishlistRevisitWorker>()
-                .setInitialDelay(24, TimeUnit.HOURS)
+                .setInitialDelay(remaining, TimeUnit.MILLISECONDS)
                 .setInputData(workDataOf("item_id" to itemId))
                 .addTag("wishlist_revisit")
                 .build()

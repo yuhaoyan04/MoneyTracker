@@ -2,6 +2,10 @@
 
 import android.content.Context
 import android.net.Uri
+import android.content.ContentValues
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.BackupData
 import com.mudasir.smartledger.data.DateMode
@@ -12,11 +16,45 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.*
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 object BackupManager {
+
+    suspend fun createLocalZipBackup(context: Context, db: AppDatabase): String = withContext(Dispatchers.IO) {
+        val name = "SmartLedger_legacy_${System.currentTimeMillis()}.zip"
+        if (Build.VERSION.SDK_INT >= 29) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, name)
+                put(MediaStore.Downloads.MIME_TYPE, "application/zip")
+                put(MediaStore.Downloads.RELATIVE_PATH, "Download/SmartLedger")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: error("无法创建备份文件")
+            try {
+                createZipBackup(context, uri, db) { false }
+                val published = resolver.update(uri, ContentValues().apply {
+                    put(MediaStore.Downloads.IS_PENDING, 0)
+                }, null, null)
+                check(published == 1) { "无法完成备份文件" }
+            } catch (e: Exception) {
+                runCatching { resolver.delete(uri, null, null) }
+                throw e
+            }
+            "Download/SmartLedger/$name"
+        } else {
+            val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+                ?: error("本机存储不可用")
+            val file = File(directory, name)
+            try { createZipBackup(context, Uri.fromFile(file), db) { false } }
+            catch (e: Exception) { file.delete(); throw e }
+            file.absolutePath
+        }
+    }
 
     private const val JSON_FILENAME = "ledger_data.json"
     private const val IMAGES_DIR = "images"
@@ -30,8 +68,19 @@ object BackupManager {
         val result = RestoreResult()
         val cr = context.contentResolver
 
-        cr.openOutputStream(uri)?.use { outputStream ->
+        val output = cr.openOutputStream(uri) ?: error("无法打开备份文件")
+        output.use { outputStream ->
             ZipOutputStream(BufferedOutputStream(outputStream)).use { zos ->
+                // Different source folders can contain the same filename. Write each distinct
+                // image once under a unique portable name, and fail rather than omit an image.
+                val archivedImages = mutableMapOf<String, String>()
+                fun archiveImage(path: String): String = archivedImages.getOrPut(path) {
+                    val file = File(path)
+                    require(file.isFile && file.canRead()) { "无法读取账本图片" }
+                    val portableName = "${UUID.randomUUID()}_${file.name}"
+                    addToZip(zos, file, "$IMAGES_DIR/$portableName")
+                    portableName
+                }
 
                 val expenses = db.expenseDao().getAllRaw()
                 val electricity = db.electricityDao().getAllRaw()
@@ -41,11 +90,7 @@ object BackupManager {
                 val processedExpenses = expenses.map { expense ->
                     if (checkCancel()) throw Exception("Backup Stopped")
                     val newPaths = expense.imagePaths.map { path ->
-                        val file = File(path)
-                        if (file.exists()) {
-                            addToZip(zos, file, "$IMAGES_DIR/${file.name}")
-                            file.name
-                        } else path
+                        archiveImage(path)
                     }
                     if (!expense.isDeleted) {
                         result.expenseAdded++
@@ -60,11 +105,7 @@ object BackupManager {
                 val processedElectricity = electricity.map { elec ->
                     if (checkCancel()) throw Exception("Backup Stopped")
                     val newPaths = elec.imagePaths.map { path ->
-                        val file = File(path)
-                        if (file.exists()) {
-                            addToZip(zos, file, "$IMAGES_DIR/${file.name}")
-                            file.name
-                        } else path
+                        archiveImage(path)
                     }
                     if (!elec.isDeleted) {
                         result.elecAdded++
@@ -92,11 +133,7 @@ object BackupManager {
                     if (checkCancel()) throw Exception("Backup Stopped")
 
                     val newPaths = entry.imagePaths.map { path ->
-                        val file = File(path)
-                        if (file.exists()) {
-                            addToZip(zos, file, "$IMAGES_DIR/${file.name}")
-                            file.name
-                        } else path
+                        archiveImage(path)
                     }
 
                     val parentLedger = customLedgers.find { it.id == entry.ledgerId }
@@ -165,8 +202,12 @@ object BackupManager {
         val cr = context.contentResolver
         val internalImgDir = File(context.filesDir, "ledger_images").apply { mkdirs() }
         var backupData: BackupData? = null
+        val importedImages = mutableMapOf<String, String>()
+        val usedImages = mutableSetOf<String>()
+        var restoreSucceeded = false
         val result = RestoreResult()
 
+        try {
         // 1. EXTRACT & PARSE
         cr.openInputStream(uri)?.use { inputStream ->
             ZipInputStream(BufferedInputStream(inputStream)).use { zis ->
@@ -174,14 +215,16 @@ object BackupManager {
                 while (entry != null) {
                     if (checkCancel()) throw RestoreCancelledException()
                     when {
-                        entry.name.contains(JSON_FILENAME) -> {
+                        entry.name == JSON_FILENAME -> {
                             val bytes = zis.readBytes()
                             val jsonString = String(bytes)
                             backupData = Gson().fromJson(jsonString, BackupData::class.java)
                         }
-                        entry.name.startsWith(IMAGES_DIR) && !entry.isDirectory -> {
+                        entry.name.startsWith("$IMAGES_DIR/") && !entry.isDirectory -> {
                             val fileName = entry.name.substringAfterLast("/")
-                            val destFile = File(internalImgDir, fileName)
+                            require(fileName.isNotBlank() && fileName !in importedImages) { "备份图片名称无效或重复" }
+                            val destFile = File(internalImgDir, "${UUID.randomUUID()}_$fileName")
+                            importedImages[fileName] = destFile.absolutePath
                             destFile.outputStream().use { fos -> zis.copyTo(fos) }
                         }
                     }
@@ -193,11 +236,21 @@ object BackupManager {
 
         if (backupData == null) throw Exception("Invalid Backup: JSON data not found inside ZIP.")
 
+        fun restoredPath(path: String): String {
+            val archived = importedImages[File(path).name]
+            if (archived != null) {
+                usedImages.add(archived)
+                return archived
+            }
+            require(File(path).isFile) { "备份缺少账本图片" }
+            return path
+        }
+
         // 2. DATABASE TRANSACTION
         db.runInTransaction {
             runBlocking {
-                val existingExpenses = db.expenseDao().getAllRaw()
-                val existingElec = db.electricityDao().getAllRaw()
+                val existingExpenses = db.expenseDao().getAllRaw().toMutableList()
+                val existingElec = db.electricityDao().getAllRaw().toMutableList()
                 val existingMilk = db.milkDao().getAllRaw()
 
                 backupData?.let { data ->
@@ -205,35 +258,23 @@ object BackupManager {
                     data.expenses.forEach { incoming ->
                         if (checkCancel()) throw RestoreCancelledException()
 
-                        val existing = existingExpenses
-                            .sortedBy { it.deletedAt ?: 0L }
-                            .find { it.date == incoming.date && it.amount == incoming.amount }
+                        val existing = existingExpenses.find {
+                            it.date == incoming.date && it.amount == incoming.amount &&
+                                it.title == incoming.title && it.description == incoming.description
+                        }
+                        if (existing != null) existingExpenses.remove(existing)
 
                         val safeDeletedAt = if (incoming.isDeleted) {
                             incoming.deletedAt?.takeIf { it > 0L } ?: System.currentTimeMillis()
                         } else null
 
                         if (existing == null) {
-                            val paths = incoming.imagePaths.map { File(internalImgDir, it).absolutePath }
+                            val paths = incoming.imagePaths.map(::restoredPath)
                             db.expenseDao().insertExpense(incoming.copy(id = 0, imagePaths = paths, deletedAt = safeDeletedAt))
 
                             if (!incoming.isDeleted) result.expenseAdded++
                         } else {
-                            val needsUnDelete = existing.isDeleted && !incoming.isDeleted
-                            val isStatusMismatch = existing.isDeleted != incoming.isDeleted
-
-                            if (needsUnDelete || isStatusMismatch) {
-                                val updatedRecord = incoming.copy(
-                                    id = existing.id,
-                                    isDeleted = incoming.isDeleted,
-                                    deletedAt = safeDeletedAt
-                                )
-                                db.expenseDao().updateExpense(updatedRecord)
-
-                                if (!incoming.isDeleted) result.expenseAdded++
-                            } else {
-                                if (!incoming.isDeleted) result.expenseSkipped++
-                            }
+                            if (!incoming.isDeleted) result.expenseSkipped++
                         }
                     }
 
@@ -241,35 +282,25 @@ object BackupManager {
                     data.electricity.forEach { incoming ->
                         if (checkCancel()) throw RestoreCancelledException()
 
-                        val existing = existingElec
-                            .sortedBy { it.deletedAt ?: 0L }
-                            .find { it.startDate == incoming.startDate && it.endDate == incoming.endDate }
+                        val existing = existingElec.find {
+                            it.startDate == incoming.startDate && it.endDate == incoming.endDate &&
+                                it.startUnits == incoming.startUnits && it.endUnits == incoming.endUnits &&
+                                it.totalUnits == incoming.totalUnits && it.amount == incoming.amount &&
+                                it.description == incoming.description
+                        }
+                        if (existing != null) existingElec.remove(existing)
 
                         val safeDeletedAt = if (incoming.isDeleted) {
                             incoming.deletedAt?.takeIf { it > 0L } ?: System.currentTimeMillis()
                         } else null
 
                         if (existing == null) {
-                            val paths = incoming.imagePaths.map { File(internalImgDir, it).absolutePath }
+                            val paths = incoming.imagePaths.map(::restoredPath)
                             db.electricityDao().insert(incoming.copy(id = 0, imagePaths = paths, deletedAt = safeDeletedAt))
 
                             if (!incoming.isDeleted) result.elecAdded++
                         } else {
-                            val needsUnDelete = existing.isDeleted && !incoming.isDeleted
-                            val isStatusMismatch = existing.isDeleted != incoming.isDeleted
-
-                            if (needsUnDelete || isStatusMismatch) {
-                                val updatedRecord = incoming.copy(
-                                    id = existing.id,
-                                    isDeleted = incoming.isDeleted,
-                                    deletedAt = safeDeletedAt
-                                )
-                                db.electricityDao().update(updatedRecord)
-
-                                if (!incoming.isDeleted) result.elecAdded++
-                            } else {
-                                if (!incoming.isDeleted) result.elecSkipped++
-                            }
+                            if (!incoming.isDeleted) result.elecSkipped++
                         }
                     }
 
@@ -291,29 +322,7 @@ object BackupManager {
                                 result.milkAdded++
                             }
                         } else {
-                            val localIsDeleted = existing.isDeleted
-                            val backupIsDeleted = incoming.isDeleted
-
-                            val isDataChanged = existing.dailyEntries != incoming.dailyEntries
-                            val needsUnDelete = localIsDeleted && !backupIsDeleted
-
-                            if (isDataChanged || needsUnDelete || localIsDeleted != backupIsDeleted) {
-                                val updatedRecord = incoming.copy(
-                                    id = existing.id,
-                                    isDeleted = backupIsDeleted,
-                                    deletedAt = safeDeletedAt
-                                )
-
-                                db.milkDao().update(updatedRecord)
-
-                                if (!backupIsDeleted) {
-                                    result.milkAdded++
-                                }
-                            } else {
-                                if (!backupIsDeleted) {
-                                    result.milkSkipped++
-                                }
-                            }
+                            if (!incoming.isDeleted) result.milkSkipped++
                         }
                     }
 
@@ -336,14 +345,6 @@ object BackupManager {
                                 ledgerType = incomingLedger.ledgerType
                             )
                             db.customLedgerDao().insertLedger(safeLedger)
-                        } else {
-                            if (existingLedger.isDeleted != incomingLedger.isDeleted) {
-                                val updatedLedger = existingLedger.copy(
-                                    isDeleted = incomingLedger.isDeleted,
-                                    deletedAt = safeDeletedAt
-                                )
-                                db.customLedgerDao().insertLedger(updatedLedger)
-                            }
                         }
                     }
 
@@ -353,10 +354,12 @@ object BackupManager {
                     data.customEntries.forEach { incomingEntry ->
                         if (checkCancel()) throw RestoreCancelledException()
 
-                        val incomingLedgerName = data.customLedgers.find { it.id == incomingEntry.ledgerId }?.name
-                        val targetLedger = localLedgers.find { it.name == incomingLedgerName }
+                        val incomingLedger = data.customLedgers.find { it.id == incomingEntry.ledgerId }
+                        val targetLedger = localLedgers.find { it.name.equals(incomingLedger?.name, ignoreCase = true) }
 
-                        if (targetLedger != null) {
+                        if (targetLedger != null && incomingLedger != null &&
+                            targetLedger.fields == incomingLedger.fields && targetLedger.ledgerType == incomingLedger.ledgerType &&
+                            targetLedger.dateMode == incomingLedger.dateMode) {
                             val isDuplicate = db.customLedgerDao().checkEntryExists(
                                 targetLedger.id,
                                 incomingEntry.date,
@@ -365,9 +368,7 @@ object BackupManager {
                             )
 
                             if (!isDuplicate) {
-                                val paths = incomingEntry.imagePaths.map { fileName ->
-                                    File(internalImgDir, fileName).absolutePath
-                                }
+                                val paths = incomingEntry.imagePaths.map(::restoredPath)
                                 val safeDeletedAt = if (incomingEntry.isDeleted) {
                                     incomingEntry.deletedAt?.takeIf { it > 0L } ?: System.currentTimeMillis()
                                 } else null
@@ -386,18 +387,21 @@ object BackupManager {
                             } else {
                                 result.customSkipped++
                             }
-                        }
+                        } else { result.customSkipped++ }
                     }
 
                     // --- RESTORE CUSTOM DAILY RECORDS ---
-                    val dailyRecordsToRestore = data.customDailyRecords
+                    // Older ZIP backups predate daily records; Gson leaves the missing field null.
+                    val dailyRecordsToRestore = data.customDailyRecords.orEmpty()
                     dailyRecordsToRestore.forEach { incomingRecord ->
                         if (checkCancel()) throw RestoreCancelledException()
 
-                        val incomingLedgerName = data.customLedgers.find { it.id == incomingRecord.ledgerId }?.name
-                        val targetLedger = localLedgers.find { it.name == incomingLedgerName }
+                        val incomingLedger = data.customLedgers.find { it.id == incomingRecord.ledgerId }
+                        val targetLedger = localLedgers.find { it.name.equals(incomingLedger?.name, ignoreCase = true) }
 
-                        if (targetLedger != null) {
+                        if (targetLedger != null && incomingLedger != null &&
+                            targetLedger.fields == incomingLedger.fields && targetLedger.ledgerType == incomingLedger.ledgerType &&
+                            targetLedger.dateMode == incomingLedger.dateMode) {
                             val existing = db.customLedgerDao().getDailyRecordByMonthYear(
                                 targetLedger.id,
                                 incomingRecord.monthIndex,
@@ -417,52 +421,27 @@ object BackupManager {
                                     result.customCounts[name] = (result.customCounts[name] ?: 0) + 1
                                 }
                             } else {
-                                if (existing.dailyEntries != incomingRecord.dailyEntries ||
-                                    existing.totalAmount != incomingRecord.totalAmount ||
-                                    (existing.isDeleted && !incomingRecord.isDeleted)) {
-
-                                    db.customLedgerDao().updateDailyRecord(
-                                        incomingRecord.copy(
-                                            id = existing.id,
-                                            ledgerId = targetLedger.id,
-                                            isDeleted = incomingRecord.isDeleted,
-                                            deletedAt = safeDeletedAt
-                                        )
-                                    )
-                                    if (!incomingRecord.isDeleted && !targetLedger.isDeleted) {
-                                        val name = targetLedger.name
-                                        result.customCounts[name] = (result.customCounts[name] ?: 0) + 1
-                                    }
-                                } else {
-                                    result.customSkipped++
-                                }
+                                result.customSkipped++
                             }
-                        }
+                        } else { result.customSkipped++ }
                     }
                 }
             }
         }
 
-        // 3. AUTO-CLEANUP EXPIRED TRASH POST-RESTORE
-        val fifteenDaysAgo = System.currentTimeMillis() - java.util.concurrent.TimeUnit.DAYS.toMillis(15)
-        db.expenseDao().deleteExpiredTrash(fifteenDaysAgo)
-        db.electricityDao().deleteExpiredTrash(fifteenDaysAgo)
-        db.milkDao().deleteExpiredTrash(fifteenDaysAgo)
-        db.customLedgerDao().deleteExpiredTrash(fifteenDaysAgo)
-        db.customLedgerDao().deleteExpiredDailyRecords(fifteenDaysAgo)
-        db.customLedgerDao().autoCleanExpiredLedgers(fifteenDaysAgo)
-
+        restoreSucceeded = true
         return@withContext result
+        } finally {
+            importedImages.values.filter { !restoreSucceeded || it !in usedImages }
+                .forEach { File(it).delete() }
+        }
     }
 
     private fun addToZip(zos: ZipOutputStream, file: File, zipPath: String) {
-        try {
-            FileInputStream(file).use { fis ->
-                zos.putNextEntry(ZipEntry(zipPath))
-                fis.copyTo(zos)
-                zos.closeEntry()
-            }
-        } catch (e: Exception) { /* Log skip if file is busy or missing */ }
+        FileInputStream(file).use { fis ->
+            zos.putNextEntry(ZipEntry(zipPath))
+            fis.copyTo(zos)
+            zos.closeEntry()
+        }
     }
 }
-

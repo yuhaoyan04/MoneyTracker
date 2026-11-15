@@ -1,0 +1,27 @@
+{
+  "version": "2.45.6",
+  "device": "Huawei NCO-AL00 / HarmonyOS 4.2",
+  "installed": true,
+  "releaseBuild": "passed with R8 and lintVitalRelease",
+  "unitTests": {"passed": 155, "failed": 0},
+  "priorDeviceSuite": {"version": "2.45.5", "passed": 6, "scope": "legacy ZIP backup and direct MediaStore publication"},
+  "observedOnDevice": [
+    "In-place upgrade and HomeActivity startup succeeded",
+    "JSON backup created in Download/SmartLedger",
+    "Legacy ZIP backup published, CRC valid; legacy table counts are all zero",
+    "Statistics category/trend, previous/next period, expense/income controls responded",
+    "Inbox and new transaction screens opened without editing live records",
+    "Taobao payment-button shield displayed on existing high-value pending orders",
+    "After shield tap, full-screen reminder remained visible after 20 seconds; countdown finished and amount matched",
+    "Reminder continue control activated; foreground remained Taobao before returning to MoneyTracker"
+  ],
+  "notVerified": [
+    "Current-version Taobao to WeChat and Alipay final cashier transitions",
+    "Current-version JD to WeChat and Alipay final cashier transitions",
+    "Every application control and every OEM configuration"
+  ],
+  "paymentBoundary": "JD existing order reached; next control was immediate payment and could not be established as non-debiting",
+  "realPaymentsPerformed": false,
+  "githubUploadPerformed": false,
+  "acceptanceComplete": false
+}

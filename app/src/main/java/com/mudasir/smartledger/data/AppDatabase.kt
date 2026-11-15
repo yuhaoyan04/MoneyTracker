@@ -18,7 +18,7 @@ private data class Sub(val name: String, val color: String, val parent: String, 
         TransactionRecord::class, Category::class, PaymentChannel::class,
         WishlistItem::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -60,7 +60,7 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // v8: 统一交易记录体系 —— 自动抓取 + 自定义分类/渠道
-        private val MIGRATION_7_8 = object : Migration(7, 8) {
+        internal val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("""
             CREATE TABLE IF NOT EXISTS transactions (
@@ -96,12 +96,13 @@ abstract class AppDatabase : RoomDatabase() {
         """.trimIndent())
                 database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_payment_channels_name ON payment_channels (name)")
 
-                seedTaxonomy(database)
+                // The v8 schema has no parentName/level columns yet. Seed only
+                // after 8→9 adds them; upgrades to the current schema run both.
             }
         }
 
         // v9: 地理信息 + 多级分类 + 更全支付方式
-        private val MIGRATION_8_9 = object : Migration(8, 9) {
+        internal val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE transactions ADD COLUMN latitude REAL")
                 database.execSQL("ALTER TABLE transactions ADD COLUMN longitude REAL")
@@ -114,16 +115,22 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // v10: 修复分类加载——补齐一级大类（之前迁移只播了二级）、改名（外出用餐→下馆子、购物→网购、话费流量→话费/流量），并把改名同步到交易记录
-        private val MIGRATION_9_10 = object : Migration(9, 10) {
+        internal val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // 改名：分类 + 子分类 parentName + 交易记录
-                database.execSQL("UPDATE categories SET name='下馆子' WHERE name='外出用餐' AND type='EXPENSE'")
-                database.execSQL("UPDATE transactions SET categoryName='下馆子' WHERE categoryName='外出用餐'")
-                database.execSQL("UPDATE categories SET name='网购' WHERE name='购物' AND type='EXPENSE'")
-                database.execSQL("UPDATE categories SET parentName='网购' WHERE parentName='购物'")
-                database.execSQL("UPDATE transactions SET categoryName='网购' WHERE categoryName='购物'")
-                database.execSQL("UPDATE categories SET name='话费' WHERE name='话费流量' AND type='EXPENSE'")
-                database.execSQL("UPDATE transactions SET categoryName='话费' WHERE categoryName='话费流量'")
+                // A user may already have both names. Preserve both rows and all
+                // historical references rather than violating the unique index or
+                // merging two potentially different categories.
+                fun renameIfUnambiguous(old: String, new: String) {
+                    database.execSQL("UPDATE categories SET name=? WHERE name=? AND type='EXPENSE' AND isDefault=1 AND NOT EXISTS (SELECT 1 FROM categories WHERE name=? AND type='EXPENSE')", arrayOf(new, old, new))
+                    val renamed = database.query("SELECT changes()").use { it.moveToFirst() && it.getInt(0) == 1 }
+                    if (renamed) {
+                        database.execSQL("UPDATE categories SET parentName=? WHERE parentName=? AND type='EXPENSE'", arrayOf(new, old))
+                        database.execSQL("UPDATE transactions SET categoryName=? WHERE categoryName=? AND type='EXPENSE'", arrayOf(new, old))
+                    }
+                }
+                renameIfUnambiguous("外出用餐", "下馆子")
+                renameIfUnambiguous("购物", "网购")
+                renameIfUnambiguous("话费流量", "话费")
                 // 幂等补齐：一级大类 + 二级 + 渠道（缺什么补什么，已有的不动）
                 seedTaxonomy(database)
             }
@@ -181,6 +188,14 @@ abstract class AppDatabase : RoomDatabase() {
         // move existing built-in children with an unambiguous canonical meaning.
         internal val MIGRATION_15_16 = object : Migration(15, 16) {
             override fun migrate(database: SupportSQLiteDatabase) = seedCanonicalTaxonomy(database)
+        }
+
+        internal val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE wishlist_items ADD COLUMN stableId TEXT NOT NULL DEFAULT ''")
+                database.execSQL("UPDATE wishlist_items SET stableId = lower(hex(randomblob(16))) WHERE stableId = ''")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_wishlist_items_stableId ON wishlist_items (stableId)")
+            }
         }
 
         private fun seedCanonicalTaxonomy(db: SupportSQLiteDatabase) {
@@ -351,7 +366,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_ledger_db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     // 全新安装时 onCreate 播种全量分类（迁移不会在全新库上执行）
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

@@ -30,13 +30,13 @@ class DashboardAdapter(
             tile.isAddTile -> {
                 holder.ivIcon.setImageResource(R.drawable.ic_add)
                 holder.ivIcon.setColorFilter(
-                    ContextCompat.getColor(holder.itemView.context, R.color.teal_main)
+                    ContextCompat.getColor(holder.itemView.context, R.color.accent_text)
                 )
                 holder.card.setCardBackgroundColor(
                     ContextCompat.getColor(holder.itemView.context, R.color.tile_add_bg)
                 )
                 holder.card.strokeWidth = 1
-                holder.card.cardElevation = 4f
+                holder.card.cardElevation = 0f
             }
             tile.isCustom -> {
                 val resId = holder.itemView.context.resources.getIdentifier(
@@ -44,24 +44,24 @@ class DashboardAdapter(
                 )
                 holder.ivIcon.setImageResource(if (resId != 0) resId else R.drawable.ic_star)
                 holder.ivIcon.setColorFilter(
-                    ContextCompat.getColor(holder.itemView.context, R.color.teal_main)
+                    ContextCompat.getColor(holder.itemView.context, R.color.accent_text)
                 )
                 holder.card.setCardBackgroundColor(
                     ContextCompat.getColor(holder.itemView.context, R.color.tile_bg)
                 )
                 holder.card.strokeWidth = 1
-                holder.card.cardElevation = 4f
+                holder.card.cardElevation = 0f
             }
             else -> {
                 tile.iconRes?.let { holder.ivIcon.setImageResource(it) }
                 holder.ivIcon.setColorFilter(
-                    ContextCompat.getColor(holder.itemView.context, R.color.teal_main)
+                    ContextCompat.getColor(holder.itemView.context, R.color.accent_text)
                 )
                 holder.card.setCardBackgroundColor(
                     ContextCompat.getColor(holder.itemView.context, R.color.tile_bg)
                 )
                 holder.card.strokeWidth = 1
-                holder.card.cardElevation = 4f
+                holder.card.cardElevation = 0f
             }
         }
 

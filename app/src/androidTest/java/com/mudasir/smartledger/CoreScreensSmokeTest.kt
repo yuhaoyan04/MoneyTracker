@@ -8,6 +8,8 @@ import com.mudasir.smartledger.activity.CaptureInboxActivity
 import com.mudasir.smartledger.activity.HomeActivity
 import com.mudasir.smartledger.activity.StatsActivity
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import com.google.android.material.button.MaterialButton
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -32,6 +34,8 @@ class CoreScreensSmokeTest {
                 assertNotNull(it.findViewById<View>(R.id.pieChart))
                 assertNotNull(it.findViewById<View>(R.id.lineChartTrend))
                 assertNotNull(it.findViewById<View>(R.id.barChartHourly))
+                assertTrue(it.findViewById<MaterialButton>(R.id.btnDimCategory).isChecked)
+                assertTrue(it.findViewById<MaterialButton>(R.id.btnPieExpense).isChecked)
             }
         }
     }

@@ -18,19 +18,6 @@ object ReportCardBuilder {
     private const val W = 1080
     private const val PAD = 64
 
-    // 低饱和色板（与统计页一致）
-    private val palette = intArrayOf(
-        Color.parseColor("#C15F3C"), Color.parseColor("#6B8CAE"), Color.parseColor("#9C6B8F"),
-        Color.parseColor("#94A374"), Color.parseColor("#CE9B4E"), Color.parseColor("#C07A8A"),
-        Color.parseColor("#8C9BAB"), Color.parseColor("#55917F"), Color.parseColor("#6D7BB5"),
-        Color.parseColor("#A8A29A")
-    )
-    private val rootColors = mapOf(
-        "餐饮" to "#C15F3C", "交通" to "#6B8CAE", "网购" to "#9C6B8F", "日用" to "#94A374",
-        "娱乐" to "#CE9B4E", "医疗" to "#C07A8A", "居住" to "#8C9BAB", "通讯" to "#55917F",
-        "教育" to "#6D7BB5", "其他" to "#A8A29A"
-    )
-
     fun build(
         year: Int,
         month: Int,
@@ -57,7 +44,7 @@ object ReportCardBuilder {
 
         val bmp = Bitmap.createBitmap(W, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        c.drawColor(Color.parseColor("#F5F4ED"))
+        c.drawColor(Color.parseColor("#F5F7F3"))
 
         fun text(s: String, x: Float, y: Float, size: Float, color: Int, bold: Boolean = false, align: Paint.Align = Paint.Align.LEFT, maxWidth: Float = Float.MAX_VALUE): Paint {
             val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -73,11 +60,11 @@ object ReportCardBuilder {
         }
 
         // ---- 头带 ----
-        val header = Paint().apply { color = Color.parseColor("#C15F3C") }
+        val header = Paint().apply { color = Color.parseColor("#21665B") }
         c.drawRect(0f, 0f, W.toFloat(), 320f, header)
         text("月度账单", PAD.toFloat(), 150f, 64f, Color.WHITE, bold = true)
-        text(monthLabel, PAD.toFloat(), 220f, 44f, Color.parseColor("#F0D9CE"))
-        text("MoneyTracker", (W - PAD).toFloat(), 150f, 36f, Color.parseColor("#CCFFFFFF"), align = Paint.Align.RIGHT)
+        text(monthLabel, PAD.toFloat(), 220f, 44f, Color.parseColor("#DDECE6"))
+        text("知余", (W - PAD).toFloat(), 150f, 36f, Color.parseColor("#CCFFFFFF"), align = Paint.Align.RIGHT)
         text("本地优先 · 智能记账", (W - PAD).toFloat(), 210f, 30f, Color.parseColor("#99FFFFFF"), align = Paint.Align.RIGHT)
 
         // ---- 三列概览 ----
@@ -102,9 +89,9 @@ object ReportCardBuilder {
         y += 40f
 
         val maxAmt = top.maxOfOrNull { it.second } ?: 0.0
-        top.forEachIndexed { i, (name, amt, cnt) ->
+        top.forEach { (name, amt, cnt) ->
             y += 130f
-            val color = Color.parseColor(rootColors[name] ?: String.format("#%06X", 0xFFFFFF and palette[i % palette.size]))
+            val color = Color.parseColor(ChartPalette.hexFor(name))
             text(name, PAD.toFloat(), y, 40f, Color.parseColor("#1A1A1A"), bold = true, maxWidth = 390f)
             text("${cnt}笔", (W - PAD) * 0.72f, y, 32f, Color.parseColor("#8A8A8A"), align = Paint.Align.RIGHT)
             text("¥${fmt(amt)}", (W - PAD).toFloat(), y, 40f, Color.parseColor("#1A1A1A"), bold = true, align = Paint.Align.RIGHT)
@@ -134,7 +121,7 @@ object ReportCardBuilder {
         y = h - 110f
         c.drawRect(PAD.toFloat(), y - 40f, (W - PAD).toFloat(), y - 38f, Paint().apply { color = Color.parseColor("#E8E6E1") })
         text("记录 ${records.size} 笔 · 月度回顾", PAD.toFloat(), y, 30f, Color.parseColor("#8A8A8A"))
-        text("MoneyTracker 智能账本", (W - PAD).toFloat(), y, 32f, Color.parseColor("#C15F3C"), bold = true, align = Paint.Align.RIGHT)
+        text("知余 生活账本", (W - PAD).toFloat(), y, 32f, Color.parseColor("#21665B"), bold = true, align = Paint.Align.RIGHT)
 
         return bmp
     }

@@ -50,12 +50,13 @@ class BankSmsReceiver : BroadcastReceiver() {
                     runCatching {
                         val dao = AppDatabase.getDatabase(context.applicationContext).transactionDao()
                         if (dao.countExactCapture(TransactionRecord.SOURCE_CAPTURE_SMS, null, body, timestamp, timestamp) > 0) return@runCatching
-                        dao.insert(TransactionRecord(
+                        val inserted = dao.insertExactCaptureOnce(TransactionRecord(
                             type = TransactionParser.inferType(body), amount = 0.0, channelName = "银行卡",
                             note = sender?.let { "来自 $it" }, rawText = body,
                             source = TransactionRecord.SOURCE_CAPTURE_SMS,
                             status = TransactionRecord.STATUS_PENDING, timestamp = timestamp
                         ))
+                        if (inserted == -1L) return@runCatching
                         CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_SAVED)
                         runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(context.applicationContext) }
                         com.mudasir.smartledger.util.PendingNotifier.update(context.applicationContext)
@@ -82,7 +83,7 @@ class BankSmsReceiver : BroadcastReceiver() {
                         timestamp
                     ) > 0
                 ) return@launch
-                dao.insert(
+                val inserted = dao.insertExactCaptureOnce(
                     TransactionRecord(
                         type = parsed.type,
                         amount = parsed.amount,
@@ -104,6 +105,7 @@ class BankSmsReceiver : BroadcastReceiver() {
                         )
                     )
                 )
+                if (inserted == -1L) return@launch
                 CaptureDiagnostics.record(context, CaptureDiagnostics.Stage.SMS_SAVED)
                 runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(context.applicationContext) }
                 com.mudasir.smartledger.util.PendingNotifier.update(context.applicationContext)

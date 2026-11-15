@@ -41,7 +41,7 @@
                     android:layout_marginEnd="8dp"
                     android:hint="Start Date *"
                     app:startIconDrawable="@drawable/ic_calendar"
-                    app:startIconTint="@color/teal_main">
+                    app:startIconTint="@color/accent_text">
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etStartDate"
                         android:layout_width="match_parent"
@@ -59,7 +59,7 @@
                     android:layout_marginStart="8dp"
                     android:hint="End Date *"
                     app:startIconDrawable="@drawable/ic_calendar"
-                    app:startIconTint="@color/teal_main">
+                    app:startIconTint="@color/accent_text">
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etEndDate"
                         android:layout_width="match_parent"
@@ -78,13 +78,13 @@
                 android:baselineAligned="false">
 
                 <com.google.android.material.textfield.TextInputLayout
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    style="@style/Widget.App.TextInputLayout"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:layout_marginEnd="8dp"
                     android:hint="Start Units"
-                    app:hintTextColor="@color/teal_main">
+                    app:hintTextColor="@color/accent_text">
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etStartUnits"
                         android:layout_width="match_parent"
@@ -93,13 +93,13 @@
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.textfield.TextInputLayout
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    style="@style/Widget.App.TextInputLayout"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:layout_marginStart="8dp"
                     android:hint="End Units"
-                    app:hintTextColor="@color/teal_main">
+                    app:hintTextColor="@color/accent_text">
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etEndUnits"
                         android:layout_width="match_parent"
@@ -109,12 +109,12 @@
             </LinearLayout>
 
             <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.App.TextInputLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:hint="Total Units"
-                app:hintTextColor="@color/teal_main">
+                app:hintTextColor="@color/accent_text">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etTotalUnits"
@@ -123,19 +123,19 @@
                     android:inputType="numberDecimal"
                     android:focusable="true"
                     android:clickable="true"
-                    android:textColor="@color/teal_main"
+                    android:textColor="@color/accent_text"
                     android:textStyle="bold"/>
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.App.TextInputLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:hint="Amount"
-                app:hintTextColor="@color/teal_main"
+                app:hintTextColor="@color/accent_text"
                 app:startIconDrawable="@drawable/ic_attach_money"
-                app:startIconTint="@color/teal_main">
+                app:startIconTint="@color/accent_text">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etAmount"
                     android:layout_width="match_parent"
@@ -160,7 +160,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Photos (Max 3)"
-                        android:textColor="@color/teal_main"
+                        android:textColor="@color/accent_text"
                         android:textStyle="bold"/>
 
                     <Button
@@ -169,8 +169,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Add Photo"
-                        android:textColor="@color/teal_main"
-                        app:strokeColor="@color/teal_main"/>
+                        android:textColor="@color/accent_text"
+                        app:strokeColor="@color/accent_text"/>
                 </LinearLayout>
 
                 <androidx.recyclerview.widget.RecyclerView

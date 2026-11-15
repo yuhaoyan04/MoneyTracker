@@ -3,42 +3,42 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- 品牌主色 — 暖陶土色 (Anthropic-inspired) -->
-    <color name="teal_main">#C15F3C</color>
-    <color name="accent_text">#B45332</color>
-    <color name="accent_action">#B45332</color>
-    <color name="teal_dark">#A04E30</color>
-    <color name="teal_light">#F0D9CE</color>
-    <color name="tile_add_bg">#E8E6E1</color>
-    <color name="tag_teal_bg">#C15F3C</color>
-    <color name="selected_item_bg">#F0D9CE</color>
+    <!-- Zhiyu brand palette -->
+    <color name="teal_main">#21665B</color>
+    <color name="accent_text">#21665B</color>
+    <color name="accent_action">#21665B</color>
+    <color name="teal_dark">#174B43</color>
+    <color name="teal_light">#DDECE6</color>
+    <color name="tile_add_bg">#E7EEE7</color>
+    <color name="tag_teal_bg">#21665B</color>
+    <color name="selected_item_bg">#E3EEE8</color>
 
     <!-- 语义文本色 -->
-    <color name="text_primary">#1A1A1A</color>
-    <color name="text_secondary">#6B6B6B</color>
-    <color name="text_tertiary">#8A8A8A</color>
-    <color name="text_hint">#9E9E9E</color>
+    <color name="text_primary">#202D2A</color>
+    <color name="text_secondary">#5D6C65</color>
+    <color name="text_tertiary">#69766F</color>
+    <color name="text_hint">#69766F</color>
 
     <!-- 收支语义色（低饱和、高级感） -->
-    <color name="color_expense">#B85450</color>
-    <color name="color_income">#5C8A47</color>
-    <color name="color_warning">#C99A3D</color>
+    <color name="color_expense">#AE554D</color>
+    <color name="color_income">#34785B</color>
+    <color name="color_warning">#986B25</color>
 
     <!-- 卡片/分隔/背景 — 暖中性 -->
     <color name="surface_card">#FFFFFF</color>
-    <color name="surface_dim">#F5F4ED</color>
-    <color name="tile_bg">#F5F4ED</color>
-    <color name="divider">#E8E6E1</color>
+    <color name="surface_dim">#F5F7F3</color>
+    <color name="tile_bg">#EFF3ED</color>
+    <color name="divider">#DFE6DF</color>
 
     <!-- AI -->
     <color name="ai_blue">#4A6FA5</color>
     <color name="ai_purple">#8B6C9E</color>
-    <color name="ai_teal">#C15F3C</color>
+    <color name="ai_teal">#21665B</color>
     <color name="ai_bg_gradient_start">#1A1916</color>
 
     <!-- 启动页 / 图标 — 暖米色 -->
-    <color name="splash_bg">#F5F4ED</color>
-    <color name="ic_launcher_bg">#F5F4ED</color>
+    <color name="splash_bg">#F5F7F3</color>
+    <color name="ic_launcher_bg">#174B43</color>
 
     <!-- 交易渠道色（仅图表用，低饱和） -->
     <color name="channel_wechat">#6B8E6B</color>

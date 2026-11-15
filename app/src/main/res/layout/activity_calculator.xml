@@ -52,7 +52,7 @@
             android:layout_height="wrap_content"
             android:gravity="end"
             android:text=""
-            android:textColor="@color/teal_main"
+            android:textColor="@color/accent_text"
             android:textSize="28sp"
             android:textStyle="bold"
             android:maxLines="2"
@@ -109,20 +109,20 @@
             <!-- Row 1 -->
             <Button android:id="@+id/btnClear" style="@style/Widget.Material3.Button" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:backgroundTint="#F44336" android:text="C" android:textSize="20sp" android:textColor="@color/white" />
             <Button android:id="@+id/btnBack" style="@style/Widget.Material3.Button" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:backgroundTint="#EF5350" android:text="⌫" android:textSize="18sp" android:textColor="@color/white" />
-            <Button android:id="@+id/btnDivide" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="÷" android:textSize="28sp" android:textColor="@color/teal_main" app:strokeColor="@color/teal_main" />
-            <Button android:id="@+id/btnMultiply" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="×" android:textSize="28sp" android:textColor="@color/teal_main" app:strokeColor="@color/teal_main" />
+            <Button android:id="@+id/btnDivide" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="÷" android:textSize="28sp" android:textColor="@color/accent_text" app:strokeColor="@color/accent_text" />
+            <Button android:id="@+id/btnMultiply" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="×" android:textSize="28sp" android:textColor="@color/accent_text" app:strokeColor="@color/accent_text" />
 
             <!-- Row 2 -->
             <Button android:id="@+id/btn7" style="@style/Widget.Material3.Button.ElevatedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="7" android:textSize="24sp"/>
             <Button android:id="@+id/btn8" style="@style/Widget.Material3.Button.ElevatedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="8" android:textSize="24sp"/>
             <Button android:id="@+id/btn9" style="@style/Widget.Material3.Button.ElevatedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="9" android:textSize="24sp"/>
-            <Button android:id="@+id/btnSubtract" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="−" android:textSize="28sp" android:textColor="@color/teal_main" app:strokeColor="@color/teal_main"/>
+            <Button android:id="@+id/btnSubtract" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="−" android:textSize="28sp" android:textColor="@color/accent_text" app:strokeColor="@color/accent_text"/>
 
             <!-- Row 3 -->
             <Button android:id="@+id/btn4" style="@style/Widget.Material3.Button.ElevatedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="4" android:textSize="24sp"/>
             <Button android:id="@+id/btn5" style="@style/Widget.Material3.Button.ElevatedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="5" android:textSize="24sp"/>
             <Button android:id="@+id/btn6" style="@style/Widget.Material3.Button.ElevatedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="6" android:textSize="24sp"/>
-            <Button android:id="@+id/btnAdd" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="+" android:textSize="28sp" android:textColor="@color/teal_main" app:strokeColor="@color/teal_main"/>
+            <Button android:id="@+id/btnAdd" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="+" android:textSize="28sp" android:textColor="@color/accent_text" app:strokeColor="@color/accent_text"/>
 
             <!-- Row 4 -->
             <Button android:id="@+id/btn1" style="@style/Widget.Material3.Button.ElevatedButton" android:layout_width="0dp" android:layout_height="0dp" android:layout_rowWeight="1" android:layout_columnWeight="1" android:layout_margin="6dp" android:text="1" android:textSize="24sp"/>

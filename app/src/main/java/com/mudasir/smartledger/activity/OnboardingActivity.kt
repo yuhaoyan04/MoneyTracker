@@ -43,7 +43,7 @@ class OnboardingActivity : AppCompatActivity() {
 
         findViewById<MaterialButton>(R.id.btnObNotif).setOnClickListener {
             PermissionHelper.openNotificationListenerSettings(this)
-            Toast.makeText(this, "请在列表中找到 SmartLedger 并允许", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "请在列表中找到 知余 并允许", Toast.LENGTH_LONG).show()
         }
         findViewById<MaterialButton>(R.id.btnObSms).setOnClickListener {
             smsLauncher.launch(Manifest.permission.RECEIVE_SMS)

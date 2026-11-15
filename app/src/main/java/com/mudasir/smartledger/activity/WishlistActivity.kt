@@ -17,6 +17,7 @@ import com.mudasir.smartledger.data.WishlistItem
 import com.mudasir.smartledger.util.FormatUtil
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,9 +36,18 @@ class WishlistActivity : AppCompatActivity() {
         findViewById<MaterialToolbar>(R.id.topAppBar).setNavigationOnClickListener { finish() }
 
         adapter = WishlistAdapter(
-            onBought = { item -> lifecycleScope.launch { db.wishlistDao().resolve(item.id, WishlistItem.STATUS_BOUGHT) } },
-            onDropped = { item -> lifecycleScope.launch { db.wishlistDao().resolve(item.id, WishlistItem.STATUS_DROPPED) } },
-            onDelete = { item -> lifecycleScope.launch { db.wishlistDao().delete(item) } }
+            onBought = { item -> lifecycleScope.launch(Dispatchers.IO) {
+                if (db.wishlistDao().resolve(item.id, WishlistItem.STATUS_BOUGHT) > 0)
+                    runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
+            } },
+            onDropped = { item -> lifecycleScope.launch(Dispatchers.IO) {
+                if (db.wishlistDao().resolve(item.id, WishlistItem.STATUS_DROPPED) > 0)
+                    runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
+            } },
+            onDelete = { item -> lifecycleScope.launch(Dispatchers.IO) {
+                db.wishlistDao().delete(item)
+                runCatching { com.mudasir.smartledger.util.AutoBackupManager.backup(applicationContext) }
+            } }
         )
         findViewById<RecyclerView>(R.id.rvWishlist).apply {
             layoutManager = LinearLayoutManager(this@WishlistActivity)

@@ -1115,7 +1115,7 @@ class AnalyticsActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         val startAmount = label.length + 1
         spannable.setSpan(RelativeSizeSpan(1.4f), startAmount, fullText.length, 0)
         spannable.setSpan(StyleSpan(Typeface.BOLD), startAmount, fullText.length, 0)
-        spannable.setSpan(ForegroundColorSpan(getColor(R.color.teal_main)), startAmount, fullText.length, 0)
+        spannable.setSpan(ForegroundColorSpan(getColor(R.color.accent_text)), startAmount, fullText.length, 0)
         pieChartExpenseCategory.centerText = spannable
 
         val pieData = PieData(dataSet)
@@ -1149,7 +1149,7 @@ class AnalyticsActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
             tvAmount.text = String.format(Locale.getDefault(), "%.0f", entry.value)
             tvAmount.textSize = 14f
             tvAmount.setTypeface(null, Typeface.BOLD)
-            tvAmount.setTextColor(getColor(R.color.teal_main))
+            tvAmount.setTextColor(getColor(R.color.accent_text))
 
             row.addView(colorBox)
             row.addView(tvName)
@@ -1247,7 +1247,7 @@ class AnalyticsActivity : AppCompatActivity(), NavigationView.OnNavigationItemSe
         val startAmount = label.length + 1
         spannable.setSpan(RelativeSizeSpan(1.6f), startAmount, fullText.length, 0)
         spannable.setSpan(StyleSpan(Typeface.BOLD), startAmount, fullText.length, 0)
-        spannable.setSpan(ForegroundColorSpan(getColor(R.color.teal_main)), startAmount, fullText.length, 0)
+        spannable.setSpan(ForegroundColorSpan(getColor(R.color.accent_text)), startAmount, fullText.length, 0)
         pieChart.centerText = spannable
 
         pieChart.setHoleColor(Color.TRANSPARENT)

@@ -51,7 +51,7 @@
                             android:text="Spending Distribution"
                             android:textSize="18sp"
                             android:textStyle="bold"
-                            android:textColor="@color/teal_main"/>
+                            android:textColor="@color/accent_text"/>
                         <com.github.mikephil.charting.charts.PieChart
                             android:id="@+id/pieChart"
                             android:layout_width="match_parent"
@@ -90,7 +90,7 @@
                                     android:text="Electricity: Units"
                                     android:textSize="18sp"
                                     android:textStyle="bold"
-                                    android:textColor="@color/teal_main"
+                                    android:textColor="@color/accent_text"
                                     android:clickable="true"
                                     android:focusable="true"/>
                                 <TextView
@@ -123,14 +123,14 @@
                                     android:layout_height="32dp"
                                     android:src="@drawable/ic_chevron_left"
                                     android:background="?attr/selectableItemBackgroundBorderless"
-                                    app:tint="@color/teal_main"/>
+                                    app:tint="@color/accent_text"/>
                                 <ImageButton
                                     android:id="@+id/btnElecNext"
                                     android:layout_width="32dp"
                                     android:layout_height="32dp"
                                     android:src="@drawable/ic_chevron_right"
                                     android:background="?attr/selectableItemBackgroundBorderless"
-                                    app:tint="@color/teal_main"/>
+                                    app:tint="@color/accent_text"/>
                             </LinearLayout>
                         </RelativeLayout>
 
@@ -231,7 +231,7 @@
                                     android:text="Milk: Litres"
                                     android:textSize="18sp"
                                     android:textStyle="bold"
-                                    android:textColor="@color/teal_main"
+                                    android:textColor="@color/accent_text"
                                     android:clickable="true"
                                     android:focusable="true"/>
                                 <TextView
@@ -264,14 +264,14 @@
                                     android:layout_height="32dp"
                                     android:src="@drawable/ic_chevron_left"
                                     android:background="?attr/selectableItemBackgroundBorderless"
-                                    app:tint="@color/teal_main"/>
+                                    app:tint="@color/accent_text"/>
                                 <ImageButton
                                     android:id="@+id/btnMilkNext"
                                     android:layout_width="32dp"
                                     android:layout_height="32dp"
                                     android:src="@drawable/ic_chevron_right"
                                     android:background="?attr/selectableItemBackgroundBorderless"
-                                    app:tint="@color/teal_main"/>
+                                    app:tint="@color/accent_text"/>
                             </LinearLayout>
                         </RelativeLayout>
 
@@ -372,7 +372,7 @@
                                     android:text="Expenses: Monthly"
                                     android:textSize="18sp"
                                     android:textStyle="bold"
-                                    android:textColor="@color/teal_main"
+                                    android:textColor="@color/accent_text"
                                     android:clickable="true"
                                     android:focusable="true"/>
                                 <TextView
@@ -405,14 +405,14 @@
                                     android:layout_height="32dp"
                                     android:src="@drawable/ic_chevron_left"
                                     android:background="?attr/selectableItemBackgroundBorderless"
-                                    app:tint="@color/teal_main"/>
+                                    app:tint="@color/accent_text"/>
                                 <ImageButton
                                     android:id="@+id/btnExpenseNext"
                                     android:layout_width="32dp"
                                     android:layout_height="32dp"
                                     android:src="@drawable/ic_chevron_right"
                                     android:background="?attr/selectableItemBackgroundBorderless"
-                                    app:tint="@color/teal_main"/>
+                                    app:tint="@color/accent_text"/>
                             </LinearLayout>
                         </RelativeLayout>
 
@@ -459,6 +459,6 @@
         android:layout_gravity="start"
         app:headerLayout="@layout/nav_header"
         app:menu="@menu/drawer_menu"
-        app:itemIconTint="@color/teal_main"
+        app:itemIconTint="@color/accent_text"
         app:itemTextColor="@color/text_primary"/>
 </androidx.drawerlayout.widget.DrawerLayout>

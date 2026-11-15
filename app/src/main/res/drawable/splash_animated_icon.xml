@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 启动动画：¥ 五笔依次书写（斜线 → 竖线 → 双横杠） -->
+<!-- Zhiyu: book strokes followed by the surplus dot. -->
 <animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:drawable="@drawable/ic_splash_yen">
     <target

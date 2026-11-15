@@ -17,17 +17,20 @@ class WishlistActionReceiver : BroadcastReceiver() {
     companion object {
         const val EXTRA_ID = "item_id"
         const val EXTRA_STATUS = "item_status"
+        private const val EXTRA_NOTIFICATION_TAG = "notification_tag"
 
         fun actionIntent(context: Context, id: Long, status: String): Intent =
             Intent(context, WishlistActionReceiver::class.java)
+                .setData(android.net.Uri.parse("smartledger://wishlist/$id/$status"))
                 .putExtra(EXTRA_ID, id)
                 .putExtra(EXTRA_STATUS, status)
+                .putExtra(EXTRA_NOTIFICATION_TAG, WishlistNotifier.notificationTag(id))
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getLongExtra(EXTRA_ID, -1L)
         val status = intent.getStringExtra(EXTRA_STATUS) ?: return
-        if (id <= 0) return
+        if (id <= 0 || status !in setOf(WishlistItem.STATUS_BOUGHT, WishlistItem.STATUS_DROPPED)) return
 
         val result = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
@@ -36,8 +39,11 @@ class WishlistActionReceiver : BroadcastReceiver() {
                 val item = dao.getById(id)
                 val changed = dao.resolve(id, status)
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                nm.cancel(WishlistNotifier.NOTIFICATION_ID)
+                val tag = intent.getStringExtra(EXTRA_NOTIFICATION_TAG)
+                if (tag == null) nm.cancel(WishlistNotifier.NOTIFICATION_ID)
+                else nm.cancel(tag, WishlistNotifier.NOTIFICATION_ID)
                 if (changed > 0 && item != null) {
+                    runCatching { AutoBackupManager.backup(context.applicationContext) }
                     val msg = if (status == WishlistItem.STATUS_DROPPED)
                         "为你骄傲 · 已省下 ¥${"%.2f".format(item.amount)}"
                     else "记得理性消费 · 买得开心"

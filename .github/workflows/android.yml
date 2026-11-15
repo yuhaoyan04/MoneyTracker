@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [ master, main ]
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    name: Build Debug APK
+    name: Test and build Android
     runs-on: ubuntu-latest
 
     steps:
@@ -27,11 +30,11 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Run unit tests and build debug APK
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MoneyTracker-debug
+          name: Zhiyu-debug
           path: app/build/outputs/apk/debug/*.apk

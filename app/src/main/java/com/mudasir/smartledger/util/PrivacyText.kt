@@ -2,7 +2,7 @@ package com.mudasir.smartledger.util
 
 /** 隐私承诺文本（应用内「关于 → 隐私承诺」与 PRIVACY.md 保持一致）。 */
 object PrivacyText {
-    const val FULL = """MoneyTracker 是本地优先的个人记账应用。
+    const val FULL = """知余 是本地优先的个人记账应用。
 
 ① 账本、分类和待确认记录主要保存在手机本地；你主动导出的备份会保存到你选择的位置，请自行保护。
 ② 自行配置并使用 AI 分析时，相关文本会发送给你选择的服务商，请查看该服务商的数据处理政策。

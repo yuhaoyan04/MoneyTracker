@@ -17,14 +17,25 @@ data class LedgerBackupEnvelope(
 ) {
     companion object {
         const val FORMAT = "smartledger-ledger"
-        const val CURRENT_SCHEMA = 1
+        const val CURRENT_SCHEMA = 2
     }
 }
 
 data class LedgerBackupPayload(
     val transactions: List<TransactionBackupDto> = emptyList(),
     val categories: List<CategoryBackupDto> = emptyList(),
-    val channels: List<ChannelBackupDto> = emptyList()
+    val channels: List<ChannelBackupDto> = emptyList(),
+    // Nullable for schema-1 checksum compatibility: Gson omits null fields.
+    val wishlist: List<WishlistBackupDto>? = null
+)
+
+data class WishlistBackupDto(
+    val stableId: String,
+    val name: String,
+    val amount: Double,
+    val createdAt: Long,
+    val status: String,
+    val resolvedAt: Long? = null
 )
 
 data class LedgerJournalEntry(
@@ -90,7 +101,8 @@ data class LedgerRestoreReport(
     val skipped: Int,
     val categories: Int,
     val channels: Int,
-    val sourceSchema: Int
+    val sourceSchema: Int,
+    val wishlistInserted: Int = 0
 ) {
     val total: Int get() = inserted + updated + skipped
 }

@@ -19,6 +19,7 @@ import com.mudasir.smartledger.data.AppDatabase
 import com.mudasir.smartledger.data.TransactionRecord
 import com.mudasir.smartledger.util.AiSettings
 import com.mudasir.smartledger.util.AutoBackupManager
+import com.mudasir.smartledger.util.BackupManager
 import com.mudasir.smartledger.util.BackupWorker
 import com.mudasir.smartledger.util.BillImportParser
 import com.mudasir.smartledger.util.BillImporter
@@ -65,6 +66,49 @@ class SettingsActivity : AppCompatActivity() {
         uri?.let { exportPortableBackup(it) }
     }
 
+    private val legacyExportLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        uri?.let { destination ->
+            val button = findViewById<View>(R.id.btnExportLegacyBackup)
+            button.isEnabled = false
+            lifecycleScope.launch {
+                try {
+                    BackupManager.createZipBackup(this@SettingsActivity, destination, db) { false }
+                    Toast.makeText(this@SettingsActivity, "旧版账本备份已导出", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this@SettingsActivity, "导出失败，请检查图片及存储权限后重试", Toast.LENGTH_LONG).show()
+                } finally {
+                    button.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private val legacyImportLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { source ->
+            val button = findViewById<View>(R.id.btnImportLegacyBackup)
+            button.isEnabled = false
+            lifecycleScope.launch {
+                try {
+                    val result = BackupManager.restoreFromZip(this@SettingsActivity, source, db) { false }
+                    val added = result.expenseAdded + result.elecAdded + result.milkAdded + result.customCounts.values.sum()
+                    val skipped = result.expenseSkipped + result.elecSkipped + result.milkSkipped + result.customSkipped
+                    AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("旧版账本导入完成")
+                        .setMessage("新增 $added 条，跳过 $skipped 条已存在或有冲突的记录。冲突时保留本机数据，请按需核对。")
+                        .setPositiveButton("知道了", null).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this@SettingsActivity, "导入失败，文件可能损坏或缺少图片", Toast.LENGTH_LONG).show()
+                } finally {
+                    button.isEnabled = true
+                }
+            }
+        }
+    }
+
     private val guardLogExportLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri ->
@@ -93,6 +137,15 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         setupSettingsSections(savedInstanceState)
+        val advanced = findViewById<View>(R.id.guardAdvanced)
+        advanced.visibility = if (savedInstanceState?.getBoolean("guard_advanced", false) == true) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.btnGuardAdvanced).contentDescription =
+            "识别选项与检测自检，${if (advanced.visibility == View.VISIBLE) "已展开" else "已折叠"}"
+        findViewById<View>(R.id.btnGuardAdvanced).setOnClickListener {
+            val open = advanced.visibility != View.VISIBLE
+            advanced.visibility = if (open) View.VISIBLE else View.GONE
+            it.contentDescription = if (open) "识别选项与检测自检，已展开" else "识别选项与检测自检，已折叠"
+        }
 
         findViewById<MaterialToolbar>(R.id.topAppBar).setNavigationOnClickListener { finish() }
 
@@ -124,7 +177,7 @@ class SettingsActivity : AppCompatActivity() {
             val hint = if (android.os.Build.MANUFACTURER.contains("HUAWEI", ignoreCase = true)) {
                 "还请在手机管家 → 应用启动管理中手动允许三项后台开关"
             } else {
-                "请将 SmartLedger 设为不受电池优化限制"
+                "请将 知余设为不受电池优化限制"
             }
             Toast.makeText(this, hint, Toast.LENGTH_LONG).show()
         }
@@ -132,6 +185,33 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnBackupNow).setOnClickListener { doBackup() }
         findViewById<View>(R.id.btnExportBackup).setOnClickListener {
             ledgerExportLauncher.launch(AutoBackupManager.suggestedExportName())
+        }
+        findViewById<View>(R.id.btnExportLegacyBackup).setOnClickListener {
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            runCatching { legacyExportLauncher.launch("SmartLedger_legacy_$stamp.zip") }
+                .onFailure { Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show() }
+        }
+        findViewById<View>(R.id.btnLocalLegacyBackup).setOnClickListener { button ->
+            button.isEnabled = false
+            lifecycleScope.launch {
+                try {
+                    val path = BackupManager.createLocalZipBackup(this@SettingsActivity, db)
+                    AlertDialog.Builder(this@SettingsActivity).setTitle("旧版账本已备份")
+                        .setMessage(path).setPositiveButton("知道了", null).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this@SettingsActivity, "备份失败，请检查图片及存储空间后重试", Toast.LENGTH_LONG).show()
+                } finally { button.isEnabled = true }
+            }
+        }
+        findViewById<View>(R.id.btnImportLegacyBackup).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("导入旧版专用账本")
+                .setMessage("将合并 ZIP 中的旧版专用账本；已有或冲突的记录保留本机版本。建议先分别导出当前 JSON 和 ZIP 备份。")
+                .setPositiveButton("选择 ZIP") { _, _ ->
+                    runCatching { legacyImportLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }
+                        .onFailure { Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show() }
+                }
+                .setNegativeButton("取消", null).show()
         }
         findViewById<View>(R.id.btnRestore).setOnClickListener { doRestore() }
         findViewById<View>(R.id.btnImportBill).setOnClickListener {
@@ -210,7 +290,7 @@ class SettingsActivity : AppCompatActivity() {
         SettingsSection("appearance", "外观", R.id.headerAppearance, R.id.bodyAppearance, R.id.chevronAppearance),
         SettingsSection("capture", "自动记账与权限", R.id.headerCapture, R.id.bodyCapture, R.id.chevronCapture),
         SettingsSection("data", "数据与备份", R.id.headerData, R.id.bodyData, R.id.chevronData),
-        SettingsSection("pro", "MoneyTracker Pro", R.id.headerPro, R.id.bodyPro, R.id.chevronPro),
+        SettingsSection("pro", "知余 Pro", R.id.headerPro, R.id.bodyPro, R.id.chevronPro),
         SettingsSection("about", "关于与隐私", R.id.headerAbout, R.id.bodyAbout, R.id.chevronAbout)
     )
 
@@ -226,11 +306,18 @@ class SettingsActivity : AppCompatActivity() {
             }
             setExpanded(savedInstanceState?.getBoolean("settings_section_${section.key}", section.expandedByDefault)
                 ?: section.expandedByDefault)
-            header.setOnClickListener { setExpanded(body.visibility != View.VISIBLE) }
+            header.setOnClickListener {
+                setExpanded(body.visibility != View.VISIBLE)
+                if (body.visibility == View.VISIBLE && (android.os.Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled())) {
+                    body.alpha = 0f
+                    body.animate().alpha(1f).setDuration(140L).start()
+                }
+            }
         }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("guard_advanced", findViewById<View>(R.id.guardAdvanced).visibility == View.VISIBLE)
         settingsSections.forEach { section ->
             outState.putBoolean("settings_section_${section.key}", findViewById<View>(section.body).visibility == View.VISIBLE)
         }
@@ -489,7 +576,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             !usageOk -> {
                 PermissionHelper.openUsageAccessSettings(this)
-                Toast.makeText(this, "请允许 SmartLedger 的「使用情况访问权限」，返回后再次点击开启", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "请允许 知余的「使用情况访问权限」，返回后再次点击开启", Toast.LENGTH_LONG).show()
             }
             else -> {
                 // 全屏冷静模式需要悬浮窗权限（未授权时服务自动退回通知模式）
@@ -716,8 +803,8 @@ class SettingsActivity : AppCompatActivity() {
             status.text = "已配置 · ${cfg.providerName} · ${cfg.model}"
             status.setTextColor(getColorCompat(R.color.color_income))
         } else {
-            status.text = "未配置 · 点击填写"
-            status.setTextColor(getColorCompat(R.color.color_expense))
+            status.text = "可选配置"
+            status.setTextColor(getColorCompat(R.color.text_secondary))
         }
     }
 
@@ -737,7 +824,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun doRestore() {
         AlertDialog.Builder(this)
-            .setTitle("导入 SmartLedger 备份")
+            .setTitle("导入知余备份")
             .setMessage("请选择 .json 备份文件。恢复会按交易指纹合并，不会用备份中的数据库 ID 覆盖现有记录。")
             .setPositiveButton("选择文件") { _, _ ->
                 ledgerImportLauncher.launch(arrayOf("application/json", "text/json", "text/plain", "application/octet-stream"))
@@ -874,7 +961,8 @@ class SettingsActivity : AppCompatActivity() {
                     refreshBackupStatus()
                     Toast.makeText(
                         this@SettingsActivity,
-                        "恢复完成：新增 ${report.inserted}，更新 ${report.updated}，跳过 ${report.skipped}",
+                        "恢复完成：新增 ${report.inserted}，更新 ${report.updated}，跳过 ${report.skipped}" +
+                            if (report.wishlistInserted > 0) "；愿望清单新增 ${report.wishlistInserted}" else "",
                         Toast.LENGTH_LONG
                     ).show()
                 }.onFailure { error ->
@@ -911,13 +999,13 @@ class SettingsActivity : AppCompatActivity() {
         val tvNotif = findViewById<TextView>(R.id.tvNotifStatus)
         val btnNotif = findViewById<View>(R.id.btnNotif)
         tvNotif.text = if (notifOk) "已开启" else "未开启"
-        tvNotif.setTextColor(getColorCompat(if (notifOk) R.color.color_income else R.color.color_expense))
+        tvNotif.setTextColor(getColorCompat(if (notifOk) R.color.color_income else R.color.text_secondary))
         btnNotif.visibility = if (notifOk) View.GONE else View.VISIBLE
 
         val tvSms = findViewById<TextView>(R.id.tvSmsStatus)
         val btnSms = findViewById<View>(R.id.btnSms)
         tvSms.text = if (smsOk) "已授权" else "未授权"
-        tvSms.setTextColor(getColorCompat(if (smsOk) R.color.color_income else R.color.color_expense))
+        tvSms.setTextColor(getColorCompat(if (smsOk) R.color.color_income else R.color.text_secondary))
         btnSms.visibility = if (smsOk) View.GONE else View.VISIBLE
 
         refreshNotifPermStatus()
@@ -932,7 +1020,7 @@ class SettingsActivity : AppCompatActivity() {
             androidx.core.content.ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
         tv.text = if (granted) "已开启" else "未开启"
-        tv.setTextColor(getColorCompat(if (granted) R.color.color_income else R.color.color_expense))
+        tv.setTextColor(getColorCompat(if (granted) R.color.color_income else R.color.text_secondary))
         btn.visibility = if (granted) View.GONE else View.VISIBLE
         btn.setOnClickListener {
             if (android.os.Build.VERSION.SDK_INT >= 33) {
@@ -1079,7 +1167,7 @@ class SettingsActivity : AppCompatActivity() {
             addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         AlertDialog.Builder(this)
-            .setTitle("激活 MoneyTracker Pro")
+            .setTitle("激活 知余 Pro")
             .setView(wrap)
             .setPositiveButton("激活") { _, _ ->
                 val raw = input.text?.toString()?.trim().orEmpty()
@@ -1185,7 +1273,8 @@ class SettingsActivity : AppCompatActivity() {
                             refreshBackupStatus()
                             Toast.makeText(
                                 this@SettingsActivity,
-                                "恢复完成：新增 ${report.inserted} · 更新 ${report.updated} · 跳过 ${report.skipped}",
+                                "恢复完成：新增 ${report.inserted} · 更新 ${report.updated} · 跳过 ${report.skipped}" +
+                                    if (report.wishlistInserted > 0) " · 愿望清单新增 ${report.wishlistInserted}" else "",
                                 Toast.LENGTH_LONG
                             ).show()
                         }

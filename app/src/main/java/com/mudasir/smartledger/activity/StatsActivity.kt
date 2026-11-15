@@ -98,20 +98,8 @@ class StatsActivity : AppCompatActivity() {
     private var trendLoadJob: Job? = null
 
     // 语义化色板：低饱和高级暖色系（饼图/柱状图/明细共用）
-    private val rootColorMap = mapOf(
-        "餐饮" to "#C15F3C", "交通" to "#6B8CAE", "网购" to "#9C6B8F",
-        "日用" to "#94A374", "娱乐" to "#CE9B4E", "医疗" to "#C07A8A",
-        "居住" to "#8C9BAB", "通讯" to "#55917F", "教育" to "#6D7BB5",
-        "其他" to "#A8A29A",
-        "工资" to "#7B9E6B", "理财" to "#55917F", "红包" to "#C07A8A",
-        "退款" to "#6B8CAE", "其他收入" to "#A8A29A"
-    )
-    private val fallbackPalette = intArrayOf(
-        Color.parseColor("#C15F3C"), Color.parseColor("#6B8CAE"), Color.parseColor("#9C6B8F"),
-        Color.parseColor("#94A374"), Color.parseColor("#CE9B4E"), Color.parseColor("#C07A8A"),
-        Color.parseColor("#8C9BAB"), Color.parseColor("#55917F"), Color.parseColor("#6D7BB5"),
-        Color.parseColor("#A8A29A"), Color.parseColor("#B08968"), Color.parseColor("#7F9BA6")
-    )
+    private val fallbackPalette = com.mudasir.smartledger.util.ChartPalette.fallbackHex
+        .map(Color::parseColor).toIntArray()
 
     /** 趋势图/柱状图点击气泡：显示「标签 ¥金额」。 */
     private class TrendMarkerView(context: Context, val labelOf: (Int) -> String) :
@@ -127,9 +115,9 @@ class StatsActivity : AppCompatActivity() {
     }
 
     // 趋势图主题色
-    private val trendLineColor = Color.parseColor("#FF5252")
-    private val trendFillTop = Color.parseColor("#33FF5252")
-    private val trendFillBottom = Color.parseColor("#05FF5252")
+    private val trendLineColor get() = getColor(R.color.accent_text)
+    private val trendFillTop get() = androidx.core.graphics.ColorUtils.setAlphaComponent(trendLineColor, 42)
+    private val trendFillBottom get() = androidx.core.graphics.ColorUtils.setAlphaComponent(trendLineColor, 3)
 
     // 待渲染数据
     private data class PendingLineData(val entries: List<Entry>, val labels: List<String>, val total: Float, val agg: DataAgg)
@@ -542,19 +530,8 @@ class StatsActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildSemanticColors(roots: List<String>): Map<String, Int> {
-        val result = mutableMapOf<String, Int>()
-        var idx = 0
-        for (root in roots) {
-            val hex = rootColorMap[root]
-            if (hex != null) {
-                result[root] = Color.parseColor(hex)
-            } else {
-                result[root] = fallbackPalette[idx % fallbackPalette.size]
-                idx++
-            }
-        }
-        return result
+    private fun buildSemanticColors(roots: List<String>): Map<String, Int> = roots.associateWith {
+        Color.parseColor(com.mudasir.smartledger.util.ChartPalette.hexFor(it))
     }
 
     private fun loadTrend() {
@@ -623,7 +600,8 @@ class StatsActivity : AppCompatActivity() {
 
             val set = PieDataSet(entries, "").apply {
                 setColors(colorList)
-                setDrawValues(true)
+                // Exact values and percentages live in the accessible breakdown below.
+                setDrawValues(false)
                 valueLineColor = Color.TRANSPARENT
                 sliceSpace = 3f
                 selectionShift = 8f
@@ -653,8 +631,10 @@ class StatsActivity : AppCompatActivity() {
                 }
                 setDrawCenterText(true)
                 setCenterTextSize(14f)
+                setCenterTextColor(chartTextColor())
                 legend.apply {
                     isEnabled = true
+                    isWordWrapEnabled = true
                     verticalAlignment = Legend.LegendVerticalAlignment.BOTTOM
                     horizontalAlignment = Legend.LegendHorizontalAlignment.CENTER
                     orientation = Legend.LegendOrientation.HORIZONTAL
@@ -666,7 +646,7 @@ class StatsActivity : AppCompatActivity() {
                     yEntrySpace = 4f
                     textColor = chartTextColor()
                 }
-                animateY(700)
+                animateY(if (android.os.Build.VERSION.SDK_INT >= 26 && !android.animation.ValueAnimator.areAnimatorsEnabled()) 0 else 350)
                 invalidate()
             }
         } catch (e: Exception) { pieChart.clear() }
@@ -815,7 +795,7 @@ class StatsActivity : AppCompatActivity() {
                 mode = LineDataSet.Mode.LINEAR
                 cubicIntensity = 0.2f
                 setHighlightEnabled(true)
-                setHighLightColor(Color.parseColor("#80FF5252"))
+                setHighLightColor(androidx.core.graphics.ColorUtils.setAlphaComponent(getColor(R.color.accent_text), 120))
                 highlightLineWidth = 1.5f
                 setDrawHorizontalHighlightIndicator(false)
             }
@@ -893,7 +873,7 @@ class StatsActivity : AppCompatActivity() {
 
                 notifyDataSetChanged()
                 requestLayout()
-                animateX(800)
+                animateX(if (android.os.Build.VERSION.SDK_INT >= 26 && !android.animation.ValueAnimator.areAnimatorsEnabled()) 0 else 350)
                 invalidate()
             }
         } catch (e: Exception) {
@@ -928,10 +908,10 @@ class StatsActivity : AppCompatActivity() {
 
             val set = BarDataSet(entries, "每小时支出  ${FormatUtil.money(total.toDouble())}").apply {
                 color = trendLineColor
-                setGradientColor(Color.parseColor("#FF8A80"), Color.parseColor("#C62828"))
+                setGradientColor(getColor(R.color.teal_light), getColor(R.color.teal_main))
                 setDrawValues(false)
                 setHighlightEnabled(true)
-                setHighLightColor(Color.parseColor("#80FF5252"))
+                setHighLightColor(androidx.core.graphics.ColorUtils.setAlphaComponent(getColor(R.color.accent_text), 120))
             }
 
             barChartHourly.apply {
@@ -995,7 +975,7 @@ class StatsActivity : AppCompatActivity() {
 
                 notifyDataSetChanged()
                 requestLayout()
-                animateY(600)
+                animateY(if (android.os.Build.VERSION.SDK_INT >= 26 && !android.animation.ValueAnimator.areAnimatorsEnabled()) 0 else 350)
                 invalidate()
             }
         } catch (e: Exception) {
@@ -1005,14 +985,7 @@ class StatsActivity : AppCompatActivity() {
 
     // ===== Helpers =====
 
-    private fun chartTextColor(): Int {
-        val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        return if (nightMode == Configuration.UI_MODE_NIGHT_YES) {
-            Color.parseColor("#E0E0E0")
-        } else {
-            Color.parseColor("#424242")
-        }
-    }
+    private fun chartTextColor(): Int = getColor(R.color.text_secondary)
 
     // ===== AI =====
 

@@ -2,13 +2,13 @@
     <style name="SettingsSectionCard" parent="Widget.Material3.CardView.Outlined">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginHorizontal">16dp</item>
+        <item name="android:layout_marginHorizontal">20dp</item>
         <item name="android:layout_marginTop">10dp</item>
-        <item name="cardCornerRadius">16dp</item>
+        <item name="cardCornerRadius">20dp</item>
         <item name="cardElevation">0dp</item>
         <item name="cardBackgroundColor">@color/surface_card</item>
         <item name="strokeColor">@color/divider</item>
-        <item name="strokeWidth">1dp</item>
+        <item name="strokeWidth">0dp</item>
     </style>
     <style name="SettingsSectionTitle" parent="TextAppearance.Material3.TitleMedium">
         <item name="android:textColor">@color/text_primary</item>
@@ -17,7 +17,7 @@
     </style>
     <style name="SettingsSupportingText" parent="TextAppearance.Material3.BodySmall">
         <item name="android:textColor">@color/text_secondary</item>
-        <item name="android:textSize">12sp</item>
+        <item name="android:textSize">13sp</item>
     </style>
     <style name="SettingsRowTitle" parent="TextAppearance.Material3.BodyMedium">
         <item name="android:textColor">@color/text_primary</item>
@@ -32,7 +32,7 @@
         <item name="android:insetBottom">0dp</item>
         <item name="android:paddingLeft">12dp</item>
         <item name="android:paddingRight">12dp</item>
-        <item name="android:textColor">@color/teal_main</item>
+        <item name="android:textColor">@color/accent_text</item>
         <item name="android:textSize">13sp</item>
     </style>
     <style name="SettingsListAction" parent="SettingsAction">

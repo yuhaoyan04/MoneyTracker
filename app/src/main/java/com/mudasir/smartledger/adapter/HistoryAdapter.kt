@@ -26,7 +26,7 @@ class HistoryAdapter(private val onClick: (String) -> Unit) : RecyclerView.Adapt
         val item = historyList[position]
         holder.tvExpression.text = item.expression
         holder.tvResult.text = "= ${item.result}"
-        holder.tvResult.setTextColor(holder.itemView.context.getColor(com.mudasir.smartledger.R.color.teal_main))
+        holder.tvResult.setTextColor(holder.itemView.context.getColor(com.mudasir.smartledger.R.color.accent_text))
         holder.itemView.setOnClickListener { onClick(item.result) }
     }
 

@@ -35,6 +35,12 @@ object VisualGuardTargets {
     fun isJdOrderAfterVerification(pkg: String, cls: String): Boolean =
         pkg == "com.jingdong.app.mall" && cls.endsWith(".SettlementFillOrderTaroActivity")
 
+    /** Keep repeated reports of the same JD cashier within the bounded OCR session. */
+    fun isSameActiveJdCashier(pkg: String, cls: String, previousPkg: String, previousCls: String,
+                             startedAt: Long, now: Long): Boolean =
+        AlipayVisualPolicy.isJdCashier(pkg, cls) && pkg == previousPkg && cls == previousCls &&
+            startedAt > 0 && now - startedAt in 0..60_000L
+
     /** Suppress only a very recent duplicate event for the same Taobao checkout. */
     fun isFreshDuplicateCheckout(pkg: String, cls: String, previousPkg: String, previousCls: String,
                                  qualifiedAt: Long, now: Long): Boolean =

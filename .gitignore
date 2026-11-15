@@ -9,6 +9,8 @@ app/release/
 # Project documentation & agent guidelines (internal)
 /docs/*
 !/docs/CAPTURE_AND_BACKUP_ARCHITECTURE.md
+!/docs/brand/
+!/docs/DESIGN.md
 /.agents/
 .agents/
 AGENTS.md

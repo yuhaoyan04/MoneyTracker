@@ -33,9 +33,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:hint="Date *"
-                app:hintTextColor="@color/teal_main"
+                app:hintTextColor="@color/accent_text"
                 app:startIconDrawable="@drawable/ic_calendar"
-                app:startIconTint="@color/teal_main">
+                app:startIconTint="@color/accent_text">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etDate"
@@ -52,7 +52,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:hint="Title"
-                app:hintTextColor="@color/teal_main">
+                app:hintTextColor="@color/accent_text">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etTitle"
                     android:layout_width="match_parent"
@@ -62,14 +62,14 @@
 
             <!-- Amount Field -->
             <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.App.TextInputLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:hint="Amount"
-                app:hintTextColor="@color/teal_main"
+                app:hintTextColor="@color/accent_text"
                 app:startIconDrawable="@drawable/ic_attach_money"
-                app:startIconTint="@color/teal_main">
+                app:startIconTint="@color/accent_text">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etAmount"
@@ -80,12 +80,12 @@
 
             <!-- Description Field -->
             <com.google.android.material.textfield.TextInputLayout
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                style="@style/Widget.App.TextInputLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:hint="Description"
-                app:hintTextColor="@color/teal_main">
+                app:hintTextColor="@color/accent_text">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etDescription"
@@ -114,7 +114,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Photos (Max 5)"
-                        android:textColor="@color/teal_main"
+                        android:textColor="@color/accent_text"
                         android:textStyle="bold"/>
 
                     <Button
@@ -123,8 +123,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Add Photo"
-                        android:textColor="@color/teal_main"
-                        app:strokeColor="@color/teal_main"/>
+                        android:textColor="@color/accent_text"
+                        app:strokeColor="@color/accent_text"/>
                 </LinearLayout>
 
                 <!-- Horizontal list to show selected photos -->

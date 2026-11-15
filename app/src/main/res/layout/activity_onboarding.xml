@@ -24,14 +24,14 @@
                 android:layout_width="96dp"
                 android:layout_height="96dp"
                 android:src="@drawable/ic_launcher_foreground"
-                android:background="@color/teal_main"
-                android:contentDescription="MoneyTracker" />
+                android:background="@drawable/guard_card"
+                android:contentDescription="知余" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:text="MoneyTracker 智能账本"
+                android:text="知余"
                 android:textColor="@color/text_primary"
                 android:textSize="24sp"
                 android:textStyle="bold" />
@@ -42,7 +42,7 @@
                 android:layout_marginTop="10dp"
                 android:gravity="center"
                 android:lineSpacingExtra="6dp"
-                android:text="自动抓取你的每一笔收支\nAI 越用越懂你的消费习惯\n大额消费前，帮你三思\n\n所有数据只存在这台手机里"
+                android:text="记清每一笔，也为生活留一点余地。\n\n支付通知进入收件箱，确认后入账\n分类建议，随你的纠正逐步学习\n大额付款前，留片刻再决定\n\n账本与分类学习保存在本机"
                 android:textColor="@color/text_secondary"
                 android:textSize="15sp" />
 
@@ -77,7 +77,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="授权后，支付会被自动记录并分类，你只需在收件箱确认。全部可选，稍后也能在设置中开启。"
+                android:text="授权后，可读取的支付通知会生成待确认记录。通知未送达时可手动补记或导入账单。全部权限可选，稍后也能在设置中开启。"
                 android:textColor="@color/text_secondary"
                 android:textSize="13sp" />
 

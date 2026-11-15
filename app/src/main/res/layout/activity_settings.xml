@@ -3,13 +3,13 @@
   <com.google.android.material.appbar.MaterialToolbar android:id="@+id/topAppBar" android:layout_width="0dp" android:layout_height="?attr/actionBarSize" android:background="@color/surface_dim" app:title="设置" app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge" app:titleTextColor="@color/text_primary" app:navigationIcon="@drawable/ic_arrow_back" app:navigationIconTint="@color/text_primary" app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent"/>
   <androidx.core.widget.NestedScrollView android:id="@+id/settingsScroll" android:layout_width="0dp" android:layout_height="0dp" android:fillViewport="true" android:clipToPadding="false" app:layout_constraintTop_toBottomOf="@id/topAppBar" app:layout_constraintBottom_toTopOf="@id/bottomNav" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="4dp" android:paddingBottom="32dp">
-      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="20dp" android:layout_marginBottom="4dp" android:text="管理提醒、权限与账本数据" android:textColor="@color/text_secondary" android:textSize="13sp"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="20dp" android:layout_marginBottom="4dp" android:text="让记录与生活保持有序" android:textColor="@color/text_secondary" android:textSize="13sp"/>
       <com.google.android.material.card.MaterialCardView style="@style/SettingsSectionCard">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-          <LinearLayout android:id="@+id/headerGuard" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="74dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+          <LinearLayout android:id="@+id/headerGuard" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="64dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
               <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="想好再买"/>
-              <TextView android:id="@+id/tvGuardOverview" style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="付款提醒 · 金额门槛 · 冷静时长"/>
+              <TextView android:id="@+id/tvGuardOverview" style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="付款提醒、金额门槛与冷静时长"/>
             </LinearLayout>
             <TextView android:id="@+id/chevronGuard" android:layout_width="32dp" android:layout_height="48dp" android:gravity="center" android:text="⌄" android:textColor="@color/text_secondary" android:textSize="22sp" android:importantForAccessibility="no"/>
           </LinearLayout>
@@ -63,6 +63,8 @@
               <com.google.android.material.button.MaterialButton android:id="@+id/btnBall" style="@style/SettingsAction" android:text="开启"/>
             </LinearLayout>
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/divider"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnGuardAdvanced" style="@style/SettingsListAction" android:text="识别选项与检测自检"/>
+            <LinearLayout android:id="@+id/guardAdvanced" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
             <com.google.android.material.button.MaterialButton android:id="@+id/btnGuardDebug" style="@style/SettingsListAction" android:text="检测自检"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualGuard" style="@style/SettingsListAction" android:text="屏幕识别（测试）"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnOrderButtonShield" style="@style/SettingsListAction" android:text="淘宝高额按钮提醒（测试）"/>
@@ -70,6 +72,7 @@
             <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualMulti" style="@style/SettingsListAction" android:text="京东订单识别（测试）"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualAlipay" style="@style/SettingsListAction" android:text="支付宝付款金额识别（测试）"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnVisualAlipayMulti" style="@style/SettingsListAction" android:text="淘宝跳转支付宝（测试）"/>
+            </LinearLayout>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnWishlist" style="@style/SettingsListAction" android:text="愿望清单"/>
             <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="18dp" android:paddingEnd="18dp" android:paddingTop="4dp" android:paddingBottom="10dp" android:text="仅在可读取的付款页识别到明确金额且超过门槛时提醒；部分页面无法识别，安全页面也可能隐藏浮层。"/>
           </LinearLayout>
@@ -77,7 +80,7 @@
       </com.google.android.material.card.MaterialCardView>
       <com.google.android.material.card.MaterialCardView style="@style/SettingsSectionCard">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-          <LinearLayout android:id="@+id/headerAppearance" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="74dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+          <LinearLayout android:id="@+id/headerAppearance" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="64dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
               <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="外观"/>
               <TextView android:id="@+id/tvAppearance" style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="跟随系统"/>
@@ -92,7 +95,7 @@
       </com.google.android.material.card.MaterialCardView>
       <com.google.android.material.card.MaterialCardView style="@style/SettingsSectionCard">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-          <LinearLayout android:id="@+id/headerCapture" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="74dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+          <LinearLayout android:id="@+id/headerCapture" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="64dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
               <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="自动记账与权限"/>
               <TextView android:id="@+id/tvCaptureOverview" style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="通知 · 短信 · 支付页增强检测"/>
@@ -157,7 +160,7 @@
       </com.google.android.material.card.MaterialCardView>
       <com.google.android.material.card.MaterialCardView style="@style/SettingsSectionCard">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-          <LinearLayout android:id="@+id/headerData" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="74dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+          <LinearLayout android:id="@+id/headerData" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="64dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
               <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="数据与备份"/>
               <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="本机备份 · 云同步 · 账单导入"/>
@@ -168,8 +171,13 @@
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/divider"/>
             <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingTop="14dp" android:paddingEnd="16dp" android:paddingBottom="2dp" android:text="本机备份" android:textStyle="bold"/>
             <TextView android:id="@+id/tvBackupStatus" style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingEnd="16dp" android:text="备份状态：—"/>
+            <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:text="JSON 本机及云备份包含交易、分类、支付渠道和愿望清单，不包含旧版专用账本、图片或应用设置。"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnBackupNow" style="@style/SettingsListAction" android:text="立即备份到本机"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnExportBackup" style="@style/SettingsListAction" android:text="导出可迁移备份（JSON）"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnExportLegacyBackup" style="@style/SettingsListAction" android:text="导出旧版专用账本与图片（ZIP）"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnLocalLegacyBackup" style="@style/SettingsListAction" android:text="旧版专用账本直接备份到本机"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnImportLegacyBackup" style="@style/SettingsListAction" android:text="导入旧版专用账本（ZIP）"/>
+            <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingBottom="4dp" android:text="换机时请分别保存 JSON 和 ZIP。ZIP 涵盖旧版支出、电费、牛奶和自定义账本；恢复时请先保留当前数据备份。"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnRestore" style="@style/SettingsListAction" android:text="选择备份文件导入"/>
             <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginHorizontal="16dp" android:background="@color/divider"/>
             <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingTop="14dp" android:paddingEnd="16dp" android:paddingBottom="2dp" android:text="加密云备份 · Pro" android:textStyle="bold"/>
@@ -190,7 +198,7 @@
         </LinearLayout>
       </com.google.android.material.card.MaterialCardView>
       <com.google.android.material.card.MaterialCardView android:id="@+id/cardAi" style="@style/SettingsSectionCard" android:clickable="true" android:focusable="true">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="74dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="18dp" android:paddingVertical="12dp" android:background="?attr/selectableItemBackground">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="64dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingHorizontal="18dp" android:paddingVertical="12dp" android:background="?attr/selectableItemBackground">
           <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
             <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="AI 助手"/>
             <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="服务商 · 模型 · API Key"/>
@@ -201,9 +209,9 @@
       </com.google.android.material.card.MaterialCardView>
       <com.google.android.material.card.MaterialCardView style="@style/SettingsSectionCard">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-          <LinearLayout android:id="@+id/headerPro" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="74dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+          <LinearLayout android:id="@+id/headerPro" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="64dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-              <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="MoneyTracker Pro"/>
+              <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="知余 Pro"/>
               <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="授权与高级功能"/>
             </LinearLayout>
             <TextView android:id="@+id/chevronPro" android:layout_width="32dp" android:layout_height="48dp" android:gravity="center" android:text="⌄" android:textColor="@color/text_secondary" android:textSize="22sp" android:importantForAccessibility="no"/>
@@ -221,7 +229,7 @@
       </com.google.android.material.card.MaterialCardView>
       <com.google.android.material.card.MaterialCardView style="@style/SettingsSectionCard">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-          <LinearLayout android:id="@+id/headerAbout" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="74dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
+          <LinearLayout android:id="@+id/headerAbout" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="64dp" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="18dp" android:paddingEnd="16dp" android:paddingTop="12dp" android:paddingBottom="12dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true">
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
               <TextView style="@style/SettingsSectionTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="关于与隐私"/>
               <TextView style="@style/SettingsSupportingText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="隐私说明 · 版本信息"/>

@@ -32,7 +32,7 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:src="@drawable/ic_water_drop"
-                app:tint="@color/teal_main"
+                app:tint="@color/accent_text"
                 android:layout_gravity="center"/>
         </FrameLayout>
 

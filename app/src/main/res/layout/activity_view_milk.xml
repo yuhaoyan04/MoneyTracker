@@ -74,7 +74,7 @@
             android:layout_weight="1"
             android:text="Days"
             android:textStyle="bold"
-            android:textColor="@color/teal_main"/>
+            android:textColor="@color/accent_text"/>
 
         <TextView
             android:layout_width="0dp"
@@ -83,7 +83,7 @@
             android:text="Liters"
             android:textStyle="bold"
             android:gravity="center"
-            android:textColor="@color/teal_main"/>
+            android:textColor="@color/accent_text"/>
 
         <TextView
             android:layout_width="0dp"
@@ -92,7 +92,7 @@
             android:text="Price"
             android:textStyle="bold"
             android:gravity="end"
-            android:textColor="@color/teal_main"/>
+            android:textColor="@color/accent_text"/>
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
