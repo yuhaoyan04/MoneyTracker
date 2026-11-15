@@ -677,8 +677,7 @@ class StatsActivity : AppCompatActivity() {
             // 点击大类行：展开/收起小类明细
             v.isClickable = true
             v.isFocusable = true
-            v.background = obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground))
-                .use { it.getDrawable(0) }
+            v.background = com.mudasir.smartledger.util.ThemeDrawables.selectableBackground(this)
             v.setOnClickListener {
                 expandedRoot = if (expanded) null else name
                 renderBreakdown()

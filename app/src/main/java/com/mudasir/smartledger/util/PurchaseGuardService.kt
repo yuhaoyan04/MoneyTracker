@@ -1097,9 +1097,7 @@ class PurchaseGuardService : Service() {
                 textSize = 14f
                 setTextColor(Color.WHITE)
                 setPadding(dpx(14), dpx(12), dpx(14), dpx(12))
-                background = ctx.obtainStyledAttributes(
-                    intArrayOf(android.R.attr.selectableItemBackground)
-                ).use { it.getDrawable(0) }
+                background = ThemeDrawables.selectableBackground(ctx)
                 setOnClickListener {
                     onClick()
                     removePanel()

@@ -3,6 +3,7 @@ package com.mudasir.smartledger
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
@@ -28,11 +29,17 @@ class CategorySelectionFlowTest {
                     Thread.sleep(200)
                 }
             }
-            onView(withText("个人护理")).perform(click())
+            onView(withText("个人护理")).perform(scrollTo(), click())
             onView(withText("美妆护肤")).perform(click())
             onView(withId(R.id.tvCategoryValue)).check(matches(withText("美妆护肤")))
             onView(withId(R.id.btnExpense)).perform(click())
             onView(withId(R.id.tvCategoryValue)).check(matches(withText("美妆护肤")))
+            onView(withId(R.id.cardChannel)).perform(click())
+            onView(withText("支付宝")).perform(scrollTo(), click())
+            onView(withId(R.id.tvChannelValue)).check(matches(withText("支付宝")))
+            onView(withId(R.id.cardPayment)).perform(click())
+            onView(withText("储蓄卡")).perform(scrollTo(), click())
+            onView(withId(R.id.tvPaymentValue)).check(matches(withText("储蓄卡")))
             onView(withId(R.id.btnIncome)).perform(click())
             onView(withId(R.id.tvCategoryValue)).check(matches(withText("未选择")))
         }

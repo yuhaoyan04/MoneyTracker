@@ -241,7 +241,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 isClickable = true
                 isFocusable = true
                 contentDescription = "${root.name}，${children.size}个小类${if (selected) "，当前分类" else ""}"
-                background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
+                background = com.mudasir.smartledger.util.ThemeDrawables.selectableBackground(ctx)
                 setOnClickListener {
                     sheet.dismiss()
                     showChildCategorySheet(root, children, type) { showCategorySheet(roots, childrenByRoot, type, showLegacy) }
@@ -341,7 +341,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
             textSize = 15f
             setTextColor(getColor(R.color.accent_text))
             setPadding(dp(8), dp(13), dp(8), dp(13))
-            background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
+            background = com.mudasir.smartledger.util.ThemeDrawables.selectableBackground(ctx)
             setOnClickListener { applyCategory(root.name); sheet.dismiss() }
         })
         children.forEach { child ->
@@ -352,7 +352,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 setPadding(dp(8), dp(13), dp(8), dp(13))
                 minimumHeight = dp(56)
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
+                background = com.mudasir.smartledger.util.ThemeDrawables.selectableBackground(ctx)
                 setOnClickListener { applyCategory(child.name); sheet.dismiss() }
             })
         }
@@ -477,7 +477,7 @@ class AddEditTransactionActivity : AppCompatActivity() {
                 textSize = 15f
                 setTextColor(if (opt == current) getColor(R.color.accent_text) else getColor(R.color.text_primary))
                 setPadding(dp(4), dp(12), dp(4), dp(12))
-                background = ctx.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).use { it.getDrawable(0) }
+                background = com.mudasir.smartledger.util.ThemeDrawables.selectableBackground(ctx)
                 setOnClickListener {
                     onSelect(opt)
                     sheet.dismiss()

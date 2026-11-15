@@ -31,7 +31,7 @@ import java.util.Calendar
 /** Repeatable review images from synthetic data in a separate package, never the user's ledger. */
 @RunWith(AndroidJUnit4::class)
 class DesignReviewTest {
-    @Test fun balanceAnimationEndsWithExactMonetaryValue() = runBlocking {
+    @Test fun balanceAnimationEndsWithExactMonetaryValue(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         check(context.packageName.endsWith(".isolated"))
@@ -56,7 +56,7 @@ class DesignReviewTest {
         } finally { dao.deleteById(id) }
     }
 
-    @Test fun seededLightAndDarkScreensAndScrollableReminder() = runBlocking {
+    @Test fun seededLightAndDarkScreensAndScrollableReminder(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         check(context.packageName.endsWith(".isolated")) { "Use -PisolatedDeviceTest=true" }
